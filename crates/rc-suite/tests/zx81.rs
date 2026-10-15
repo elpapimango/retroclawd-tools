@@ -272,8 +272,7 @@ const CASES: &[Case] = &[
         "SLOW mode counts 50 frames a second",
         "ZXDOCS FRAMES (0x4034), 50 Hz picture",
         slow_mode_counts_50_frames_a_second,
-    )
-    .gap("roadmap item 3: no video fetch -- the display routine's jump into 0xC000+ runs unmapped 0xFF"),
+    ),
     Case::new(
         Area::Cpu,
         "FAST mode runs at 3.25 MHz with no NMIs",
@@ -285,8 +284,7 @@ const CASES: &[Case] = &[
         "the ROM is shadowed across 0x0000-0x3FFF",
         "ZXDOCS memory mirroring",
         rom_is_shadowed_at_0x2000,
-    )
-    .gap("roadmap item 2: the memory map has no mirrors (0x2000-0x3FFF reads 0xFF)"),
+    ),
     Case::new(
         Area::Memory,
         "the ROM ignores writes",
@@ -298,29 +296,25 @@ const CASES: &[Case] = &[
         "the 1K RAM repeats through 0x4000-0x7FFF",
         "ZXDOCS memory mirroring",
         ram_1k_repeats_through_0x4000_0x7fff,
-    )
-    .gap("roadmap item 2: the memory map has no mirrors (0x4400-0x7FFF reads 0xFF)"),
+    ),
     Case::new(
         Area::Memory,
         "data reads above 0xC000 see the RAM",
         "ZXDOCS memory mirroring",
         data_reads_above_0xc000_see_the_ram,
-    )
-    .gap("roadmap item 2: the memory map has no mirrors (0xC000-0xFFFF reads 0xFF)"),
+    ),
     Case::new(
         Area::Video,
         "opcodes with bit 6 clear run as NOPs above 0x8000",
         "ZXDOCS 8000h-FFFFh (video output, machine code cannot run there)",
         opcodes_with_bit_6_clear_run_as_nops_above_0x8000,
-    )
-    .gap("roadmap item 3: no M1 distinction, so the CPU runs the echo area as ordinary code"),
+    ),
     Case::new(
         Area::Memory,
         "a 16K RAM pack is detected",
         "ZXDOCS RAMTOP",
         sixteen_k_ram_pack_is_detected,
-    )
-    .gap("roadmap item 2: the RAM is a fixed 1K, no pack option yet"),
+    ),
 ];
 
 #[test]
