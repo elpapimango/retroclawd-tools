@@ -1,0 +1,25 @@
+[package]
+name = "rcld"
+description = "Place assembled programs and emit a runnable image (retroclawd tools)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "rcld"
+
+[[bin]]
+name = "rcld"
+path = "src/main.rs"
+
+[dependencies]
+rc-common = { path = "../rc-common" }
+rcasm = { path = "../rcasm" }
+rcdisk = { path = "../rcdisk" }
+rctape = { path = "../rctape" }
+rcsnap = { path = "../rcsnap" }
+c64-cartridge.workspace = true
+serde.workspace = true
+toml.workspace = true
+clap.workspace = true

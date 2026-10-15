@@ -1,0 +1,23 @@
+[package]
+name = "rctape"
+description = "Inspect, cut, merge, split, clean up and convert tape images (retroclawd tools)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "rctape"
+
+[[bin]]
+name = "rctape"
+path = "src/main.rs"
+
+[dependencies]
+rc-common = { path = "../rc-common" }
+c64-tape.workspace = true
+clap.workspace = true
+
+[dev-dependencies]
+rcasm = { path = "../rcasm" }
+zx-tape.workspace = true

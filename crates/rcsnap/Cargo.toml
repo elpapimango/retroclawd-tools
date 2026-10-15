@@ -1,0 +1,29 @@
+[package]
+name = "rcsnap"
+description = "Inspect, convert and build snapshots and cartridges (retroclawd tools)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "rcsnap"
+
+[[bin]]
+name = "rcsnap"
+path = "src/main.rs"
+
+[dependencies]
+rc-common = { path = "../rc-common" }
+z80-snapshot.workspace = true
+sna-snapshot.workspace = true
+szx-snapshot.workspace = true
+zx81-snapshot.workspace = true
+cpc-snapshot.workspace = true
+cpc-cartridge.workspace = true
+c64-cartridge.workspace = true
+z80.workspace = true
+clap.workspace = true
+
+[dev-dependencies]
+rcasm = { path = "../rcasm" }
