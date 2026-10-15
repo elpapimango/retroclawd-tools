@@ -1,0 +1,16 @@
+[package]
+name = "rc-suite"
+description = "Per-machine emulator test suites for retroclawd, built with the retroclawd tools"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "rc_suite"
+
+[dependencies]
+png = "0.18"
+
+[dev-dependencies]
+rcasm = { path = "../rcasm" }

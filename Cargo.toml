@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/rc-common", "crates/rcasm", "crates/rcdis", "crates/rcdisk", "crates/rctape", "crates/rcsnap", "crates/rcld"]
+members = ["crates/rc-common", "crates/rcasm", "crates/rcdis", "crates/rcdisk", "crates/rctape", "crates/rcsnap", "crates/rcld", "crates/rc-suite"]
 
 [workspace.package]
 version = "0.1.0"
