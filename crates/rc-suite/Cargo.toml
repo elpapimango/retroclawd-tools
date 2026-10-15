@@ -11,6 +11,10 @@ name = "rc_suite"
 
 [dependencies]
 png = "0.18"
+rcasm = { path = "../rcasm" }
+cpc-snapshot.workspace = true
 
 [dev-dependencies]
-rcasm = { path = "../rcasm" }
+rcld = { path = "../rcld" }
+rcdisk = { path = "../rcdisk" }
+rcsnap = { path = "../rcsnap" }

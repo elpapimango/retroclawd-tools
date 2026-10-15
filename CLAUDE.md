@@ -107,6 +107,26 @@ the first block was gone by the time `LOAD ""` was typed and the live check need
 any-read` brings the old rule back). Xlib scripts need `win.set_input_focus` (no window
 manager) and half-second key holds.
 
+## Emulator suites (`crates/rc-suite`)
+
+A harness and per-machine suites that run the real `retroclawd` headless and check memory, registers and the picture against
+**hardware facts that each case cites** (a datasheet, a manual, the ROM itself), never against the emulator's earlier output.
+`tests/zx81.rs` and `tests/cpc.rs` hold the cases; a case belongs to an `Area` so a failure names what is wrong. A feature the
+emulator lacks is a *gap*: `Case::gap("why")` -- it must fail, and the run fails when it starts passing, so gaps only shrink on
+purpose. Everything skips unless `RETROCLAWD_BIN`, `RETROCLAWD_MACHINE_PLUGIN_DIRS` and `RC_ROMS` (a folder with
+`sinclair/ amstrad/ commodore/`, each with its `roms/`) are set, so public CI stays green without firmware.
+
+* Run: `RETROCLAWD_BIN=... RETROCLAWD_MACHINE_PLUGIN_DIRS=... RC_ROMS=.../machines cargo test -p rc-suite -- --nocapture`.
+* `--frames N` runs whole frames like the window (a frame interrupt each, no stop at `HALT`); `--max-cycles` stops at the first
+  `HALT`, which a ROM waiting for the next frame reaches during boot.
+* `z80_program` / `z80_image` assemble a test program (`--program`). A `--program` run does not boot the firmware, so a case that
+  needs video timing programs the CRTC itself.
+* `Resident` runs code on a **firmware-booted** CPC: it boots, saves a snapshot, writes the code into the snapshot's RAM, points
+  the program counter at it and resumes. The firmware's jump block and interrupts are live, so the code can call AMSDOS (`CAS IN
+  OPEN` 0xBC77 / `CAS IN DIRECT` 0xBC83), which is how disks the tools made are checked headless (no keyboard needed).
+* Writing a test program as a string: the program text goes in a plain string with real newlines.
+* Not testable headless yet: the keyboard and joysticks (the CLI cannot press keys), sound, and anything that needs `RUN"` typed.
+
 ## Open points
 
 * `rcdis` reads raw and `.prg` input only; extracting from a disk or tape image (`rcdis game.d64:NAME`) is still to do.

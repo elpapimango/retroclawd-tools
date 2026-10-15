@@ -75,6 +75,62 @@ impl Env {
 
 static COUNTER: AtomicU64 = AtomicU64::new(0);
 
+/// Assembles Z80 `source` at `org` (with `.org` and `.cpu z80` supplied) and returns the bytes.
+pub fn z80_image(org: u16, source: &str) -> Result<Vec<u8>, String> {
+    let opts = rcasm::Options {
+        cpu: Some(rcasm::Cpu::Z80),
+        ..rcasm::Options::default()
+    };
+    let asm = rcasm::assemble(
+        "case.asm",
+        &format!(
+            ".org ${org:04X}
+{source}"
+        ),
+        &opts,
+        &rcasm::DiskFiles,
+    )
+    .map_err(|e| format!("{e:?}"))?;
+    let (start, image) = rcasm::flat_image(&asm, 0)?;
+    if start != org {
+        return Err(format!(
+            "the program starts at 0x{start:04X}, not 0x{org:04X}"
+        ));
+    }
+    Ok(image)
+}
+
+/// Assembles Z80 `source` at `org` (with `.org` and `.cpu z80` supplied) into a temporary file for `--program`.
+pub fn z80_program(tag: &str, org: u16, source: &str) -> Result<PathBuf, String> {
+    let opts = rcasm::Options {
+        cpu: Some(rcasm::Cpu::Z80),
+        ..rcasm::Options::default()
+    };
+    let asm = rcasm::assemble(
+        "case.asm",
+        &format!(
+            ".org ${org:04X}
+{source}"
+        ),
+        &opts,
+        &rcasm::DiskFiles,
+    )
+    .map_err(|e| format!("{e:?}"))?;
+    let (start, image) = rcasm::flat_image(&asm, 0)?;
+    if start != org {
+        return Err(format!(
+            "the program starts at 0x{start:04X}, not 0x{org:04X}"
+        ));
+    }
+    let path = std::env::temp_dir().join(format!(
+        "rc-suite-{tag}-{}-{}.bin",
+        std::process::id(),
+        COUNTER.fetch_add(1, Ordering::Relaxed)
+    ));
+    std::fs::write(&path, image).map_err(|e| e.to_string())?;
+    Ok(path)
+}
+
 /// One headless emulator invocation, built up and then [`Run::go`].
 pub struct Run<'e> {
     env: &'e Env,
@@ -397,5 +453,89 @@ pub fn expect_in(what: &str, got: i64, lo: i64, hi: i64) -> Result<(), String> {
         Ok(())
     } else {
         Err(format!("{what}: got {got}, expected {lo}..={hi}"))
+    }
+}
+
+/// Frames a CPC firmware needs from reset to the BASIC prompt, with room to spare.
+pub const CPC_BOOT_FRAMES: u32 = 250;
+
+/// How a firmware-resident CPC run is set up: what goes on the command line besides the machine and its ROM
+/// (a `--disk`, say), the snapshot version to resume from, and how long to run.
+pub struct Resident<'a> {
+    pub machine: &'a str,
+    pub rom: &'a Path,
+    /// Extra arguments for both the boot run and the resumed run (`--disk`, `foo.dsk`, ...).
+    pub extra: Vec<String>,
+    /// Write the patched snapshot as this `.sna` version (1, 2 or 3); `None` keeps the booted one.
+    pub sna_version: Option<u8>,
+}
+
+impl Resident<'_> {
+    /// Runs Z80 `source` (assembled at `org`) on a CPC whose firmware has booted to BASIC: the machine is
+    /// booted for [`CPC_BOOT_FRAMES`] frames and saved as a snapshot, the code is written into its RAM and the
+    /// program counter pointed at it, and the patched snapshot is resumed for `frames` frames. The firmware's
+    /// jump block and its interrupts are live, so the code can call the firmware (AMSDOS, the keyboard, ...).
+    pub fn run(
+        &self,
+        env: &Env,
+        tag: &str,
+        org: u16,
+        source: &str,
+        frames: u32,
+        dumps: &[(u16, u16)],
+    ) -> Result<Outcome, String> {
+        let dir = std::env::temp_dir();
+        let unique = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let boot = dir.join(format!(
+            "rc-suite-{tag}-{}-{unique}-boot.sna",
+            std::process::id()
+        ));
+        let patched = dir.join(format!(
+            "rc-suite-{tag}-{}-{unique}-run.sna",
+            std::process::id()
+        ));
+
+        let mut booting = env.run(self.machine).rom(self.rom);
+        for a in &self.extra {
+            booting = booting.arg(a.clone());
+        }
+        booting
+            .frames(CPC_BOOT_FRAMES)
+            .arg("--dump-snapshot")
+            .arg(boot.to_string_lossy())
+            .go()?;
+
+        let bytes = std::fs::read(&boot).map_err(|e| format!("no boot snapshot: {e}"))?;
+        let mut snapshot =
+            cpc_snapshot::parse(&bytes).map_err(|e| format!("boot snapshot: {e}"))?;
+        let code = z80_image(org, source)?;
+        let at = usize::from(org);
+        snapshot
+            .ram
+            .get_mut(at..at + code.len())
+            .ok_or("the program does not fit in the snapshot's RAM")?
+            .copy_from_slice(&code);
+        snapshot.cpu.pc = org;
+        if let Some(v) = self.sna_version {
+            snapshot.version = v;
+        }
+        let out = cpc_snapshot::write(&snapshot).map_err(|e| format!("patched snapshot: {e}"))?;
+        std::fs::write(&patched, out).map_err(|e| e.to_string())?;
+        let _ = std::fs::remove_file(&boot);
+
+        let mut resumed = env.run(self.machine).rom(self.rom);
+        for a in &self.extra {
+            resumed = resumed.arg(a.clone());
+        }
+        resumed = resumed
+            .arg("--snapshot")
+            .arg(patched.to_string_lossy())
+            .frames(frames);
+        for (start, len) in dumps {
+            resumed = resumed.dump(*start, *len);
+        }
+        let result = resumed.go();
+        let _ = std::fs::remove_file(&patched);
+        result
     }
 }

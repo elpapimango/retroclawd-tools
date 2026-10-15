@@ -332,8 +332,12 @@ version = "0.1.0"
 name = "rc-suite"
 version = "0.1.0"
 dependencies = [
+ "cpc-snapshot",
  "png",
  "rcasm",
+ "rcdisk",
+ "rcld",
+ "rcsnap",
 ]
 
 [[package]]

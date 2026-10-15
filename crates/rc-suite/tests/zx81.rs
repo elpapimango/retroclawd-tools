@@ -9,8 +9,7 @@
 //!
 //! Needs `RETROCLAWD_BIN`, `RETROCLAWD_MACHINE_PLUGIN_DIRS` and `RC_ROMS` (see the crate docs); skips without.
 
-use rc_suite::{Area, Case, Env, expect_eq, expect_in, run_cases};
-use rcasm::{Cpu, DiskFiles, Options, assemble, flat_image};
+use rc_suite::{Area, Case, Env, expect_eq, expect_in, run_cases, z80_program};
 use std::path::PathBuf;
 
 const ROM_FILE: &str = "sinclair/roms/zx81/zx81.rom";
@@ -29,26 +28,6 @@ fn rom(env: &Env) -> Result<PathBuf, String> {
     env.file(ROM_FILE)
 }
 
-/// Assembles `source` at `org` and returns the file to hand to `--program`.
-fn program(tag: &str, org: u16, source: &str) -> Result<PathBuf, String> {
-    let opts = Options {
-        cpu: Some(Cpu::Z80),
-        ..Options::default()
-    };
-    let asm = assemble(
-        "case.asm",
-        &format!(".org ${org:04X}\n{source}"),
-        &opts,
-        &DiskFiles,
-    )
-    .map_err(|e| format!("{e:?}"))?;
-    let (start, image) = flat_image(&asm, 0)?;
-    expect_eq("program start", start, org)?;
-    let path = std::env::temp_dir().join(format!("rc-suite-zx81-{tag}-{}.bin", std::process::id()));
-    std::fs::write(&path, image).map_err(|e| e.to_string())?;
-    Ok(path)
-}
-
 /// Runs `source` loaded at 0x4100 for `frames` frames. The ROM is not booted: the CPU starts in the program,
 /// with the NMI generator off (FAST mode), as it is at reset.
 fn run_program(
@@ -57,7 +36,7 @@ fn run_program(
     source: &str,
     frames: u32,
 ) -> Result<rc_suite::Outcome, String> {
-    let file = program(tag, 0x4100, source)?;
+    let file = z80_program(tag, 0x4100, source)?;
     env.run("zx81")
         .rom(&rom(env)?)
         .arg("--program")
