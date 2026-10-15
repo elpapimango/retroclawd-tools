@@ -111,7 +111,7 @@ manager) and half-second key holds.
 
 A harness and per-machine suites that run the real `retroclawd` headless and check memory, registers and the picture against
 **hardware facts that each case cites** (a datasheet, a manual, the ROM itself), never against the emulator's earlier output.
-`tests/zx81.rs` and `tests/cpc.rs` hold the cases; a case belongs to an `Area` so a failure names what is wrong. A feature the
+`tests/zx81.rs`, `tests/cpc.rs` and `tests/c128.rs` hold the cases; a case belongs to an `Area` so a failure names what is wrong. A feature the
 emulator lacks is a *gap*: `Case::gap("why")` -- it must fail, and the run fails when it starts passing, so gaps only shrink on
 purpose. Everything skips unless `RETROCLAWD_BIN`, `RETROCLAWD_MACHINE_PLUGIN_DIRS` and `RC_ROMS` (a folder with
 `sinclair/ amstrad/ commodore/`, each with its `roms/`) are set, so public CI stays green without firmware.
@@ -125,7 +125,13 @@ purpose. Everything skips unless `RETROCLAWD_BIN`, `RETROCLAWD_MACHINE_PLUGIN_DI
   the program counter at it and resumes. The firmware's jump block and interrupts are live, so the code can call AMSDOS (`CAS IN
   OPEN` 0xBC77 / `CAS IN DIRECT` 0xBC83), which is how disks the tools made are checked headless (no keyboard needed).
 * Writing a test program as a string: the program text goes in a plain string with real newlines.
-* Not testable headless yet: the keyboard and joysticks (the CLI cannot press keys), sound, and anything that needs `RUN"` typed.
+* `--type TEXT` (with `--frames`, `--type-after N`) types on the emulated keyboard like the paste hotkey, so BASIC can be driven and
+  the keyboard path is part of the test: `PRINT 12*34` is checked on the C128 screen, and a disk is loaded with `LOAD"NAME",8,1`.
+  A C128 with a real drive (`--true-drive`) probes it for a boot sector first: type from frame 500, not 150.
+* `c128_8502_program` runs 6502 code on a C128: it powers up on its Z80, so a Z80 stub sets the memory map, points the 8502 reset
+  vector at the code and sets the processor-select bit of the MMU's mode register (a Z80 reaches the I/O chips with `IN`/`OUT`, not
+  memory writes; in Z80 mode `$1000-$13FF` is colour RAM). The KERNAL is not booted in such a run; to use it, boot normally and type.
+* Not testable headless yet: joysticks and sound.
 
 ## Open points
 

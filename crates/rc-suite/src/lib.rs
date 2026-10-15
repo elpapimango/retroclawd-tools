@@ -456,6 +456,128 @@ pub fn expect_in(what: &str, got: i64, lo: i64, hi: i64) -> Result<(), String> {
     }
 }
 
+/// Assembles 6502 `source` at `org` (with `.org` and `.cpu 6502` supplied) and returns the bytes.
+pub fn mos6502_image(org: u16, source: &str) -> Result<Vec<u8>, String> {
+    let opts = rcasm::Options {
+        cpu: Some(rcasm::Cpu::Mos6502),
+        ..rcasm::Options::default()
+    };
+    let asm = rcasm::assemble(
+        "case.asm",
+        &format!(".org ${org:04X}\n{source}"),
+        &opts,
+        &rcasm::DiskFiles,
+    )
+    .map_err(|e| format!("{e:?}"))?;
+    let (start, image) = rcasm::flat_image(&asm, 0)?;
+    if start != org {
+        return Err(format!(
+            "the program starts at 0x{start:04X}, not 0x{org:04X}"
+        ));
+    }
+    Ok(image)
+}
+
+/// Where a C128 test program's 6502 code starts, `C128_CODE_OFFSET` bytes after the Z80 stub's `org`.
+pub const C128_CODE_OFFSET: u16 = 0x100;
+
+/// A C128 program for `--program`: a C128 powers up on its Z80, which this stub (at `org`) uses to set the map the
+/// 8502 will see and then hand the machine over: configuration register = 0x3E (all RAM, bank 0, I/O visible), the
+/// 8502 reset vector at 0xFFFC pointing at the 6502 `source` (assembled at `org + C128_CODE_OFFSET`), then the
+/// processor-select bit of the mode configuration register set (a Z80 reaches the I/O chips with `IN`/`OUT`, the port's
+/// high byte choosing the chip, so that is a port access, not a memory write). The 8502 starts from that vector (MMU: "the Z80
+/// releases the machine; the 8502 starts as from reset"), so the 6502 code runs on a machine nothing has initialised.
+pub fn c128_8502_program(tag: &str, org: u16, source: &str) -> Result<PathBuf, String> {
+    let code_at = org + C128_CODE_OFFSET;
+    let stub = z80_image(
+        org,
+        &format!(
+            " di
+ ld a,$3E
+ ld ($FF00),a
+ ld hl,${code_at:04X}
+ ld ($FFFC),hl
+ ld bc,$D505
+ in a,(c)
+ or 1
+ out (c),a
+stay: jr stay
+"
+        ),
+    )?;
+    let code = mos6502_image(code_at, source)?;
+    let mut image = stub;
+    image.resize(usize::from(C128_CODE_OFFSET), 0);
+    image.extend_from_slice(&code);
+    let path = std::env::temp_dir().join(format!(
+        "rc-suite-{tag}-{}-{}.bin",
+        std::process::id(),
+        COUNTER.fetch_add(1, Ordering::Relaxed)
+    ));
+    std::fs::write(&path, image).map_err(|e| e.to_string())?;
+    Ok(path)
+}
+
+impl Env {
+    /// Starts a headless run of a C128 with its ROM set from `RC_ROMS` (`commodore/roms/c128`); the two BASIC halves
+    /// are joined into one file, as the machine wants them. An error naming the missing file when a ROM is absent.
+    pub fn c128(&self) -> Result<Run<'_>, String> {
+        let dir = "commodore/roms/c128";
+        let lo = std::fs::read(self.file(&format!("{dir}/basiclo-318018-04.bin"))?)
+            .map_err(|e| e.to_string())?;
+        let hi = std::fs::read(self.file(&format!("{dir}/basichi-318019-04.bin"))?)
+            .map_err(|e| e.to_string())?;
+        let basic = std::env::temp_dir().join(format!(
+            "rc-suite-c128-basic-{}-{}.bin",
+            std::process::id(),
+            COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::write(&basic, [lo, hi].concat()).map_err(|e| e.to_string())?;
+        let path = |name: &str| -> Result<String, String> {
+            Ok(self
+                .file(&format!("{dir}/{name}"))?
+                .to_string_lossy()
+                .into_owned())
+        };
+        Ok(self
+            .run("c128")
+            .arg("--rom-basic")
+            .arg(basic.to_string_lossy())
+            .arg("--rom-kernal")
+            .arg(path("kernal-318020-05.bin")?)
+            .arg("--rom-char")
+            .arg(path("chargen-390059-01.bin")?)
+            .arg("--rom-c64-basic")
+            .arg(path("basic64-901226-01.bin")?)
+            .arg("--rom-c64-kernal")
+            .arg(path("kernal64-901227-03.bin")?))
+    }
+}
+
+/// The Commodore screen code of an ASCII character in the upper-case set: `@` is 0, `A`-`Z` are 1-26, and the characters
+/// from space to `?` are their ASCII codes. Anything else maps to `None`.
+pub fn screen_code(c: char) -> Option<u8> {
+    match c {
+        '@' => Some(0),
+        'A'..='Z' => Some(c as u8 - b'A' + 1),
+        ' '..='?' => Some(c as u8),
+        _ => None,
+    }
+}
+
+/// `text` as screen codes, `None` if a character has none.
+pub fn screen_codes(text: &str) -> Option<Vec<u8>> {
+    text.chars().map(screen_code).collect()
+}
+
+/// The offset of `text` (as screen codes) in `screen`, if it is there.
+pub fn find_text(screen: &[u8], text: &str) -> Option<usize> {
+    let codes = screen_codes(text)?;
+    screen
+        .windows(codes.len())
+        .position(|w| w == codes.as_slice())
+}
+
 /// Frames a CPC firmware needs from reset to the BASIC prompt, with room to spare.
 pub const CPC_BOOT_FRAMES: u32 = 250;
 
