@@ -239,6 +239,204 @@ fn sixteen_k_ram_pack_is_detected(env: &Env) -> Result<(), String> {
     expect_eq("RAMTOP with 16K", out.word(RAMTOP)?, 0x8000)
 }
 
+/// ZX81 character codes (the manual's character set) of the characters a key types.
+fn zx81_code(c: char) -> Option<u8> {
+    Some(match c {
+        ' ' => 0x00,
+        '"' => 0x0B,
+        '$' => 0x0D,
+        ':' => 0x0E,
+        '?' => 0x0F,
+        '(' => 0x10,
+        ')' => 0x11,
+        '>' => 0x12,
+        '<' => 0x13,
+        '=' => 0x14,
+        '+' => 0x15,
+        '-' => 0x16,
+        '*' => 0x17,
+        '/' => 0x18,
+        ';' => 0x19,
+        ',' => 0x1A,
+        '.' => 0x1B,
+        '0'..='9' => 0x1C + (c as u8 - b'0'),
+        'A'..='Z' => 0x26 + (c as u8 - b'A'),
+        '\n' => 0x76,
+        _ => return None,
+    })
+}
+
+/// The keyboard matrix position (half row 0-7, bit 0-4) the ROM's key table puts a character at. The ROM's `KEYBOARD`
+/// routine scans the 40 keys in the order of these 39-byte tables (every key but Shift, which is row 0 bit 0): the
+/// unshifted table is at 0x007E and the shifted one at 0x00A5.
+fn rom_key_position(rom: &[u8], shifted: bool, c: char) -> Result<(usize, u8), String> {
+    let table = if shifted { 0x00A5 } else { 0x007E };
+    let code = zx81_code(c).ok_or_else(|| format!("no ZX81 character code for {c:?}"))?;
+    let index = rom[table..table + 39]
+        .iter()
+        .position(|&b| b == code)
+        .ok_or_else(|| {
+            format!(
+                "{c:?} is not in the ROM's {} key table",
+                if shifted { "shifted" } else { "unshifted" }
+            )
+        })?;
+    Ok(if index < 4 {
+        (0, 1 + index as u8)
+    } else {
+        (1 + (index - 4) / 5, ((index - 4) % 5) as u8)
+    })
+}
+
+/// The ports' half-row selects, row 0 first (a row is selected by a 0 on its address line A8-A15).
+const ROW_SELECTS: [u8; 8] = [0xFE, 0xFD, 0xFB, 0xF7, 0xEF, 0xDF, 0xBF, 0x7F];
+
+/// Types `c` on the keyboard of a ZX81 running a program that reads all eight half rows over and over and keeps, for each,
+/// the AND of every value it read (so a bit that ever went low stays low). Returns those eight bytes.
+fn keys_seen_by_a_program(env: &Env, c: char) -> Result<Vec<u8>, String> {
+    let mut source = String::new();
+    for i in 0..8 {
+        source += &format!(" ld a,$FF\n ld (${:04X}),a\n", 0x4F00 + i);
+    }
+    source += "scan: ld c,$FE\n";
+    for (i, row) in ROW_SELECTS.iter().enumerate() {
+        source += &format!(
+            " ld b,${row:02X}\n in a,(c)\n ld hl,${:04X}\n and (hl)\n ld (hl),a\n",
+            0x4F00 + i
+        );
+    }
+    source += " jp scan\n";
+    let file = z80_program("keys", 0x4100, &source)?;
+    let out = env
+        .run("zx81")
+        .rom(&rom(env)?)
+        .arg("--program")
+        .arg(file.to_string_lossy())
+        .arg("--org")
+        .arg("0x4100")
+        .frames(40)
+        .arg("--type-after")
+        .arg("4")
+        .arg("--type-delay")
+        .arg("160")
+        .arg("--type")
+        .arg(c.to_string())
+        .dump(0x4F00, 8)
+        .go()?;
+    out.bytes(0x4F00, 8)
+}
+
+/// What the eight half rows should read after typing: bits 0-4 high except the keys held, bits 5-7 high.
+fn expected_rows(held: &[(usize, u8)]) -> Vec<u8> {
+    let mut rows = vec![0xFFu8; 8];
+    for &(row, bit) in held {
+        rows[row] &= !(1 << bit);
+    }
+    rows
+}
+
+fn every_unshifted_key_pulls_its_matrix_line_low(env: &Env) -> Result<(), String> {
+    let rom_bytes = std::fs::read(rom(env)?).map_err(|e| e.to_string())?;
+    let keys: Vec<char> = ('A'..='Z')
+        .chain('0'..='9')
+        .chain([' ', '.', '\n'])
+        .collect();
+    for c in keys {
+        let position = rom_key_position(&rom_bytes, false, c)?;
+        let got = keys_seen_by_a_program(env, c)?;
+        expect_eq(
+            &format!(
+                "the half rows read after typing {c:?} (the ROM puts it at row {}, bit {})",
+                position.0, position.1
+            ),
+            got,
+            expected_rows(&[position]),
+        )?;
+    }
+    Ok(())
+}
+
+fn every_shifted_symbol_pulls_shift_and_its_key_low(env: &Env) -> Result<(), String> {
+    let rom_bytes = std::fs::read(rom(env)?).map_err(|e| e.to_string())?;
+    for c in [
+        ':', ';', '?', '/', '"', ')', '(', '$', '=', '+', '-', ',', '>', '<', '*',
+    ] {
+        let position = rom_key_position(&rom_bytes, true, c)?;
+        let got = keys_seen_by_a_program(env, c)?;
+        // The ROM's shifted table is read with Shift held (row 0, bit 0) as well as the key.
+        expect_eq(
+            &format!(
+                "the half rows read after typing {c:?} (Shift and row {}, bit {})",
+                position.0, position.1
+            ),
+            got,
+            expected_rows(&[(0, 0), position]),
+        )?;
+    }
+    Ok(())
+}
+
+/// Types `text` into a booted ZX81 and returns its picture, 256x192 without the border.
+fn screen_after_typing(env: &Env, text: &str) -> Result<rc_suite::Outcome, String> {
+    env.run("zx81")
+        .rom(&rom(env)?)
+        .arg("--no-border")
+        .frames(500)
+        .arg("--type-delay")
+        .arg("160")
+        .arg("--type")
+        .arg(text)
+        .screen()
+        .go()
+}
+
+/// Whether the character cell at (`col`, `row`) shows the ROM's glyph for `code`.
+fn cell_shows(
+    out: &rc_suite::Outcome,
+    rom: &[u8],
+    col: usize,
+    row: usize,
+    code: u8,
+) -> Result<bool, String> {
+    let glyph = &rom[0x1E00 + usize::from(code) * 8..0x1E00 + usize::from(code) * 8 + 8];
+    Ok(out.screen()?.cell(col * 8, row * 8).as_slice() == glyph)
+}
+
+fn typed_print_statements_run_in_the_rom(env: &Env) -> Result<(), String> {
+    let rom_bytes = std::fs::read(rom(env)?).map_err(|e| e.to_string())?;
+    // BASIC: P is the PRINT keyword. Each statement is typed on the keyboard (Shift and the `.` key included), entered, run by
+    // the ROM, and the result printed at the top left; the ROM then reports `0/0` (0 = no error, line 0) bottom left.
+    for (typed, result) in [
+        ("P12\n", "12"),
+        ("P12*34\n", "408"),
+        ("P1.5+1\n", "2.5"),
+        ("P7-2*3\n", "1"),
+    ] {
+        let out = screen_after_typing(env, typed)?;
+        for (col, c) in result.chars().enumerate() {
+            let code = zx81_code(c).ok_or("no code")?;
+            if !cell_shows(&out, &rom_bytes, col, 0, code)? {
+                return Err(format!(
+                    "typing {typed:?}: the top-left of the screen does not show {result:?}"
+                ));
+            }
+        }
+        for (col, c) in "0/0".chars().enumerate() {
+            let code = if c == '/' {
+                0x18
+            } else {
+                zx81_code(c).ok_or("no code")?
+            };
+            if !cell_shows(&out, &rom_bytes, col, 23, code)? {
+                return Err(format!(
+                    "typing {typed:?}: the ROM's report 0/0 is not at the bottom left"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 const CASES: &[Case] = &[
     Case::new(
         Area::Video,
@@ -251,6 +449,24 @@ const CASES: &[Case] = &[
         "SLOW mode counts 50 frames a second",
         "ZXDOCS FRAMES (0x4034), 50 Hz picture",
         slow_mode_counts_50_frames_a_second,
+    ),
+    Case::new(
+        Area::Io,
+        "every unshifted key pulls its matrix line low",
+        "the ROM's key table (0x007E): the ROM scans the keys in that order",
+        every_unshifted_key_pulls_its_matrix_line_low,
+    ),
+    Case::new(
+        Area::Io,
+        "every shifted symbol pulls Shift and its key low",
+        "the ROM's shifted key table (0x00A5)",
+        every_shifted_symbol_pulls_shift_and_its_key_low,
+    ),
+    Case::new(
+        Area::Rom,
+        "typed PRINT statements run in the ROM",
+        "BASIC arithmetic; the ROM's own report 0/0 after a statement; the ROM's character set",
+        typed_print_statements_run_in_the_rom,
     ),
     Case::new(
         Area::Cpu,

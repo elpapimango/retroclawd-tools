@@ -469,7 +469,7 @@ checksum = "3a219298ac11a56ea9a6d2120044824d6f01aeb034955e7af7bc16858527deea"
 [[package]]
 name = "sna-snapshot"
 version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-sinclair?rev=9e5decd0de880247f10cb2c4d95ef1c38abea841#9e5decd0de880247f10cb2c4d95ef1c38abea841"
+source = "git+https://github.com/elpapimango/retroclawd-sinclair?rev=1678958fcf0cb2f178edccc81119c06ea41109f5#1678958fcf0cb2f178edccc81119c06ea41109f5"
 dependencies = [
  "z80",
 ]
@@ -494,7 +494,7 @@ dependencies = [
 [[package]]
 name = "szx-snapshot"
 version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-sinclair?rev=9e5decd0de880247f10cb2c4d95ef1c38abea841#9e5decd0de880247f10cb2c4d95ef1c38abea841"
+source = "git+https://github.com/elpapimango/retroclawd-sinclair?rev=1678958fcf0cb2f178edccc81119c06ea41109f5#1678958fcf0cb2f178edccc81119c06ea41109f5"
 dependencies = [
  "flate2",
  "z80",
@@ -589,7 +589,7 @@ dependencies = [
 [[package]]
 name = "z80-snapshot"
 version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-sinclair?rev=9e5decd0de880247f10cb2c4d95ef1c38abea841#9e5decd0de880247f10cb2c4d95ef1c38abea841"
+source = "git+https://github.com/elpapimango/retroclawd-sinclair?rev=1678958fcf0cb2f178edccc81119c06ea41109f5#1678958fcf0cb2f178edccc81119c06ea41109f5"
 dependencies = [
  "z80",
 ]
@@ -612,4 +612,4 @@ dependencies = [
 [[package]]
 name = "zx81-snapshot"
 version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-sinclair?rev=9e5decd0de880247f10cb2c4d95ef1c38abea841#9e5decd0de880247f10cb2c4d95ef1c38abea841"
+source = "git+https://github.com/elpapimango/retroclawd-sinclair?rev=1678958fcf0cb2f178edccc81119c06ea41109f5#1678958fcf0cb2f178edccc81119c06ea41109f5"

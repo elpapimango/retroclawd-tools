@@ -24,10 +24,10 @@ dsk = { git = "https://github.com/elpapimango/retroclawd-crates", rev = "577447c
 zx-tape = { git = "https://github.com/elpapimango/retroclawd-crates", rev = "577447c0755a69f757fb97c885345cd71922ffc8" }
 # Snapshot and cartridge formats of the machine families (by revision). Their Z80 snapshot types use the
 # `retroclawd-crates` revision the families pin; keep it equal to the one above so there is one `z80` in the graph.
-z80-snapshot = { git = "https://github.com/elpapimango/retroclawd-sinclair", rev = "9e5decd0de880247f10cb2c4d95ef1c38abea841" }
-sna-snapshot = { git = "https://github.com/elpapimango/retroclawd-sinclair", rev = "9e5decd0de880247f10cb2c4d95ef1c38abea841" }
-szx-snapshot = { git = "https://github.com/elpapimango/retroclawd-sinclair", rev = "9e5decd0de880247f10cb2c4d95ef1c38abea841" }
-zx81-snapshot = { git = "https://github.com/elpapimango/retroclawd-sinclair", rev = "9e5decd0de880247f10cb2c4d95ef1c38abea841" }
+z80-snapshot = { git = "https://github.com/elpapimango/retroclawd-sinclair", rev = "1678958fcf0cb2f178edccc81119c06ea41109f5" }
+sna-snapshot = { git = "https://github.com/elpapimango/retroclawd-sinclair", rev = "1678958fcf0cb2f178edccc81119c06ea41109f5" }
+szx-snapshot = { git = "https://github.com/elpapimango/retroclawd-sinclair", rev = "1678958fcf0cb2f178edccc81119c06ea41109f5" }
+zx81-snapshot = { git = "https://github.com/elpapimango/retroclawd-sinclair", rev = "1678958fcf0cb2f178edccc81119c06ea41109f5" }
 cpc-snapshot = { git = "https://github.com/elpapimango/retroclawd-amstrad", rev = "4719250e5e17ead79b754ac7ff1207e6bb425018" }
 cpc-cartridge = { git = "https://github.com/elpapimango/retroclawd-amstrad", rev = "4719250e5e17ead79b754ac7ff1207e6bb425018" }
 c64-cartridge = { git = "https://github.com/elpapimango/retroclawd-commodore", rev = "45aec0b4ea14a92b6683c3feb949c1155cc329de" }

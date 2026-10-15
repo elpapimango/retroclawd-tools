@@ -128,6 +128,11 @@ purpose. Everything skips unless `RETROCLAWD_BIN`, `RETROCLAWD_MACHINE_PLUGIN_DI
 * `--type TEXT` (with `--frames`, `--type-after N`) types on the emulated keyboard like the paste hotkey, so BASIC can be driven and
   the keyboard path is part of the test: `PRINT 12*34` is checked on the C128 screen, and a disk is loaded with `LOAD"NAME",8,1`.
   A C128 with a real drive (`--true-drive`) probes it for a boot sector first: type from frame 500, not 150.
+  `--type-delay MS` sets the time between key events (default 60): the ZX81 ROM debounces its keys and loses them that fast, use 160.
+  The ZX81 keyboard cases read the expected matrix positions from the ROM's own key tables (0x007E unshifted, 0x00A5 shifted).
+  The ZX81 ROM scans the keyboard once a frame and debounces it: type with `--type-delay 160` (the default 60 ms loses keys). The ZX81
+  suite checks every key against the ROM's own key tables (0x007E unshifted, 0x00A5 shifted) with a program that reads all eight
+  half rows and keeps the AND of what it saw, so exactly the typed key's matrix line shows low.
 * `c128_8502_program` runs 6502 code on a C128: it powers up on its Z80, so a Z80 stub sets the memory map, points the 8502 reset
   vector at the code and sets the processor-select bit of the MMU's mode register (a Z80 reaches the I/O chips with `IN`/`OUT`, not
   memory writes; in Z80 mode `$1000-$13FF` is colour RAM). The KERNAL is not booted in such a run; to use it, boot normally and type.
