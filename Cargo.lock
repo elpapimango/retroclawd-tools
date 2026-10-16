@@ -67,12 +67,12 @@ checksum = "3ded4057c258ba199e2d26386d3af3780957ecaee6c4ef4041c6b4b8b97c0b06"
 [[package]]
 name = "c64-cartridge"
 version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-commodore?rev=45aec0b4ea14a92b6683c3feb949c1155cc329de#45aec0b4ea14a92b6683c3feb949c1155cc329de"
+source = "git+https://github.com/elpapimango/retroclawd-commodore?rev=8f987d59cf2a23e1a4303c25b9ea448d26f2ce7a#8f987d59cf2a23e1a4303c25b9ea448d26f2ce7a"
 
 [[package]]
 name = "c64-tape"
 version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-commodore?rev=45aec0b4ea14a92b6683c3feb949c1155cc329de#45aec0b4ea14a92b6683c3feb949c1155cc329de"
+source = "git+https://github.com/elpapimango/retroclawd-commodore?rev=8f987d59cf2a23e1a4303c25b9ea448d26f2ce7a#8f987d59cf2a23e1a4303c25b9ea448d26f2ce7a"
 dependencies = [
  "serde",
 ]
@@ -80,7 +80,7 @@ dependencies = [
 [[package]]
 name = "cbm-dos"
 version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-commodore?rev=45aec0b4ea14a92b6683c3feb949c1155cc329de#45aec0b4ea14a92b6683c3feb949c1155cc329de"
+source = "git+https://github.com/elpapimango/retroclawd-commodore?rev=8f987d59cf2a23e1a4303c25b9ea448d26f2ce7a#8f987d59cf2a23e1a4303c25b9ea448d26f2ce7a"
 
 [[package]]
 name = "cfg-if"
@@ -137,12 +137,12 @@ checksum = "1d07550c9036bf2ae0c684c4297d503f838287c83c53686d05370d0e139ae570"
 [[package]]
 name = "cpc-cartridge"
 version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-amstrad?rev=4719250e5e17ead79b754ac7ff1207e6bb425018#4719250e5e17ead79b754ac7ff1207e6bb425018"
+source = "git+https://github.com/elpapimango/retroclawd-amstrad?rev=f0d3aeb2ea79d485ea95284977c764aa32a68a28#f0d3aeb2ea79d485ea95284977c764aa32a68a28"
 
 [[package]]
 name = "cpc-snapshot"
 version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-amstrad?rev=4719250e5e17ead79b754ac7ff1207e6bb425018#4719250e5e17ead79b754ac7ff1207e6bb425018"
+source = "git+https://github.com/elpapimango/retroclawd-amstrad?rev=f0d3aeb2ea79d485ea95284977c764aa32a68a28#f0d3aeb2ea79d485ea95284977c764aa32a68a28"
 dependencies = [
  "z80",
 ]
@@ -159,7 +159,7 @@ dependencies = [
 [[package]]
 name = "d64"
 version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-commodore?rev=45aec0b4ea14a92b6683c3feb949c1155cc329de#45aec0b4ea14a92b6683c3feb949c1155cc329de"
+source = "git+https://github.com/elpapimango/retroclawd-commodore?rev=8f987d59cf2a23e1a4303c25b9ea448d26f2ce7a#8f987d59cf2a23e1a4303c25b9ea448d26f2ce7a"
 dependencies = [
  "cbm-dos",
 ]
@@ -167,7 +167,7 @@ dependencies = [
 [[package]]
 name = "d71"
 version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-commodore?rev=45aec0b4ea14a92b6683c3feb949c1155cc329de#45aec0b4ea14a92b6683c3feb949c1155cc329de"
+source = "git+https://github.com/elpapimango/retroclawd-commodore?rev=8f987d59cf2a23e1a4303c25b9ea448d26f2ce7a#8f987d59cf2a23e1a4303c25b9ea448d26f2ce7a"
 dependencies = [
  "cbm-dos",
 ]
@@ -175,7 +175,7 @@ dependencies = [
 [[package]]
 name = "d81"
 version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-commodore?rev=45aec0b4ea14a92b6683c3feb949c1155cc329de#45aec0b4ea14a92b6683c3feb949c1155cc329de"
+source = "git+https://github.com/elpapimango/retroclawd-commodore?rev=8f987d59cf2a23e1a4303c25b9ea448d26f2ce7a#8f987d59cf2a23e1a4303c25b9ea448d26f2ce7a"
 dependencies = [
  "cbm-dos",
 ]
@@ -183,7 +183,7 @@ dependencies = [
 [[package]]
 name = "dsk"
 version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-crates?rev=577447c0755a69f757fb97c885345cd71922ffc8#577447c0755a69f757fb97c885345cd71922ffc8"
+source = "git+https://github.com/elpapimango/retroclawd-crates?rev=318a2cc4cc1d758aeebfe2a46f962c3506a8a0cf#318a2cc4cc1d758aeebfe2a46f962c3506a8a0cf"
 
 [[package]]
 name = "equivalent"
@@ -214,7 +214,7 @@ dependencies = [
 [[package]]
 name = "g64"
 version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-commodore?rev=45aec0b4ea14a92b6683c3feb949c1155cc329de#45aec0b4ea14a92b6683c3feb949c1155cc329de"
+source = "git+https://github.com/elpapimango/retroclawd-commodore?rev=8f987d59cf2a23e1a4303c25b9ea448d26f2ce7a#8f987d59cf2a23e1a4303c25b9ea448d26f2ce7a"
 dependencies = [
  "d64",
 ]
@@ -250,7 +250,7 @@ checksum = "a6cb138bb79a146c1bd460005623e142ef0181e3d0219cb493e02f7d08a35695"
 [[package]]
 name = "machine"
 version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-crates?rev=577447c0755a69f757fb97c885345cd71922ffc8#577447c0755a69f757fb97c885345cd71922ffc8"
+source = "git+https://github.com/elpapimango/retroclawd-crates?rev=318a2cc4cc1d758aeebfe2a46f962c3506a8a0cf#318a2cc4cc1d758aeebfe2a46f962c3506a8a0cf"
 
 [[package]]
 name = "memchr"
@@ -281,7 +281,7 @@ dependencies = [
 [[package]]
 name = "mos6502"
 version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-crates?rev=577447c0755a69f757fb97c885345cd71922ffc8#577447c0755a69f757fb97c885345cd71922ffc8"
+source = "git+https://github.com/elpapimango/retroclawd-crates?rev=318a2cc4cc1d758aeebfe2a46f962c3506a8a0cf#318a2cc4cc1d758aeebfe2a46f962c3506a8a0cf"
 dependencies = [
  "machine",
  "serde",
@@ -338,6 +338,7 @@ dependencies = [
  "rcdisk",
  "rcld",
  "rcsnap",
+ "zx-tape",
 ]
 
 [[package]]
@@ -469,7 +470,7 @@ checksum = "3a219298ac11a56ea9a6d2120044824d6f01aeb034955e7af7bc16858527deea"
 [[package]]
 name = "sna-snapshot"
 version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-sinclair?rev=1678958fcf0cb2f178edccc81119c06ea41109f5#1678958fcf0cb2f178edccc81119c06ea41109f5"
+source = "git+https://github.com/elpapimango/retroclawd-sinclair?rev=638ba2ca3a58cb3d8b70cedb881e9fe882501d52#638ba2ca3a58cb3d8b70cedb881e9fe882501d52"
 dependencies = [
  "z80",
 ]
@@ -494,7 +495,7 @@ dependencies = [
 [[package]]
 name = "szx-snapshot"
 version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-sinclair?rev=1678958fcf0cb2f178edccc81119c06ea41109f5#1678958fcf0cb2f178edccc81119c06ea41109f5"
+source = "git+https://github.com/elpapimango/retroclawd-sinclair?rev=638ba2ca3a58cb3d8b70cedb881e9fe882501d52#638ba2ca3a58cb3d8b70cedb881e9fe882501d52"
 dependencies = [
  "flate2",
  "z80",
@@ -580,7 +581,7 @@ dependencies = [
 [[package]]
 name = "z80"
 version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-crates?rev=577447c0755a69f757fb97c885345cd71922ffc8#577447c0755a69f757fb97c885345cd71922ffc8"
+source = "git+https://github.com/elpapimango/retroclawd-crates?rev=318a2cc4cc1d758aeebfe2a46f962c3506a8a0cf#318a2cc4cc1d758aeebfe2a46f962c3506a8a0cf"
 dependencies = [
  "machine",
  "serde",
@@ -589,7 +590,7 @@ dependencies = [
 [[package]]
 name = "z80-snapshot"
 version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-sinclair?rev=1678958fcf0cb2f178edccc81119c06ea41109f5#1678958fcf0cb2f178edccc81119c06ea41109f5"
+source = "git+https://github.com/elpapimango/retroclawd-sinclair?rev=638ba2ca3a58cb3d8b70cedb881e9fe882501d52#638ba2ca3a58cb3d8b70cedb881e9fe882501d52"
 dependencies = [
  "z80",
 ]
@@ -603,7 +604,7 @@ checksum = "b268e58e7c693d7c271f93ffc4ba3b380412554231c85bf61ca7af91042a4112"
 [[package]]
 name = "zx-tape"
 version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-crates?rev=577447c0755a69f757fb97c885345cd71922ffc8#577447c0755a69f757fb97c885345cd71922ffc8"
+source = "git+https://github.com/elpapimango/retroclawd-crates?rev=318a2cc4cc1d758aeebfe2a46f962c3506a8a0cf#318a2cc4cc1d758aeebfe2a46f962c3506a8a0cf"
 dependencies = [
  "flate2",
  "serde",
@@ -612,4 +613,4 @@ dependencies = [
 [[package]]
 name = "zx81-snapshot"
 version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-sinclair?rev=1678958fcf0cb2f178edccc81119c06ea41109f5#1678958fcf0cb2f178edccc81119c06ea41109f5"
+source = "git+https://github.com/elpapimango/retroclawd-sinclair?rev=638ba2ca3a58cb3d8b70cedb881e9fe882501d52#638ba2ca3a58cb3d8b70cedb881e9fe882501d52"
