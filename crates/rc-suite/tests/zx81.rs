@@ -47,10 +47,10 @@ fn run_program(
         .go()
 }
 
-fn boots_to_the_k_prompt(env: &Env) -> Result<(), String> {
+fn boot_to_the_k_prompt(env: &Env, rom_path: &std::path::Path) -> Result<(), String> {
     let out = env
         .run("zx81")
-        .rom(&rom(env)?)
+        .rom(rom_path)
         .arg("--no-border")
         .frames(BOOT_FRAMES)
         .dump(ERR_NR, 0x40)
@@ -68,13 +68,39 @@ fn boots_to_the_k_prompt(env: &Env) -> Result<(), String> {
     // nothing else is drawn. Its pixels are the ROM's own character set at 0x1E00, inverted.
     let screen = out.screen()?;
     expect_eq("picture size", (screen.width, screen.height), (256, 192))?;
-    let rom_bytes = std::fs::read(rom(env)?).map_err(|e| e.to_string())?;
+    let rom_bytes = std::fs::read(rom_path).map_err(|e| e.to_string())?;
     let glyph = &rom_bytes[0x1E00 + 0x30 * 8..0x1E00 + 0x30 * 8 + 8];
     let inverse: Vec<u8> = glyph.iter().map(|b| !b).collect();
     let cell = screen.cell(0, 23 * 8);
     expect_eq("bottom-left cell", cell.to_vec(), inverse)?;
     let cell_ink: usize = cell.iter().map(|b| b.count_ones() as usize).sum();
     expect_eq("ink outside the K cell", screen.ink_count() - cell_ink, 0)
+}
+
+fn boots_to_the_k_prompt(env: &Env) -> Result<(), String> {
+    boot_to_the_k_prompt(env, &rom(env)?)
+}
+
+/// The three ZX81 ROM dumps RomM holds (the standard edition, the 550 original and the `b` edition). Whatever
+/// the revision, the machine must reach the same stable state: the same system variables, and the prompt drawn
+/// from *that* ROM's own character set.
+const ROM_REVISIONS: [&str; 3] = [
+    "sinclair/roms/zx81/zx81.rom",
+    "sinclair/roms/zx81/zx81-550-original.rom",
+    "sinclair/roms/zx81/zx81b.rom",
+];
+
+fn every_rom_revision_boots_to_the_k_prompt(env: &Env) -> Result<(), String> {
+    let mut tried = 0;
+    for name in ROM_REVISIONS {
+        let Ok(path) = env.file(name) else {
+            eprintln!("  (skipping {name}: not present)");
+            continue;
+        };
+        boot_to_the_k_prompt(env, &path).map_err(|e| format!("{name}: {e}"))?;
+        tried += 1;
+    }
+    expect_in("ROM revisions present", tried, 1, 3)
 }
 
 fn slow_mode_counts_50_frames_a_second(env: &Env) -> Result<(), String> {
@@ -408,6 +434,77 @@ fn saving_a_p_file_writes_memory_from_0x4009_to_e_line(env: &Env) -> Result<(), 
     expect_eq("file content", file, out.bytes(0x4009, len)?)
 }
 
+fn a_saved_file_loads_back_and_runs(env: &Env) -> Result<(), String> {
+    let loaded = temp_file("rt-in", &p_file(&[(1, &[0xF5, 0x0B, 0x26, 0x0B])]))?;
+    let pid = std::process::id();
+    let save = |ext: &str| -> Result<std::path::PathBuf, String> {
+        let path = std::env::temp_dir().join(format!("rc-suite-zx81-rt-{pid}.{ext}"));
+        let _ = std::fs::remove_file(&path);
+        env.run("zx81")
+            .rom(&rom(env)?)
+            .arg("--snapshot")
+            .arg(loaded.to_string_lossy())
+            .arg("--dump-snapshot")
+            .arg(path.to_string_lossy())
+            .frames(BOOT_FRAMES)
+            .go()?;
+        Ok(path)
+    };
+    let (p, e81) = (save("p")?, save("81")?);
+    let read = |path: &std::path::Path| std::fs::read(path).map_err(|e| e.to_string());
+    expect_eq(".81 against .p", read(&e81)?, read(&p)?)?;
+    // ROM: loading the saved file autostarts the program again, so the `A` is drawn from the ROM's character set.
+    let rom_bytes = std::fs::read(rom(env)?).map_err(|e| e.to_string())?;
+    let glyph = rom_bytes[0x1E00 + 0x26 * 8..0x1E00 + 0x26 * 8 + 8].to_vec();
+    for path in [&p, &e81] {
+        let out = env
+            .run("zx81")
+            .rom(&rom(env)?)
+            .arg("--no-border")
+            .arg("--snapshot")
+            .arg(path.to_string_lossy())
+            .frames(BOOT_FRAMES)
+            .screen()
+            .go()?;
+        expect_eq(
+            "top-left cell",
+            out.screen()?.cell(0, 0).to_vec(),
+            glyph.clone(),
+        )?;
+    }
+    Ok(())
+}
+
+fn load_reads_a_program_from_the_tape_input(env: &Env) -> Result<(), String> {
+    let file = p_file(&[(1, &[0xF5, 0x0B, 0x26, 0x0B])]); // 1 PRINT "A"
+    let path = temp_file("tape", &file)?;
+    // ZXDOCS: the ZX81 loads through the EAR input (bit 7 of port 0xFE), and what `LOAD ""` brings in is a copy of
+    // memory from 4009h, so the BASIC line lands at 407Dh. `J` is the LOAD keyword; `""` is Shift+P twice.
+    let out = env
+        .run("zx81")
+        .rom(&rom(env)?)
+        .arg("--tape")
+        .arg(path.to_string_lossy())
+        .arg("--type-after")
+        .arg("100")
+        .arg("--type-delay")
+        .arg("160")
+        .arg("--type")
+        .arg(
+            "J\"\"
+",
+        )
+        .frames(2000)
+        .dump(PROGRAM, 9)
+        .go()?;
+    let at = usize::from(PROGRAM - 0x4009);
+    expect_eq(
+        "the BASIC line LOAD brought in",
+        out.bytes(PROGRAM, 9)?,
+        file[at..at + 9].to_vec(),
+    )
+}
+
 /// ZX81 character codes (the manual's character set) of the characters a key types.
 fn zx81_code(c: char) -> Option<u8> {
     Some(match c {
@@ -702,8 +799,26 @@ const CASES: &[Case] = &[
         "saving a .p writes memory from 4009h to E_LINE-1",
         "ZXDOCS Cassette File Images (a copy of memory 4009h..E_LINE-1)",
         saving_a_p_file_writes_memory_from_0x4009_to_e_line,
+    ),
+    Case::new(
+        Area::Media,
+        "a saved .p and a saved .81 are the same bytes, and loading either runs the program again",
+        "ZXDOCS Cassette File Images (.81 is an exact copy; .p the same up to E_LINE-1)",
+        a_saved_file_loads_back_and_runs,
+    ),
+    Case::new(
+        Area::Rom,
+        "every ZX81 ROM revision boots to the K prompt",
+        "ZXDOCS system variables; each ROM's own character set at 1E00h",
+        every_rom_revision_boots_to_the_k_prompt,
+    ),
+    Case::new(
+        Area::Media,
+        "LOAD \"\" reads a program from the tape input",
+        "ZXDOCS Cassette (EAR input, bit 7 of port FEh); a file is memory from 4009h",
+        load_reads_a_program_from_the_tape_input,
     )
-    .gap("the zx81 plugin cannot save a .p (`unsupported snapshot save extension`)"),
+    .gap("the zx81 plugin has no tape (`unsupported media kind ... Tape`); a .p played as a tape is the first step"),
 ];
 
 #[test]
