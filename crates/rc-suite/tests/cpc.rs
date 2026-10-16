@@ -514,3 +514,313 @@ fn cpc() {
     eprintln!("{}", report.summary());
     assert!(report.ok(), "{}", report.summary());
 }
+
+// ---- third-party diagnostics (AmstradDiag)
+
+const DIAG_CART: &str = "amstrad/software/diagnostics/AmstradDiag.cpr";
+const BLUE: [u8; 3] = [0, 0, 136];
+
+/// llopis/amstrad-diagnostics v1.3 (MIT), run as a GX4000 cartridge (the released `.cpr` has a malformed header, which the
+/// plugin repairs). It sets its colours with classic Gate Array writes -- which a Plus must honour -- tests the lower RAM
+/// at power-on and prints the result in its success colour (cyan) or error colour (bright red).
+fn the_amstrad_diagnostics_cartridge_shows_its_menu_and_passes_the_lower_ram_test(
+    env: &Env,
+) -> Result<(), String> {
+    let out = env
+        .run("gx4000")
+        .rom(&env.file(DIAG_CART)?)
+        .frames(450)
+        .screen()
+        .go()?;
+    let screen = out.screen()?;
+    let cyan = [0, 255, 255];
+    // The "LOWER RAM : PASSED" row (character row 17 of the 25, i.e. picture rows 272-288 in the doubled 768x576 image).
+    let passed_pixels = (272..296)
+        .flat_map(|y| (230..400).map(move |x| (x, y)))
+        .filter(|&(x, y)| screen.pixel(x, y) == cyan)
+        .count();
+    if passed_pixels < 40 {
+        return Err(format!(
+            "no cyan \"PASSED\" text on the LOWER RAM row ({passed_pixels} cyan pixels); the screen may be black"
+        ));
+    }
+    let red = (0..screen.height)
+        .flat_map(|y| (0..screen.width).map(move |x| (x, y)))
+        .filter(|&(x, y)| {
+            let p = screen.pixel(x, y);
+            p[0] >= 200 && p[1] <= 60 && p[2] <= 60
+        })
+        .count();
+    expect_eq("pixels in the error colour (a FAILED result)", red, 0)?;
+    // The menu's own background colour came through the Gate Array ink writes.
+    expect_eq("background colour", screen.pixel(20, 500), BLUE)
+}
+
+/// Centres (in the 768x576 screenshot) of the keys of the diagnostics' keyboard test, which paints a key it has seen pressed
+/// in the matrix: the one thing that reads the keyboard exactly the way a program does, independent of the firmware's tables.
+const KEY_CELLS: &[(char, usize, usize)] = &[
+    ('1', 143, 174),
+    ('2', 175, 174),
+    ('3', 207, 174),
+    ('4', 239, 174),
+    ('5', 271, 174),
+    ('6', 303, 174),
+    ('7', 335, 174),
+    ('8', 367, 174),
+    ('9', 399, 174),
+    ('0', 431, 174),
+    ('-', 463, 174),
+    ('^', 495, 174),
+    ('q', 159, 206),
+    ('w', 191, 206),
+    ('e', 223, 206),
+    ('r', 255, 206),
+    ('t', 287, 206),
+    ('y', 319, 206),
+    ('u', 351, 206),
+    ('i', 383, 206),
+    ('o', 415, 206),
+    ('p', 447, 206),
+    ('@', 479, 206),
+    ('[', 511, 206),
+    ('a', 167, 238),
+    ('s', 199, 238),
+    ('d', 231, 238),
+    ('f', 263, 238),
+    ('g', 295, 238),
+    ('h', 327, 238),
+    ('j', 359, 238),
+    ('k', 391, 238),
+    ('l', 423, 238),
+    (':', 455, 238),
+    (';', 487, 238),
+    (']', 519, 238),
+    ('z', 183, 270),
+    ('x', 215, 270),
+    ('c', 247, 270),
+    ('v', 279, 270),
+    ('b', 311, 270),
+    ('n', 343, 270),
+    ('m', 375, 270),
+    (',', 407, 270),
+    ('.', 439, 270),
+    ('/', 471, 270),
+    ('\\', 503, 270),
+    (' ', 362, 302),
+];
+
+/// Fraction of the 21x13 pixels around a cell centre that are not the screen's blue: a pressed key is a filled box.
+fn filled(screen: &rc_suite::Screen, cx: usize, cy: usize) -> f32 {
+    let mut n = 0;
+    for y in cy - 6..=cy + 6 {
+        for x in cx - 10..=cx + 10 {
+            if screen.pixel(x, y) != BLUE {
+                n += 1;
+            }
+        }
+    }
+    n as f32 / (21.0 * 13.0)
+}
+
+/// Types the keys of `KEY_CELLS` whose index has the given parity into the diagnostics' keyboard test and checks that exactly
+/// those cells light up (two runs, one per parity, so a key wired to a neighbour's matrix position is seen as a typed key's
+/// cell staying dark and another one lighting up).
+fn keyboard_test_lights_exactly(env: &Env, parity: usize) -> Result<(), String> {
+    // `k` opens the keyboard test; its first screen ignores the first keys, so two sacrificial `z` come first, and the
+    // keys follow 160 ms apart (the program polls about once a frame).
+    let typed: Vec<&(char, usize, usize)> = KEY_CELLS.iter().skip(parity).step_by(2).collect();
+    let keys: String = typed.iter().map(|k| k.0).collect();
+    let out = env
+        .run("gx4000")
+        .rom(&env.file(DIAG_CART)?)
+        .arg("--type-after")
+        .arg("300")
+        .arg("--type-delay")
+        .arg("160")
+        .arg("--type")
+        .arg(format!("kzz{keys}"))
+        .frames(300 + 8 * 2 * (keys.len() as u32 + 3) + 60)
+        .screen()
+        .go()?;
+    let screen = out.screen()?;
+    // `z` is typed twice up front; it only counts as typed when it is in this run's half.
+    let lit = |&&(_, x, y): &&(char, usize, usize)| filled(screen, x, y) >= 0.55;
+    let dark = |&&(_, x, y): &&(char, usize, usize)| filled(screen, x, y) < 0.40;
+    let missed: Vec<char> = typed.iter().filter(|k| !lit(k)).map(|k| k.0).collect();
+    expect_eq(
+        "typed keys the program never saw pressed",
+        missed,
+        Vec::<char>::new(),
+    )?;
+    let strays: Vec<char> = KEY_CELLS
+        .iter()
+        .skip(1 - parity)
+        .step_by(2)
+        .filter(|k| !dark(k) && k.0 != 'z' && k.0 != 'k')
+        .map(|k| k.0)
+        .collect();
+    expect_eq(
+        "keys never typed that the program saw pressed",
+        strays,
+        Vec::<char>::new(),
+    )?;
+    // Keys nobody can type here (the numeric pad, Ctrl, Copy) stay outlined: no stray bits in the matrix.
+    for (name, x, y) in [
+        ("pad 7", 591, 174),
+        ("pad 4", 591, 206),
+        ("pad 0", 591, 270),
+        ("Ctrl", 120, 302),
+        ("Copy", 200, 302),
+    ] {
+        let f = filled(screen, x, y);
+        if f > 0.5 {
+            return Err(format!(
+                "{name} shows as pressed ({f:.2} filled) but was never typed"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn the_diagnostics_keyboard_test_sees_the_odd_keys_where_the_cpc_matrix_has_them(
+    env: &Env,
+) -> Result<(), String> {
+    keyboard_test_lights_exactly(env, 0)
+}
+
+fn the_diagnostics_keyboard_test_sees_the_even_keys_where_the_cpc_matrix_has_them(
+    env: &Env,
+) -> Result<(), String> {
+    keyboard_test_lights_exactly(env, 1)
+}
+
+const DIAG_DISK: &str = "amstrad/software/diagnostics/AmstradDiag.dsk";
+const YELLOW: [u8; 3] = [255, 255, 0];
+
+/// Boots the diagnostics disk on a CPC6128 through the firmware (`RUN"DIAG`), waits for its menu and presses `key`. The
+/// `q` in between are typed while the disk loads (the program reads the matrix itself, so what BASIC does with them does not
+/// matter) and make the menu key arrive once the menu is up.
+fn diagnostics_disk_after_key(env: &Env, key: char) -> Result<rc_suite::Outcome, String> {
+    let wait = "q".repeat(60);
+    env.run("cpc6128")
+        .rom(&rom(env)?)
+        .arg("--disk")
+        .arg(env.file(DIAG_DISK)?.to_string_lossy())
+        .arg("--type-after")
+        .arg("150")
+        .arg("--type-delay")
+        .arg("80")
+        .arg("--type")
+        .arg(format!("RUN\"DIAG\n{wait}{key}"))
+        .frames(1400)
+        .screen()
+        .go()
+}
+
+fn the_diagnostics_disk_passes_the_upper_ram_test_of_a_6128(env: &Env) -> Result<(), String> {
+    let out = diagnostics_disk_after_key(env, 'u')?;
+    let screen = out.screen()?;
+    // "UPPER RAM TESTS PASSED" is printed in the success colour (cyan) on the row under "C3 CONFIG: SUPPORTED"; a failure
+    // uses the error colour (bright red).
+    let cyan = (456..474)
+        .flat_map(|y| (60..340).map(move |x| (x, y)))
+        .filter(|&(x, y)| screen.pixel(x, y) == [0, 255, 255])
+        .count();
+    if cyan < 80 {
+        return Err(format!(
+            "no cyan \"UPPER RAM TESTS PASSED\" line ({cyan} cyan pixels)"
+        ));
+    }
+    let red = (0..screen.height)
+        .flat_map(|y| (0..screen.width).map(move |x| (x, y)))
+        .filter(|&(x, y)| {
+            let p = screen.pixel(x, y);
+            p[0] >= 200 && p[1] <= 60 && p[2] <= 60
+        })
+        .count();
+    expect_eq("pixels in the error colour (a failed bank)", red, 0)
+}
+
+fn the_diagnostics_disk_recognises_the_roms_by_checksum(env: &Env) -> Result<(), String> {
+    // The ROM test names a ROM it knows ("OS 6128 EN (B360)", "6128 BASIC EN (CAA0)", "AMSDOS (0F91)") and prints
+    // "UNKNOWN: ..." for one it does not, so how far each line reaches shows which it is: the lower ROM and upper ROM 0 end
+    // at x=397, AMSDOS in slot 7 at 313, and the empty slots are four dashes (x=207). That the checksums match shows the
+    // lower ROM, the BASIC ROM and AMSDOS are paged in exactly as they are on the machine.
+    let out = diagnostics_disk_after_key(env, 'r')?;
+    let screen = out.screen()?;
+    let right_edge = |row: usize| {
+        let y = 144 + 16 * row;
+        (40..740)
+            .filter(|&x| (y - 5..y + 6).any(|yy| screen.pixel(x, yy) == YELLOW))
+            .max()
+            .unwrap_or(0)
+    };
+    // Rows: 0 lower ROM, 3 = ROM 00, 4..=9 ROMs 01-06, 10 = ROM 07, 11..=18 ROMs 08-0F (row 1-2 are the headings).
+    let mut got = vec![
+        ("LOWER ROM", right_edge(0), 397),
+        ("ROM 00", right_edge(3), 397),
+    ];
+    for row in 4..10 {
+        got.push(("empty slot", right_edge(row), 207));
+    }
+    got.push(("ROM 07", right_edge(10), 313));
+    for row in 11..19 {
+        got.push(("empty slot", right_edge(row), 207));
+    }
+    for (what, edge, want) in got {
+        if edge.abs_diff(want) > 5 {
+            return Err(format!(
+                "{what}: its text ends at x={edge}, expected about {want}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+const DIAG_CASES: &[Case] = &[
+    Case::new(
+        Area::Rom,
+        "the AmstradDiag cartridge boots on a GX4000, in colour, and passes its lower RAM test",
+        "AmstradDiag (its success colour on the LOWER RAM row, nothing in the error colour); CPC+ classic ink writes",
+        the_amstrad_diagnostics_cartridge_shows_its_menu_and_passes_the_lower_ram_test,
+    ),
+    Case::new(
+        Area::Io,
+        "the AmstradDiag keyboard test sees the odd keys where the CPC matrix has them",
+        "AmstradDiag's keyboard test (it paints a key it reads as pressed from the keyboard matrix)",
+        the_diagnostics_keyboard_test_sees_the_odd_keys_where_the_cpc_matrix_has_them,
+    ),
+    Case::new(
+        Area::Io,
+        "the AmstradDiag keyboard test sees the even keys where the CPC matrix has them",
+        "AmstradDiag's keyboard test (it paints a key it reads as pressed from the keyboard matrix)",
+        the_diagnostics_keyboard_test_sees_the_even_keys_where_the_cpc_matrix_has_them,
+    ),
+    Case::new(
+        Area::Memory,
+        "the AmstradDiag disk passes its upper RAM test on a 6128",
+        "AmstradDiag (UPPER RAM TESTS PASSED in its success colour, nothing in the error colour)",
+        the_diagnostics_disk_passes_the_upper_ram_test_of_a_6128,
+    ),
+    Case::new(
+        Area::Rom,
+        "the AmstradDiag disk recognises the lower ROM, BASIC and AMSDOS by checksum",
+        "AmstradDiag's ROM test (known ROMs by name and checksum, UNKNOWN otherwise; empty slots as dashes)",
+        the_diagnostics_disk_recognises_the_roms_by_checksum,
+    ),
+];
+
+#[test]
+fn cpc_diagnostics() {
+    let Some(env) = Env::discover() else {
+        eprintln!("skipping: RETROCLAWD_BIN / RC_ROMS not set");
+        return;
+    };
+    if env.file(DIAG_CART).is_err() {
+        eprintln!("skipping: {DIAG_CART} not present (tools/fetch_diagnostics.sh fetches it)");
+        return;
+    }
+    let report = run_cases(&env, DIAG_CASES);
+    eprintln!("{}", report.summary());
+    assert!(report.ok(), "{}", report.summary());
+}
