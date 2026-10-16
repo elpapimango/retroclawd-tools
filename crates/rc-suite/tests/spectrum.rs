@@ -478,15 +478,13 @@ const CASES: &[Case] = &[
         "a 48K frame is 69888 T-states",
         "WOS48 (312 lines x 224 T-states)",
         a_48k_frame_is_69888_t_states,
-    )
-    .gap("every Spectrum model runs clock_hz 3546900 / frame_hz 50 = 70938 T a frame; the 48K is 3.5 MHz, 69888 a frame"),
+    ),
     Case::new(
         Area::Timers,
         "a 128K frame is 70908 T-states",
         "WOS128 (311 lines x 228 T-states)",
         a_128k_frame_is_70908_t_states,
-    )
-    .gap("the 128K shares the 70938 T frame (30 T too long): clock/frame_hz cannot express 311 x 228"),
+    ),
     Case::new(
         Area::Memory,
         "the ROM is read-only and RAM starts at 0x4000",
@@ -671,8 +669,7 @@ const PLUS3_CASES: &[Case] = &[
         "a +2A/+3 frame is 70908 T-states",
         "WOS128 (shares the 128K timing)",
         a_plus3_frame_is_70908_t_states,
-    )
-    .gap("the Spectrum models all run a 70938 T frame, see the 48K case"),
+    ),
 ];
 
 #[test]
