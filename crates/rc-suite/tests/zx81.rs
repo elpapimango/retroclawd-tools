@@ -505,6 +505,83 @@ fn load_reads_a_program_from_the_tape_input(env: &Env) -> Result<(), String> {
     )
 }
 
+/// Types `SAVE "A"` on a ZX81 that has loaded the `1 PRINT "A"` program and records the cassette output into a file with
+/// the given extension. Returns that file's bytes.
+fn save_to_tape(env: &Env, extension: &str) -> Result<Vec<u8>, String> {
+    let loaded = temp_file(
+        "save-prog",
+        &p_file(&[(1, &[0xF5, 0x0B, 0x26, 0x0B])]), // 1 PRINT "A"
+    )?;
+    let target = std::env::temp_dir().join(format!(
+        "rc-suite-zx81-tape-{}.{extension}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&target);
+    // `S` is the SAVE keyword; `"A"` is Shift+P, A, Shift+P. The ROM sends a leader of silence, then ~4 s of bits.
+    env.run("zx81")
+        .rom(&rom(env)?)
+        .arg("--snapshot")
+        .arg(loaded.to_string_lossy())
+        .arg("--type-after")
+        .arg("100")
+        .arg("--type-delay")
+        .arg("160")
+        .arg("--type")
+        .arg("S\"A\"\n")
+        .arg("--tape-save")
+        .arg(target.to_string_lossy())
+        .frames(1500)
+        .go()?;
+    std::fs::read(&target).map_err(|e| format!("nothing was recorded: {e}"))
+}
+
+fn save_writes_the_file_the_format_describes_to_the_tape_output(env: &Env) -> Result<(), String> {
+    let p = save_to_tape(env, "p")?;
+    // ZXDOCS "Cassette File Content": the file is memory from 4009h, VERSN (4009h) = 0 for a ZX81, and its length is
+    // E_LINE (4014h) - 4009h, so the length is written inside the file.
+    expect_eq("VERSN", p[0], 0)?;
+    let e_line = u16::from_le_bytes([p[11], p[12]]);
+    expect_eq("file length", p.len(), usize::from(e_line - 0x4009))?;
+    // The program the ROM saved is the one that was loaded: `1 PRINT "A"` at 407Dh.
+    let program = [0x00u8, 0x01, 0x05, 0x00, 0xF5, 0x0B, 0x26, 0x0B, 0x76];
+    let at = usize::from(PROGRAM - 0x4009);
+    expect_eq(
+        "the BASIC line in the saved file",
+        p[at..at + 9].to_vec(),
+        program.to_vec(),
+    )?;
+    // The same signal as a .p81 carries the name: ZXDOCS "1-127 bytes filename (bit7 set in last char)"; `A` is 26h.
+    let p81 = save_to_tape(env, "p81")?;
+    expect_eq("the name", p81[0], 0x26 | 0x80)?;
+    expect_eq("the data after the name", p81[1..].to_vec(), p)
+}
+
+fn what_save_wrote_loads_back_through_the_rom(env: &Env) -> Result<(), String> {
+    let saved = save_to_tape(env, "p")?;
+    let path = temp_file("reload", &saved)?;
+    // A cold machine, the recording as its tape, `LOAD ""`: the ROM reads the program in from the pulses.
+    let out = env
+        .run("zx81")
+        .rom(&rom(env)?)
+        .arg("--tape")
+        .arg(path.to_string_lossy())
+        .arg("--type-after")
+        .arg("100")
+        .arg("--type-delay")
+        .arg("160")
+        .arg("--type")
+        .arg("J\"\"\n")
+        .frames(2000)
+        .dump(PROGRAM, 9)
+        .go()?;
+    let at = usize::from(PROGRAM - 0x4009);
+    expect_eq(
+        "the BASIC line after LOAD",
+        out.bytes(PROGRAM, 9)?,
+        saved[at..at + 9].to_vec(),
+    )
+}
+
 /// ZX81 character codes (the manual's character set) of the characters a key types.
 fn zx81_code(c: char) -> Option<u8> {
     Some(match c {
@@ -594,7 +671,8 @@ fn keys_seen_by_a_program(env: &Env, c: char) -> Result<Vec<u8>, String> {
 
 /// What the eight half rows should read after typing: bits 0-4 high except the keys held, bits 5-7 high.
 fn expected_rows(held: &[(usize, u8)]) -> Vec<u8> {
-    let mut rows = vec![0xFFu8; 8];
+    // Bit 7 is the tape input (0 = normal, 1 = pulse; ZXDOCS "I/O Ports"); bits 5 and 6 read 1.
+    let mut rows = vec![0x7Fu8; 8];
     for &(row, bit) in held {
         rows[row] &= !(1 << bit);
     }
@@ -817,8 +895,19 @@ const CASES: &[Case] = &[
         "LOAD \"\" reads a program from the tape input",
         "ZXDOCS Cassette (EAR input, bit 7 of port FEh); a file is memory from 4009h",
         load_reads_a_program_from_the_tape_input,
-    )
-    .gap("the zx81 plugin has no tape (`unsupported media kind ... Tape`); a .p played as a tape is the first step"),
+    ),
+    Case::new(
+        Area::Media,
+        "SAVE \"A\" puts the file the format describes on the tape output (.p and .p81)",
+        "ZXDOCS Cassette Signals / File Content (bits MSB first, 4 or 9 pulses; memory from 4009h; name with bit 7)",
+        save_writes_the_file_the_format_describes_to_the_tape_output,
+    ),
+    Case::new(
+        Area::Media,
+        "what SAVE wrote loads back through the ROM's LOAD",
+        "ZXDOCS Cassette (the ROM's own loader reads the ROM's own saver's signal)",
+        what_save_wrote_loads_back_through_the_rom,
+    ),
 ];
 
 #[test]
