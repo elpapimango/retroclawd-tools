@@ -158,6 +158,10 @@ purpose. Everything skips unless `RETROCLAWD_BIN`, `RETROCLAWD_MACHINE_PLUGIN_DI
   black). The first screen of the keyboard test ignores the first two keys, hence the sacrificial `z`. Not done: the soak, sound and
   joystick tests, the ROM test for a 464/664, and the C64 cartridge: crystalct/C64UnifDiagCart (CERN-OHL-W-2.0, a hardware licence)
   was not tried.
+  The C64 dead test (crystalct/C64UnifDiagCart's modified rev 781220 ROM, a raw 8K Ultimax image fetched from a pinned commit; CERN-OHL-W-2.0
+  repository, Commodore's code, so local use only) has one case in `tests/c64.rs` (`c64_diagnostics`, about 50 s in a debug build): wrapped in an
+  Ultimax `.crt` it boots with no KERNAL involved and prints OK next to ZERO PAGE and STACK PAGE. The Spectrum suite also checks that both
+  16K halves of every 128K-family ROM variant appear at 0x0000 exactly as the file holds them.
 * Not testable headless yet: joysticks and sound.
 
 ## Open points

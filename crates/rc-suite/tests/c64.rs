@@ -351,3 +351,86 @@ fn c64() {
     eprintln!("{}", report.summary());
     assert!(report.ok(), "{}", report.summary());
 }
+
+// ---- third-party diagnostics (the C64 dead test)
+
+const DEAD_TEST: &str = "commodore/software/diagnostics/deadtest_mod.bin";
+
+/// A `.crt` for an 8K ROM at `$E000` in Ultimax mode (EXROM high, GAME low: the cartridge supplies the reset vector).
+fn ultimax_crt(rom: &[u8]) -> Vec<u8> {
+    let mut crt = b"C64 CARTRIDGE   ".to_vec();
+    crt.extend_from_slice(&0x40u32.to_be_bytes());
+    crt.extend_from_slice(&0x0100u16.to_be_bytes());
+    crt.extend_from_slice(&0u16.to_be_bytes()); // hardware type 0: a normal cartridge
+    crt.extend_from_slice(&[1, 0]); // EXROM 1, GAME 0
+    crt.extend_from_slice(&[0; 6]);
+    crt.extend_from_slice(&[b"DEADTEST".as_slice(), &[0; 24]].concat());
+    crt.extend_from_slice(b"CHIP");
+    crt.extend_from_slice(&(16 + rom.len() as u32).to_be_bytes());
+    crt.extend_from_slice(&0u16.to_be_bytes()); // ROM
+    crt.extend_from_slice(&0u16.to_be_bytes()); // bank 0
+    crt.extend_from_slice(&0xE000u16.to_be_bytes());
+    crt.extend_from_slice(&(rom.len() as u16).to_be_bytes());
+    crt.extend_from_slice(rom);
+    crt
+}
+
+/// The Commodore dead test (rev 781220, as modified for crystalct's unified cartridge) runs from an Ultimax cartridge with no
+/// KERNAL involved at all: it tests the zero page, the stack page and the screen RAM and prints OK next to each that passes.
+fn the_dead_test_cartridge_boots_in_ultimax_mode_and_passes_the_low_ram_tests(
+    env: &Env,
+) -> Result<(), String> {
+    let rom = std::fs::read(env.file(DEAD_TEST)?).map_err(|e| e.to_string())?;
+    let crt = std::env::temp_dir().join(format!("rc-suite-deadtest-{}.crt", std::process::id()));
+    std::fs::write(&crt, ultimax_crt(&rom)).map_err(|e| e.to_string())?;
+    let out = env
+        .c64()?
+        .arg("--cartridge")
+        .arg(crt.to_string_lossy())
+        .frames(1500)
+        .dump(0x0400, 1000)
+        .go();
+    let _ = std::fs::remove_file(&crt);
+    let screen = out?.bytes(0x0400, 1000)?;
+    if find_text(&screen, "C-64 DEAD TEST REV 781220").is_none() {
+        return Err(
+            "the dead test's title is not on the screen: the Ultimax cartridge did not start"
+                .into(),
+        );
+    }
+    // "OK" (screen codes 15, 11) in the row of each result, after its label.
+    let ok = [0x0F, 0x0B];
+    for label in ["ZERO PAGE", "STACK PAGE"] {
+        let at = find_text(&screen, label).ok_or(format!("no {label:?} line on the screen"))?;
+        let row = &screen[at..(at / 40 + 1) * 40];
+        if !row.windows(2).any(|w| w == ok) {
+            return Err(format!("{label}: no OK on its line"));
+        }
+    }
+    Ok(())
+}
+
+const DIAG_CASES: &[Case] = &[Case::new(
+    Area::Memory,
+    "the Commodore dead test boots from an Ultimax cartridge and passes the zero page and stack tests",
+    "the dead test (rev 781220): OK printed per passing test; Ultimax reset vector from ROMH at $E000",
+    the_dead_test_cartridge_boots_in_ultimax_mode_and_passes_the_low_ram_tests,
+)];
+
+#[test]
+fn c64_diagnostics() {
+    let Some(env) = Env::discover() else {
+        eprintln!("skipping: RETROCLAWD_BIN / RC_ROMS not set");
+        return;
+    };
+    if env.file(DEAD_TEST).is_err() || env.file("commodore/roms/c64/kernal-901227-03.bin").is_err()
+    {
+        eprintln!(
+            "skipping: {DEAD_TEST} or the C64 ROMs are not present (tools/fetch_diagnostics.sh fetches the former)"
+        );
+        return;
+    }
+    let report = run_cases(&env, DIAG_CASES);
+    eprintln!("{}", report.summary());
+    assert!(report.ok(), "{}", report.summary());
+}

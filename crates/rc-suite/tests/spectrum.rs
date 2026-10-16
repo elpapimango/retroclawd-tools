@@ -35,6 +35,7 @@ const BOOT_FRAMES: u32 = 250;
 fn machine_name(rom: &str) -> &'static str {
     match rom {
         ROM_128 => "zx-spectrum-128",
+        r if ROM_128_VARIANTS.contains(&r) => "zx-spectrum-128",
         ROM_PLUS3 => "zx-spectrum-2a3",
         _ => "zx-spectrum",
     }
@@ -532,6 +533,12 @@ const CASES: &[Case] = &[
     ),
     Case::new(
         Area::Rom,
+        "both ROM halves of every 128K-family variant appear at 0x0000 exactly as the file holds them",
+        "WOS128 port 0x7FFD bit 4 (the 32K file is ROM 0 then ROM 1); the 128K, +2, 4.02 and Derby 1.4 ROMs",
+        every_128k_rom_variant_pages_both_halves_in_unchanged,
+    ),
+    Case::new(
+        Area::Rom,
         "bit 4 of port 0x7FFD selects the ROM",
         "WOS128 port 0x7FFD bit 4",
         bit_4_of_port_0x7ffd_selects_the_rom,
@@ -572,6 +579,56 @@ const ROM_128_VARIANTS: [&str; 4] = [
     "sinclair/roms/zx-spectrum/spec128uk_4.02.rom",
     "sinclair/roms/zx-spectrum/spec128uk_derby1.4.rom",
 ];
+
+fn every_128k_rom_variant_pages_both_halves_in_unchanged(env: &Env) -> Result<(), String> {
+    let mut tried = 0;
+    for name in ROM_128_VARIANTS {
+        let Ok(path) = env.file(name) else {
+            eprintln!("  (skipping {name}: not present)");
+            continue;
+        };
+        // Copy ROM 0 to 0x8000 and, with ROM 1 paged in, ROM 1 to 0xC000 (RAM page 0); the program sits at 0x6000.
+        let out = run_program(
+            env,
+            name,
+            "romhalves",
+            0x6000,
+            " ld bc,$7FFD
+ xor a
+ out (c),a
+ ld hl,0
+ ld de,$8000
+ ld bc,$4000
+ ldir
+ ld bc,$7FFD
+ ld a,$10
+ out (c),a
+ ld hl,0
+ ld de,$C000
+ ld bc,$4000
+ ldir
+here: jr here
+",
+            12,
+            &[(0x8000, 0x4000), (0xC000, 0x4000)],
+        )?;
+        let rom = std::fs::read(&path).map_err(|e| e.to_string())?;
+        expect_eq(&format!("{name}: the ROM file length"), rom.len(), 0x8000)?;
+        for (half, at) in [(0usize, 0x8000u16), (1, 0xC000)] {
+            let got = out.bytes(at, 0x4000)?;
+            let want = &rom[half * 0x4000..(half + 1) * 0x4000];
+            if got != want {
+                let first = got.iter().zip(want).position(|(a, b)| a != b).unwrap_or(0);
+                return Err(format!(
+                    "{name}: ROM {half} differs from the file, first at offset {first:#06x} (got {:#04x}, file {:#04x})",
+                    got[first], want[first]
+                ));
+            }
+        }
+        tried += 1;
+    }
+    expect_in("128K ROM variants present", tried, 1, 4)
+}
 
 fn every_128k_rom_variant_boots_with_its_frame_interrupt_running(env: &Env) -> Result<(), String> {
     let mut tried = 0;
