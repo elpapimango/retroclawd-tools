@@ -148,10 +148,13 @@ purpose. Everything skips unless `RETROCLAWD_BIN`, `RETROCLAWD_MACHINE_PLUGIN_DI
   `machines/<family>/software/diagnostics/` (git-ignored; they are other people's software, never committed). The Spectrum case runs
   brendanalford/zx-diagnostics v0.37's `testrom.bin` (LGPL-3.0) as the machine's ROM and reads the result from the screen colours its
   source documents (`PASS` in green ink, a bright-green "48K RAM Tests Passed" bar, nothing red) -- about 100 s of machine time, 5000 frames.
-  llopis/amstrad-diagnostics (MIT, v1.3) is **not** wired up: its released `AmstradDiag.cpr` is malformed (RIFF size field `0x040C`
-  and a page 20 bytes short), its `.dsk` needs `RUN"DIAG` typed and the CPC plugin cannot type `"` headless (only `, . /` are mapped
-  among the CPC punctuation keys), and its tests are chosen from a menu. crystalct/C64UnifDiagCart (CERN-OHL-W-2.0, a hardware
-  licence) was not tried.
+  llopis/amstrad-diagnostics (MIT, v1.3) is **not** wired into a case yet. What works now: its disk boots on a CPC6128
+  (`--disk AmstradDiag.dsk`, typed `RUN"DIAG`, which became possible when the CPC punctuation keys were mapped) and shows its menu with the
+  system info (model, 50 Hz, 128KB, CRTC, FDC) and `LOWER RAM: PASSED`; its released `.cpr` now parses (`parse_lenient` repairs its size
+  field and short page) but parks in a wait-for-VSYNC loop on the GX4000 model, the CRTC being unprogrammed (no firmware ran first). Not
+  done: driving the menu -- typed `u`/`U` after the program has loaded did not start the upper-RAM test, so its key handling needs
+  reading -- and an oracle (it colours results: success colours for PASSED, error colours for FAILED). crystalct/C64UnifDiagCart
+  (CERN-OHL-W-2.0, a hardware licence) was not tried.
 * Not testable headless yet: joysticks and sound.
 
 ## Open points

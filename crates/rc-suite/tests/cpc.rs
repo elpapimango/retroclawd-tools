@@ -420,6 +420,35 @@ here: jr here
     Ok(())
 }
 
+fn the_keyboard_types_every_punctuation_key_into_basic(env: &Env) -> Result<(), String> {
+    // Every symbol of the CPC keyboard (unshifted and shifted: ^ - @ ; : [ ] \ ! " # $ % & ' ( ) _ = | { } ` + * ? > < , . /),
+    // typed by `--type` into the real firmware's BASIC: a program stores a string made of them and POKEs each byte
+    // into memory, so the whole path (typing, the keyboard matrix, the firmware's key tables, BASIC) is checked
+    // against the characters themselves. The `"` that opens a string is among the keys.
+    let symbols = r##"!#$%&'()_=^-|@{[;:+*]}\`?/>.,<"##;
+    let program =
+        format!("A$=\"{symbols}\"\nFOR I=1 TO LEN(A$):POKE &A000+I,ASC(MID$(A$,I,1)):NEXT\n");
+    let len = symbols.len() as u16;
+    let out = env
+        .run("cpc6128")
+        .rom(&rom(env)?)
+        .arg("--type-after")
+        .arg("150")
+        .arg("--type-delay")
+        .arg("80")
+        .arg("--type")
+        .arg(program)
+        .frames(1800)
+        .dump(0xA001, len)
+        .go()?;
+    let got = out.bytes(0xA001, len)?;
+    expect_eq(
+        "the string BASIC built from what was typed",
+        String::from_utf8_lossy(&got).into_owned(),
+        symbols.to_string(),
+    )
+}
+
 const CASES: &[Case] = &[
     Case::new(
         Area::Timers,
@@ -462,6 +491,12 @@ const CASES: &[Case] = &[
         "the lower ROM shows at reset and writes go to the RAM under it",
         "GATE ARRAY mode register bit 2 (0 = lower ROM on)",
         the_lower_rom_shows_at_reset_and_writes_go_to_the_ram_under_it,
+    ),
+    Case::new(
+        Area::Io,
+        "every punctuation key can be typed into BASIC (including the quote)",
+        "the CPC firmware's key tables (ROM 0x1D69); BASIC string handling",
+        the_keyboard_types_every_punctuation_key_into_basic,
     ),
 ];
 

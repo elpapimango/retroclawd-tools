@@ -750,6 +750,67 @@ fn a_tzx_tape_loads_through_the_rom_after_rescaling(env: &Env) -> Result<(), Str
     )
 }
 
+/// The tape signal of a file as a `.wav`: 16-bit mono at 192 kHz (a 150 us pulse half is 28.8 samples, so the rounding stays
+/// under 2%), a square wave of +-16000 -- what a sound card records from the ZX81's MIC output.
+fn zx81_wav(name: &[u8], data: &[u8]) -> Vec<u8> {
+    const RATE: u64 = 192_000;
+    let n = |us: u64| (us * RATE / 1_000_000) as usize;
+    let mut samples: Vec<i16> = vec![-16_000; n(1_000_000)];
+    let mut named = name.to_vec();
+    if let Some(last) = named.last_mut() {
+        *last |= 0x80;
+    }
+    for byte in named.iter().chain(data) {
+        for bit in (0..8).rev() {
+            for _ in 0..if byte >> bit & 1 == 1 { 9 } else { 4 } {
+                samples.extend(std::iter::repeat_n(16_000, n(150)));
+                samples.extend(std::iter::repeat_n(-16_000, n(150)));
+            }
+            samples.extend(std::iter::repeat_n(-16_000, n(1_300)));
+        }
+    }
+    samples.extend(std::iter::repeat_n(-16_000, n(200_000)));
+    let pcm: Vec<u8> = samples.iter().flat_map(|s| s.to_le_bytes()).collect();
+    let mut wav = b"RIFF".to_vec();
+    wav.extend_from_slice(&(36 + pcm.len() as u32).to_le_bytes());
+    wav.extend_from_slice(b"WAVEfmt \x10\0\0\0\x01\0\x01\0");
+    wav.extend_from_slice(&(RATE as u32).to_le_bytes());
+    wav.extend_from_slice(&(RATE as u32 * 2).to_le_bytes());
+    wav.extend_from_slice(&[2, 0, 16, 0]);
+    wav.extend_from_slice(b"data");
+    wav.extend_from_slice(&(pcm.len() as u32).to_le_bytes());
+    wav.extend_from_slice(&pcm);
+    wav
+}
+
+fn a_wav_recording_of_a_program_loads_through_the_rom(env: &Env) -> Result<(), String> {
+    let file = p_file(&[(1, &[0xF5, 0x0B, 0x26, 0x0B])]); // 1 PRINT "A"
+    let path = std::env::temp_dir().join(format!("rc-suite-zx81-wav-{}.wav", std::process::id()));
+    std::fs::write(&path, zx81_wav(&[0x26], &file)).map_err(|e| e.to_string())?;
+    let out = env
+        .run("zx81")
+        .rom(&rom(env)?)
+        .arg("--tape")
+        .arg(path.to_string_lossy())
+        .arg("--type-after")
+        .arg("100")
+        .arg("--type-delay")
+        .arg("160")
+        .arg("--type")
+        .arg("J\"\"\n")
+        .frames(2000)
+        .dump(PROGRAM, 9)
+        .go()?;
+    // `zx-tape` reads the samples into pulses (a Schmitt trigger at 10% of the peak), the plugin rescales them to the ZX81's
+    // clock, and the ROM's own loader brings the program in.
+    let at = usize::from(PROGRAM - 0x4009);
+    expect_eq(
+        "the BASIC line LOAD brought in from a .wav",
+        out.bytes(PROGRAM, 9)?,
+        file[at..at + 9].to_vec(),
+    )
+}
+
 /// ZX81 character codes (the manual's character set) of the characters a key types.
 fn zx81_code(c: char) -> Option<u8> {
     Some(match c {
@@ -1099,6 +1160,12 @@ const CASES: &[Case] = &[
         "a .tzx tape written in 3.5 MHz T-states loads through the ROM",
         "ZXDOCS Cassette Signals (150 us pulses; 4 or 9 per bit); TZX counts T-states of the 3.5 MHz Spectrum",
         a_tzx_tape_loads_through_the_rom_after_rescaling,
+    ),
+    Case::new(
+        Area::Media,
+        "a .wav recording of a program loads through the ROM",
+        "ZXDOCS Cassette Signals (150 us pulses; 4 or 9 per bit) as sampled audio",
+        a_wav_recording_of_a_program_loads_through_the_rom,
     ),
 ];
 
