@@ -18,3 +18,4 @@ cpc-snapshot.workspace = true
 rcld = { path = "../rcld" }
 rcdisk = { path = "../rcdisk" }
 rcsnap = { path = "../rcsnap" }
+zx-tape.workspace = true

@@ -680,6 +680,76 @@ fn fast_load_brings_a_long_program_in_long_before_the_signal_would(
     Ok(())
 }
 
+/// A `.tzx` of the file's tape signal as a TZX author would write it: pulse lengths in T-states of the 3.5 MHz Spectrum
+/// (ZXDOCS: 150 us pulses, 4 for a 0 and 9 for a 1, 1300 us between bits), not the ZX81's own 3.25 MHz.
+fn zx81_tzx(name: &[u8], data: &[u8]) -> Vec<u8> {
+    use zx_tape::{Pulse, Tape};
+    const HZ: u64 = 3_500_000;
+    let t = |us: u64| (us * HZ / 1_000_000) as u32;
+    let mut pulses = vec![Pulse {
+        cycles: t(1_000_000),
+        level: false,
+    }];
+    let mut named = name.to_vec();
+    if let Some(last) = named.last_mut() {
+        *last |= 0x80;
+    }
+    for byte in named.iter().chain(data) {
+        for bit in (0..8).rev() {
+            for _ in 0..if byte >> bit & 1 == 1 { 9 } else { 4 } {
+                pulses.push(Pulse {
+                    cycles: t(150),
+                    level: true,
+                });
+                pulses.push(Pulse {
+                    cycles: t(150),
+                    level: false,
+                });
+            }
+            pulses.push(Pulse {
+                cycles: t(1300),
+                level: false,
+            });
+        }
+    }
+    pulses.push(Pulse {
+        cycles: t(200_000),
+        level: false,
+    });
+    zx_tape::write_tzx(&Tape::from_pulses(pulses))
+}
+
+fn a_tzx_tape_loads_through_the_rom_after_rescaling(env: &Env) -> Result<(), String> {
+    let file = p_file(&[(1, &[0xF5, 0x0B, 0x26, 0x0B])]); // 1 PRINT "A"
+    let path = std::env::temp_dir().join(format!("rc-suite-zx81-tzx-{}.tzx", std::process::id()));
+    std::fs::write(&path, zx81_tzx(&[0x26], &file)).map_err(|e| e.to_string())?;
+    let out = env
+        .run("zx81")
+        .rom(&rom(env)?)
+        .arg("--tape")
+        .arg(path.to_string_lossy())
+        .arg("--type-after")
+        .arg("100")
+        .arg("--type-delay")
+        .arg("160")
+        .arg("--type")
+        .arg(
+            "J\"\"
+",
+        )
+        .frames(2000)
+        .dump(PROGRAM, 9)
+        .go()?;
+    // The pulses are in 3.5 MHz T-states; the plugin rescales them to the ZX81's 3.25 MHz, so the ROM's loader (its timing
+    // loops count the machine's own T-states) reads the file as it would from a real recording.
+    let at = usize::from(PROGRAM - 0x4009);
+    expect_eq(
+        "the BASIC line LOAD brought in from a .tzx",
+        out.bytes(PROGRAM, 9)?,
+        file[at..at + 9].to_vec(),
+    )
+}
+
 /// ZX81 character codes (the manual's character set) of the characters a key types.
 fn zx81_code(c: char) -> Option<u8> {
     Some(match c {
@@ -1023,6 +1093,12 @@ const CASES: &[Case] = &[
         "a 16K machine draws the K prompt on its last row",
         "ZXDOCS D_FILE layout (expanded display file); ROM character set",
         a_16k_machine_draws_the_k_prompt_too,
+    ),
+    Case::new(
+        Area::Media,
+        "a .tzx tape written in 3.5 MHz T-states loads through the ROM",
+        "ZXDOCS Cassette Signals (150 us pulses; 4 or 9 per bit); TZX counts T-states of the 3.5 MHz Spectrum",
+        a_tzx_tape_loads_through_the_rom_after_rescaling,
     ),
 ];
 

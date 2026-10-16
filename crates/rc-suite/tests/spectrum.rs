@@ -10,6 +10,9 @@
 //!   311 lines of 228 T-states = 70908 per frame).
 //! * `WOS128` also covers the +2A/+3 (port 0x1FFD: bit 0 special paging, bits 1-2 the four all-RAM maps, bit 2 the high
 //!   bit of the ROM number whose low bit is bit 4 of 0x7FFD; "share the same timing" as the 128K).
+//! * `ZXDIAG` = brendanalford/zx-diagnostics v0.37 (LGPL-3.0), run as the machine's ROM (fetched by
+//!   `tools/fetch_diagnostics.sh`, never committed): its source (`testrommain.asm`) prints `PASS` in green ink and `FAIL` in
+//!   red, and ends with a bright-green bar "48K RAM Tests Passed" or a red "48K tests FAILED".
 //! * `ROM` = the 16K ROM itself (the character set at 0x3D00, which the copyright message is drawn from; the
 //!   system variables the power-on routine sets).
 //! * `Z80` = Zilog's instruction timing tables.
@@ -539,6 +542,12 @@ const CASES: &[Case] = &[
         "WOS128 port 0x7FFD bit 5",
         bit_5_of_port_0x7ffd_locks_the_paging,
     ),
+    Case::new(
+        Area::Rom,
+        "every 128K-family ROM variant boots with its frame interrupt running",
+        "WOS128 (the ULA interrupts once a frame); the 128K, +2, 4.02 and Derby 1.4 ROMs",
+        every_128k_rom_variant_boots_with_its_frame_interrupt_running,
+    ),
 ];
 
 #[test]
@@ -554,6 +563,45 @@ fn spectrum() {
     let report = run_cases(&env, CASES);
     eprintln!("{}", report.summary());
     assert!(report.ok(), "{}", report.summary());
+}
+
+/// The 128K-family ROMs RomM holds besides `128.rom`: the +2's, the 4.02 revision and the Derby 1.4 revision.
+const ROM_128_VARIANTS: [&str; 4] = [
+    "sinclair/roms/zx-spectrum/128.rom",
+    "sinclair/roms/zx-spectrum/plus2uk.rom",
+    "sinclair/roms/zx-spectrum/spec128uk_4.02.rom",
+    "sinclair/roms/zx-spectrum/spec128uk_derby1.4.rom",
+];
+
+fn every_128k_rom_variant_boots_with_its_frame_interrupt_running(env: &Env) -> Result<(), String> {
+    let mut tried = 0;
+    for name in ROM_128_VARIANTS {
+        let Ok(path) = env.file(name) else {
+            eprintln!("  (skipping {name}: not present)");
+            continue;
+        };
+        let frames_at = |frames| -> Result<u32, String> {
+            let out = env
+                .run("zx-spectrum-128")
+                .rom(&path)
+                .frames(frames)
+                .dump(FRAMES, 3)
+                .go()?;
+            let b = out.bytes(FRAMES, 3)?;
+            Ok(u32::from(b[0]) | u32::from(b[1]) << 8 | u32::from(b[2]) << 16)
+        };
+        // WOS128: the ULA interrupts once a frame and every 128K-family ROM's interrupt routine adds one to FRAMES, so
+        // 100 frames of running time move it by 100 once the ROM has started.
+        let (early, later) = (frames_at(300)?, frames_at(400)?);
+        expect_in(
+            &format!("FRAMES over 100 frames with {name}"),
+            i64::from(later - early),
+            99,
+            101,
+        )?;
+        tried += 1;
+    }
+    expect_in("128K ROM variants present", tried, 1, 4)
 }
 
 // ---- +2A / +3 (WOS128, "ZX Spectrum +2A / +3")
@@ -683,6 +731,91 @@ fn spectrum_plus3() {
         return;
     }
     let report = run_cases(&env, PLUS3_CASES);
+    eprintln!("{}", report.summary());
+    assert!(report.ok(), "{}", report.summary());
+}
+
+// ---- third-party diagnostics (ZXDIAG)
+
+const DIAG_ROM: &str = "sinclair/software/diagnostics/zx-diagnostics-testrom.bin";
+
+/// `[r, g, b]` is red enough to be the diagnostics' FAIL colour (INK 2 / PAPER 2: red, normal or bright).
+fn is_red(p: [u8; 3]) -> bool {
+    p[0] >= 150 && p[1] <= 60 && p[2] <= 60
+}
+
+fn the_zx_diagnostics_rom_passes_every_test_on_a_48k(env: &Env) -> Result<(), String> {
+    // The ROM runs its tests at power-on and waits a few seconds for a model choice ("No selection made, assuming 48K
+    // mode"); the RAM tests take about 100 s of machine time, so give it 5000 frames.
+    let out = env
+        .run("zx-spectrum")
+        .rom(&env.file(DIAG_ROM)?)
+        .arg("--no-border")
+        .frames(5000)
+        .screen()
+        .go()?;
+    let screen = out.screen()?;
+    let (w, h) = (screen.width, screen.height);
+    // The success bar: PAPER 4 (green) BRIGHT 1 behind "48K RAM Tests Passed", a text row (8 pixel rows) high and the full width, its white text breaking up some of each row.
+    let bright_green_rows = (0..h)
+        .filter(|&y| {
+            (0..w)
+                .filter(|&x| screen.pixel(x, y) == [0, 255, 0])
+                .count()
+                >= 120
+        })
+        .count();
+    if bright_green_rows < 8 {
+        return Err(format!(
+            "no bright-green \"Passed\" bar on screen ({bright_green_rows} full rows of it)"
+        ));
+    }
+    // No failure bar (PAPER 2) and no FAIL text (INK 2). The title logo at the top right holds a block of red of its own,
+    // so only below the first text row counts.
+    let red_bar_rows = (0..h)
+        .filter(|&y| (0..w).filter(|&x| is_red(screen.pixel(x, y))).count() >= 150)
+        .count();
+    expect_eq("full rows of red (a FAILED bar)", red_bar_rows, 0)?;
+    let red_below_the_title = (12..h)
+        .flat_map(|y| (0..w).map(move |x| (x, y)))
+        .filter(|&(x, y)| is_red(screen.pixel(x, y)))
+        .count();
+    expect_eq(
+        "red pixels below the title (FAIL text)",
+        red_below_the_title,
+        0,
+    )?;
+    // PASS (INK 4, green) is printed for the lower 16K RAM test, the four upper RAM tests and the interrupt test: six
+    // character rows carry green ink.
+    let mut rows_with_pass = std::collections::BTreeSet::new();
+    for y in 0..h {
+        for x in 0..w {
+            if screen.pixel(x, y) == [0, 205, 0] {
+                rows_with_pass.insert(y / 8);
+            }
+        }
+    }
+    expect_eq("text rows showing PASS", rows_with_pass.len(), 6)
+}
+
+const DIAG_CASES: &[Case] = &[Case::new(
+    Area::Memory,
+    "the zx-diagnostics ROM reports every 48K test as passed",
+    "ZXDIAG (PASS in green ink, bright-green \"48K RAM Tests Passed\" bar, nothing red)",
+    the_zx_diagnostics_rom_passes_every_test_on_a_48k,
+)];
+
+#[test]
+fn spectrum_diagnostics() {
+    let Some(env) = Env::discover() else {
+        eprintln!("skipping: RETROCLAWD_BIN / RC_ROMS not set");
+        return;
+    };
+    if env.file(DIAG_ROM).is_err() {
+        eprintln!("skipping: {DIAG_ROM} not present (tools/fetch_diagnostics.sh fetches it)");
+        return;
+    }
+    let report = run_cases(&env, DIAG_CASES);
     eprintln!("{}", report.summary());
     assert!(report.ok(), "{}", report.summary());
 }
