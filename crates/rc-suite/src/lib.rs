@@ -478,6 +478,18 @@ pub fn mos6502_image(org: u16, source: &str) -> Result<Vec<u8>, String> {
     Ok(image)
 }
 
+/// Assembles 6502 `source` at `org` into a temporary file for `--program` (a raw image, loaded at `--org`).
+pub fn mos6502_program(tag: &str, org: u16, source: &str) -> Result<PathBuf, String> {
+    let image = mos6502_image(org, source)?;
+    let path = std::env::temp_dir().join(format!(
+        "rc-suite-{tag}-{}-{}.bin",
+        std::process::id(),
+        COUNTER.fetch_add(1, Ordering::Relaxed)
+    ));
+    std::fs::write(&path, image).map_err(|e| e.to_string())?;
+    Ok(path)
+}
+
 /// Where a C128 test program's 6502 code starts, `C128_CODE_OFFSET` bytes after the Z80 stub's `org`.
 pub const C128_CODE_OFFSET: u16 = 0x100;
 
@@ -521,6 +533,25 @@ stay: jr stay
 impl Env {
     /// Starts a headless run of a C128 with its ROM set from `RC_ROMS` (`commodore/roms/c128`); the two BASIC halves
     /// are joined into one file, as the machine wants them. An error naming the missing file when a ROM is absent.
+    /// A C64 run with the three ROMs from the Commodore family's `roms/c64` folder.
+    pub fn c64(&self) -> Result<Run<'_>, String> {
+        let dir = "commodore/roms/c64";
+        let path = |name: &str| -> Result<String, String> {
+            Ok(self
+                .file(&format!("{dir}/{name}"))?
+                .to_string_lossy()
+                .into_owned())
+        };
+        Ok(self
+            .run("c64")
+            .arg("--rom-kernal")
+            .arg(path("kernal-901227-03.bin")?)
+            .arg("--rom-basic")
+            .arg(path("basic-901226-01.bin")?)
+            .arg("--rom-char")
+            .arg(path("chargen-901225-01.bin")?))
+    }
+
     pub fn c128(&self) -> Result<Run<'_>, String> {
         let dir = "commodore/roms/c128";
         let lo = std::fs::read(self.file(&format!("{dir}/basiclo-318018-04.bin"))?)

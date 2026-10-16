@@ -111,7 +111,7 @@ manager) and half-second key holds.
 
 A harness and per-machine suites that run the real `retroclawd` headless and check memory, registers and the picture against
 **hardware facts that each case cites** (a datasheet, a manual, the ROM itself), never against the emulator's earlier output.
-`tests/zx81.rs`, `tests/cpc.rs` and `tests/c128.rs` hold the cases; a case belongs to an `Area` so a failure names what is wrong. A feature the
+`tests/zx81.rs`, `tests/cpc.rs`, `tests/c128.rs`, `tests/spectrum.rs` and `tests/c64.rs` hold the cases; a case belongs to an `Area` so a failure names what is wrong. A feature the
 emulator lacks is a *gap*: `Case::gap("why")` -- it must fail, and the run fails when it starts passing, so gaps only shrink on
 purpose. Everything skips unless `RETROCLAWD_BIN`, `RETROCLAWD_MACHINE_PLUGIN_DIRS` and `RC_ROMS` (a folder with
 `sinclair/ amstrad/ commodore/`, each with its `roms/`) are set, so public CI stays green without firmware.
@@ -136,6 +136,14 @@ purpose. Everything skips unless `RETROCLAWD_BIN`, `RETROCLAWD_MACHINE_PLUGIN_DI
 * `c128_8502_program` runs 6502 code on a C128: it powers up on its Z80, so a Z80 stub sets the memory map, points the 8502 reset
   vector at the code and sets the processor-select bit of the MMU's mode register (a Z80 reaches the I/O chips with `IN`/`OUT`, not
   memory writes; in Z80 mode `$1000-$13FF` is colour RAM). The KERNAL is not booted in such a run; to use it, boot normally and type.
+* `mos6502_program` / `Env::c64()` run 6502 code on a plain C64 (`--program` starts the CPU at the load address with nothing
+  initialised; the KERNAL is not booted). To measure a frame on the C64 use a CIA timer between two raster line 0s -- the
+  host's `--frames` batch (985248 / 50 cycles) is pacing, not the VIC's frame -- and read `$D012` *before* `$D011`, or the
+  255 -> 256 line change shows up as a false line 0. The Spectrum cases need `--no-border` for a 256x192 picture.
+* Read hardware values through the CPU, not the dump: `PRINT PEEK(1)` found that the C64 port read 247, which the dump
+  path would also have shown but is easy to dismiss as a debug view.
+* `tools/fetch_roms.sh` in the host repository fetches the firmware these suites read from your RomM (the files of every
+  case, drive DOS ROMs included); the C64 KERNAL must be revision 3 for the boot cases to match their baseline.
 * Not testable headless yet: joysticks and sound.
 
 ## Open points

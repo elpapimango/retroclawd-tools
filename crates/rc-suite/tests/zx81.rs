@@ -48,11 +48,28 @@ fn run_program(
 }
 
 fn boot_to_the_k_prompt(env: &Env, rom_path: &std::path::Path) -> Result<(), String> {
+    boot_to_the_k_prompt_with(env, rom_path, 1, 0x4400)
+}
+
+/// The same with `ram_kb` K of RAM, whose power-on test leaves RAMTOP at `ramtop`.
+fn boot_to_the_k_prompt_with(
+    env: &Env,
+    rom_path: &std::path::Path,
+    ram_kb: u32,
+    ramtop: u16,
+) -> Result<(), String> {
     let out = env
         .run("zx81")
         .rom(rom_path)
+        .arg("--ram-kb")
+        .arg(ram_kb.to_string())
         .arg("--no-border")
-        .frames(BOOT_FRAMES)
+        // A pack of 16K or more has 16K to test at power-on: the prompt appears after about 2.4 s instead of 1.2 s.
+        .frames(if ram_kb > 2 {
+            2 * BOOT_FRAMES
+        } else {
+            BOOT_FRAMES
+        })
         .dump(ERR_NR, 0x40)
         .screen()
         .go()?;
@@ -60,7 +77,7 @@ fn boot_to_the_k_prompt(env: &Env, rom_path: &std::path::Path) -> Result<(), Str
     // (0x4400 for the stock 1K); MARGIN is 55 blank lines for a 50 Hz machine; DF_SZ is the 2 lines of the
     // lower screen the prompt lives in.
     expect_eq("ERR_NR", out.byte(ERR_NR)?, 0xFF)?;
-    expect_eq("RAMTOP", out.word(RAMTOP)?, 0x4400)?;
+    expect_eq("RAMTOP", out.word(RAMTOP)?, ramtop)?;
     expect_eq("MARGIN", out.byte(MARGIN)?, 55)?;
     expect_eq("DF_SZ", out.byte(DF_SZ)?, 2)?;
 
@@ -101,6 +118,12 @@ fn every_rom_revision_boots_to_the_k_prompt(env: &Env) -> Result<(), String> {
         tried += 1;
     }
     expect_in("ROM revisions present", tried, 1, 3)
+}
+
+fn a_16k_machine_draws_the_k_prompt_too(env: &Env) -> Result<(), String> {
+    // The expanded display file of a machine with 3K or more RAM is 24 rows of 32 characters, each followed by a NEWLINE;
+    // the prompt (inverse K) is the first character of the last row, exactly as on the 1K machine (ROM, `NEW` at 0x03CB).
+    boot_to_the_k_prompt_with(env, &rom(env)?, 16, 0x8000)
 }
 
 fn slow_mode_counts_50_frames_a_second(env: &Env) -> Result<(), String> {
@@ -582,6 +605,80 @@ fn what_save_wrote_loads_back_through_the_rom(env: &Env) -> Result<(), String> {
     )
 }
 
+fn a_60_hz_machine_gets_the_short_top_margin(env: &Env) -> Result<(), String> {
+    let margin = |region: &str| -> Result<u8, String> {
+        env.run("zx81")
+            .rom(&rom(env)?)
+            .arg("--region")
+            .arg(region)
+            .frames(BOOT_FRAMES)
+            .dump(MARGIN, 1)
+            .go()?
+            .byte(MARGIN)
+    };
+    // ROM: the keyboard routine at 0x02BB turns bit 6 of port 0xFE into the top margin, `0x1F + 0x18` = 55 lines when the
+    // bit is set (50 Hz) and `0x1F` = 31 when it is clear (60 Hz); ZXDOCS "Video Display Timings" gives the 56 and 32
+    // lines of upper blanking those stand for.
+    expect_eq("MARGIN on a 50 Hz machine", margin("pal")?, 55)?;
+    expect_eq("MARGIN on a 60 Hz machine", margin("ntsc")?, 31)
+}
+
+/// A `.p` whose one BASIC line is a REM of `len` bytes: a program too long to play at the tape's real speed.
+fn big_p_file(len: usize) -> Vec<u8> {
+    let mut body = vec![0xEA]; // REM
+    body.extend(std::iter::repeat_n(0x1D, len)); // the digit 1
+    p_file(&[(1, &body)])
+}
+
+fn fast_load_brings_a_long_program_in_long_before_the_signal_would(
+    env: &Env,
+) -> Result<(), String> {
+    let file = big_p_file(2_900);
+    let path = temp_file("fast", &file)?;
+    let load = |fast: bool, frames: u32| -> Result<Vec<u8>, String> {
+        let mut run = env
+            .run("zx81")
+            .rom(&rom(env)?)
+            .arg("--ram-kb")
+            .arg("16")
+            .arg("--tape")
+            .arg(path.to_string_lossy())
+            .arg("--type-after")
+            .arg("250")
+            .arg("--type-delay")
+            .arg("160")
+            .arg("--type")
+            .arg(
+                "J\"\"
+",
+            )
+            .frames(frames)
+            .dump(0x4009, file.len() as u16);
+        if fast {
+            run = run.arg("--fast-tape-load");
+        }
+        run.go()?.bytes(0x4009, file.len() as u16)
+    };
+    // ZXDOCS: about 307 bit/s on average, so 2.9 KB is over a minute of signal (3000+ frames). With the trap the ROM matches
+    // the name from the real signal and the data arrives at once: the whole file is in RAM well inside 900 frames, and
+    // the same run without the trap is still reading it.
+    let fast = load(true, 900)?;
+    // The program itself must equal the file's: line number, length, the REM's 2901 bytes and its NEWLINE. (What follows it
+    // differs once the machine runs: the file holds a collapsed display file and the ROM expands it for a 16K machine.)
+    let at = usize::from(PROGRAM - 0x4009);
+    let program = 2 + 2 + 2_901 + 1;
+    expect_eq(
+        "the BASIC program after a fast LOAD",
+        fast[at..at + program].to_vec(),
+        file[at..at + program].to_vec(),
+    )?;
+    let slow = load(false, 900)?;
+    if slow[at..at + program] == file[at..at + program] {
+        return Err("without the trap the load should not have finished in 900 frames".into());
+    }
+    Ok(())
+}
+
 /// ZX81 character codes (the manual's character set) of the characters a key types.
 fn zx81_code(c: char) -> Option<u8> {
     Some(match c {
@@ -907,6 +1004,24 @@ const CASES: &[Case] = &[
         "what SAVE wrote loads back through the ROM's LOAD",
         "ZXDOCS Cassette (the ROM's own loader reads the ROM's own saver's signal)",
         what_save_wrote_loads_back_through_the_rom,
+    ),
+    Case::new(
+        Area::Video,
+        "a 60 Hz machine gets the short top margin (bit 6 of port 0xFE)",
+        "ROM keyboard routine at 0x02BB (55 vs 31); ZXDOCS Video Display Timings",
+        a_60_hz_machine_gets_the_short_top_margin,
+    ),
+    Case::new(
+        Area::Media,
+        "fast load brings a 2.9K program in long before the signal would",
+        "ZXDOCS Cassette Signals (307 bit/s); the ROM's own loader matches the name",
+        fast_load_brings_a_long_program_in_long_before_the_signal_would,
+    ),
+    Case::new(
+        Area::Video,
+        "a 16K machine draws the K prompt on its last row",
+        "ZXDOCS D_FILE layout (expanded display file); ROM character set",
+        a_16k_machine_draws_the_k_prompt_too,
     ),
 ];
 
