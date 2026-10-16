@@ -239,6 +239,175 @@ fn sixteen_k_ram_pack_is_detected(env: &Env) -> Result<(), String> {
     expect_eq("RAMTOP with 16K", out.word(RAMTOP)?, 0x8000)
 }
 
+/// RAM sizes the plugin offers (`--ram-kb`) and where the ROM's power-on test leaves RAMTOP for each.
+///
+/// ZXDOCS ("Memory Mirrors and Expansions"): RAMTOP points to the address after the detected RAM (4400h for the 1K
+/// machine, so 4800h for 2K), and the ROM's memory detection ends at 8000h -- a 16K pack gives 8000h, and a 32K
+/// or 56K pack is not detected beyond it ("RAMTOP must be changed manually by POKE").
+const RAM_SIZES: [(u32, u16); 5] = [
+    (1, 0x4400),
+    (2, 0x4800),
+    (16, 0x8000),
+    (32, 0x8000),
+    (56, 0x8000),
+];
+
+fn the_power_on_ram_test_sets_ramtop_for_every_ram_size(env: &Env) -> Result<(), String> {
+    for (kb, want) in RAM_SIZES {
+        let out = env
+            .run("zx81")
+            .rom(&rom(env)?)
+            .arg("--ram-kb")
+            .arg(kb.to_string())
+            .frames(BOOT_FRAMES)
+            .dump(RAMTOP, 2)
+            .go()?;
+        expect_eq(&format!("RAMTOP with {kb}K"), out.word(RAMTOP)?, want)?;
+    }
+    Ok(())
+}
+
+fn the_last_cell_of_every_ram_size_is_ram(env: &Env) -> Result<(), String> {
+    // ZXDOCS: the RAM is 4000h up for 1K-48K and 2000h up for the 56K pack ("only 2000h-FFFFh is usable"). Two
+    // different values written at the first and last cell must both stay: the RAM is that big and does not wrap.
+    // (1K and 2K repeat through 4000h-7FFFh; the mirror case covers them.)
+    for (kb, first, last) in [
+        (16u32, 0x4000u16, 0x7FFFu16),
+        (32, 0x4000, 0xBFFF),
+        (56, 0x2000, 0xFFFF),
+    ] {
+        let source = format!(
+            "ld a,$A5\n ld (${first:04X}),a\n ld a,$5A\n ld (${last:04X}),a\n ld a,(${first:04X})\n ld b,a\n ld a,(${last:04X})\n ld c,a\nhere: jr here\n"
+        );
+        let program = z80_program("ramtop", 0x4100, &source)?;
+        let out = env
+            .run("zx81")
+            .rom(&rom(env)?)
+            .arg("--ram-kb")
+            .arg(kb.to_string())
+            .arg("--program")
+            .arg(program.to_string_lossy())
+            .arg("--org")
+            .arg("0x4100")
+            .frames(2)
+            .go()?;
+        let bc = out.reg("BC")?;
+        expect_eq(&format!("first cell with {kb}K"), bc >> 8, 0xA5)?;
+        expect_eq(&format!("last cell with {kb}K"), bc & 0xFF, 0x5A)?;
+    }
+    Ok(())
+}
+
+// ---- `.p` files (ZXDOCS "Cassette File Images / Content"): a copy of memory from 4009h to E_LINE-1, starting with
+// the system variables (VERSN = 0 for a ZX81). NXTLIN pointing at a program line is the autostart.
+
+const E_LINE: u16 = 0x4014;
+const PROGRAM: u16 = 0x407D;
+
+/// A `.p` file holding the BASIC `lines` (each a line number and its tokenised body, without the line's final
+/// NEWLINE), with the collapsed display file (25 HALTs) the ZX81 keeps in SLOW mode and NXTLIN on the first line.
+fn p_file(lines: &[(u16, &[u8])]) -> Vec<u8> {
+    let mut program = Vec::new();
+    for (number, body) in lines {
+        program.extend_from_slice(&number.to_be_bytes());
+        program.extend_from_slice(&(body.len() as u16 + 1).to_le_bytes());
+        program.extend_from_slice(body);
+        program.push(0x76);
+    }
+    let d_file = PROGRAM + program.len() as u16;
+    let vars = d_file + 25;
+    let e_line = vars + 1;
+    let mut file = vec![0u8; usize::from(PROGRAM - 0x4009)];
+    let mut word = |addr: u16, value: u16| {
+        let i = usize::from(addr - 0x4009);
+        file[i..i + 2].copy_from_slice(&value.to_le_bytes());
+    };
+    word(0x400C, d_file); // D_FILE
+    word(0x400E, d_file + 1); // DF_CC
+    word(0x4010, vars); // VARS
+    word(0x4014, e_line); // E_LINE
+    word(0x4016, e_line - 1); // CH_ADD
+    word(0x401A, e_line + 2); // STKBOT
+    word(0x401C, e_line + 2); // STKEND
+    word(0x401F, 0x405D); // MEM
+    word(0x4025, 0xFFFF); // LAST_K
+    word(0x4029, PROGRAM); // NXTLIN: the first line is the autostart
+    word(0x4030, 0x0C8D); // T_ADDR
+    word(0x4034, 0xFFFF); // FRAMES
+    file[0x4022 - 0x4009] = 2; // DF_SZ
+    file[0x4028 - 0x4009] = 55; // MARGIN
+    file[0x4038 - 0x4009] = 0xBC; // PR_CC
+    file[0x403B - 0x4009] = 0x40; // CDFLAG: SLOW mode
+    file.extend_from_slice(&program);
+    file.extend(std::iter::repeat_n(0x76, 25)); // the collapsed display file
+    file.push(0x80); // end of the variables
+    file
+}
+
+fn temp_file(tag: &str, bytes: &[u8]) -> Result<PathBuf, String> {
+    let path = std::env::temp_dir().join(format!("rc-suite-zx81-{tag}-{}.p", std::process::id()));
+    std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
+    Ok(path)
+}
+
+fn a_p_file_is_loaded_at_0x4009_and_its_program_autostarts(env: &Env) -> Result<(), String> {
+    // ZX81 tokens (the manual's character set table): PRINT = F5h; `"` = 0Bh; letters start at 26h (A = 26h).
+    let file = p_file(&[(1, &[0xF5, 0x0B, 0x26, 0x0B])]); // 1 PRINT "A"
+    let path = temp_file("print", &file)?;
+    let out = env
+        .run("zx81")
+        .rom(&rom(env)?)
+        .arg("--no-border")
+        .arg("--snapshot")
+        .arg(path.to_string_lossy())
+        .frames(BOOT_FRAMES)
+        .dump(PROGRAM, 9)
+        .screen()
+        .go()?;
+    // ZXDOCS: the file is memory from 4009h, so the program is where VERSN..PROGRAM put it.
+    let at = usize::from(PROGRAM - 0x4009);
+    expect_eq(
+        "the BASIC line in RAM",
+        out.bytes(PROGRAM, 9)?,
+        file[at..at + 9].to_vec(),
+    )?;
+    // ROM: the autostarted line prints an `A` in the top left cell, drawn from the ROM's own character set (1E00h).
+    let rom_bytes = std::fs::read(rom(env)?).map_err(|e| e.to_string())?;
+    let glyph = rom_bytes[0x1E00 + 0x26 * 8..0x1E00 + 0x26 * 8 + 8].to_vec();
+    expect_eq("top-left cell", out.screen()?.cell(0, 0).to_vec(), glyph)
+}
+
+fn saving_a_p_file_writes_memory_from_0x4009_to_e_line(env: &Env) -> Result<(), String> {
+    let loaded = temp_file("save-in", &p_file(&[(1, &[0xF5, 0x0B, 0x26, 0x0B])]))?;
+    let saved = std::env::temp_dir().join(format!("rc-suite-zx81-saved-{}.p", std::process::id()));
+    let _ = std::fs::remove_file(&saved);
+    let e_line = env
+        .run("zx81")
+        .rom(&rom(env)?)
+        .arg("--snapshot")
+        .arg(loaded.to_string_lossy())
+        .frames(BOOT_FRAMES)
+        .dump(E_LINE, 2)
+        .go()?
+        .word(E_LINE)?;
+    let len = e_line - 0x4009;
+    // The same deterministic run, now saving a `.p` and reading back the memory it should contain.
+    let out = env
+        .run("zx81")
+        .rom(&rom(env)?)
+        .arg("--snapshot")
+        .arg(loaded.to_string_lossy())
+        .arg("--dump-snapshot")
+        .arg(saved.to_string_lossy())
+        .frames(BOOT_FRAMES)
+        .dump(0x4009, len)
+        .go()?;
+    // ZXDOCS: a ZX81 file is a copy of memory from 4009h up to E_LINE-1 (its length is E_LINE - 4009h).
+    let file = std::fs::read(&saved).map_err(|e| format!("no .p was written: {e}"))?;
+    expect_eq("file length", file.len(), usize::from(len))?;
+    expect_eq("file content", file, out.bytes(0x4009, len)?)
+}
+
 /// ZX81 character codes (the manual's character set) of the characters a key types.
 fn zx81_code(c: char) -> Option<u8> {
     Some(match c {
@@ -510,6 +679,31 @@ const CASES: &[Case] = &[
         "ZXDOCS RAMTOP",
         sixteen_k_ram_pack_is_detected,
     ),
+    Case::new(
+        Area::Memory,
+        "RAMTOP follows the RAM size: 1K, 2K, 16K, 32K, 56K",
+        "ZXDOCS Memory Mirrors and Expansions (4400h for 1K; detection ends at 8000h)",
+        the_power_on_ram_test_sets_ramtop_for_every_ram_size,
+    ),
+    Case::new(
+        Area::Memory,
+        "the first and last cell of a 16K, 32K and 56K machine are separate RAM",
+        "ZXDOCS Memory Mirrors and Expansions (RAM at 4000h up; 56K from 2000h)",
+        the_last_cell_of_every_ram_size_is_ram,
+    ),
+    Case::new(
+        Area::Media,
+        "a .p file is loaded at 4009h and its program autostarts",
+        "ZXDOCS Cassette File Content (memory from 4009h; NXTLIN = autostart); ROM character set",
+        a_p_file_is_loaded_at_0x4009_and_its_program_autostarts,
+    ),
+    Case::new(
+        Area::Media,
+        "saving a .p writes memory from 4009h to E_LINE-1",
+        "ZXDOCS Cassette File Images (a copy of memory 4009h..E_LINE-1)",
+        saving_a_p_file_writes_memory_from_0x4009_to_e_line,
+    )
+    .gap("the zx81 plugin cannot save a .p (`unsupported snapshot save extension`)"),
 ];
 
 #[test]
