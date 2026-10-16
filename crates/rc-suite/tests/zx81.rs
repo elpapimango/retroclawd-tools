@@ -98,13 +98,14 @@ fn boots_to_the_k_prompt(env: &Env) -> Result<(), String> {
     boot_to_the_k_prompt(env, &rom(env)?)
 }
 
-/// The three ZX81 ROM dumps RomM holds (the standard edition, the 550 original and the `b` edition). Whatever
+/// The ZX81 ROM dumps RomM holds (the standard edition, the 550 original, the `b` edition and the 550 kludge). Whatever
 /// the revision, the machine must reach the same stable state: the same system variables, and the prompt drawn
 /// from *that* ROM's own character set.
-const ROM_REVISIONS: [&str; 3] = [
+const ROM_REVISIONS: [&str; 4] = [
     "sinclair/roms/zx81/zx81.rom",
     "sinclair/roms/zx81/zx81-550-original.rom",
     "sinclair/roms/zx81/zx81b.rom",
+    "sinclair/roms/zx81/zx81-550-kludge.rom",
 ];
 
 fn every_rom_revision_boots_to_the_k_prompt(env: &Env) -> Result<(), String> {
@@ -117,7 +118,7 @@ fn every_rom_revision_boots_to_the_k_prompt(env: &Env) -> Result<(), String> {
         boot_to_the_k_prompt(env, &path).map_err(|e| format!("{name}: {e}"))?;
         tried += 1;
     }
-    expect_in("ROM revisions present", tried, 1, 3)
+    expect_in("ROM revisions present", tried, 1, 4)
 }
 
 fn a_16k_machine_draws_the_k_prompt_too(env: &Env) -> Result<(), String> {

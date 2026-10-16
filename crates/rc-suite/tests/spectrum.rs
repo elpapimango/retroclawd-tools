@@ -8,16 +8,19 @@
 //! * `WOS128` = the same site's 128K reference, <https://worldofspectrum.org/faq/reference/128kreference.htm> (port
 //!   0x7FFD: bits 0-2 the RAM page at 0xC000, bit 4 the ROM, bit 5 the lock; 0x4000 is bank 5 and 0x8000 bank 2;
 //!   311 lines of 228 T-states = 70908 per frame).
+//! * `WOS128` also covers the +2A/+3 (port 0x1FFD: bit 0 special paging, bits 1-2 the four all-RAM maps, bit 2 the high
+//!   bit of the ROM number whose low bit is bit 4 of 0x7FFD; "share the same timing" as the 128K).
 //! * `ROM` = the 16K ROM itself (the character set at 0x3D00, which the copyright message is drawn from; the
 //!   system variables the power-on routine sets).
 //! * `Z80` = Zilog's instruction timing tables.
 //!
 //! Needs `RETROCLAWD_BIN`, `RETROCLAWD_MACHINE_PLUGIN_DIRS` and `RC_ROMS` (see the crate docs); skips without.
 
-use rc_suite::{Area, Case, Env, Outcome, expect_eq, expect_in, run_cases, z80_program};
+use rc_suite::{Area, Case, Env, Outcome, expect_eq, expect_in, run_cases, z80_image, z80_program};
 
 const ROM_48: &str = "sinclair/roms/zx-spectrum/spec48.rom";
 const ROM_128: &str = "sinclair/roms/zx-spectrum/128.rom";
+const ROM_PLUS3: &str = "sinclair/roms/zx-spectrum/plus3.rom";
 
 // System variables (the 48K manual, chapter 25).
 const FRAMES: u16 = 0x5C78;
@@ -27,10 +30,10 @@ const P_RAMT: u16 = 0x5CB4;
 const BOOT_FRAMES: u32 = 250;
 
 fn machine_name(rom: &str) -> &'static str {
-    if rom == ROM_128 {
-        "zx-spectrum-128"
-    } else {
-        "zx-spectrum"
+    match rom {
+        ROM_128 => "zx-spectrum-128",
+        ROM_PLUS3 => "zx-spectrum-2a3",
+        _ => "zx-spectrum",
     }
 }
 
@@ -551,6 +554,138 @@ fn spectrum() {
         return;
     }
     let report = run_cases(&env, CASES);
+    eprintln!("{}", report.summary());
+    assert!(report.ok(), "{}", report.summary());
+}
+
+// ---- +2A / +3 (WOS128, "ZX Spectrum +2A / +3")
+
+/// The four all-RAM maps of special paging mode: the RAM page at 0x0000, 0x4000, 0x8000 and 0xC000 for each setting of
+/// port 0x1FFD bits 2 and 1 (WOS128 "Memory"), and the port value that selects it (bit 0 = special mode).
+const SPECIAL_MAPS: [(u8, [u8; 4]); 4] = [
+    (0b001, [0, 1, 2, 3]),
+    (0b011, [4, 5, 6, 7]),
+    (0b101, [4, 5, 6, 3]),
+    (0b111, [4, 7, 6, 3]),
+];
+
+fn special_paging_selects_the_documented_all_ram_maps(env: &Env) -> Result<(), String> {
+    for (port_value, banks) in SPECIAL_MAPS {
+        // The code that reads the map has to keep running while the map changes under it, so it lives in banks 3 and 7 at
+        // 0xC800 (one of them is at 0xC000 in every special map) and is copied there from normal mode.
+        let stub = z80_image(
+            0xC800,
+            &format!(
+                " ld bc,$1FFD\n ld a,{port_value}\n out (c),a\n ld a,($0000)\n ld h,a\n ld a,($4000)\n ld l,a\n ld a,($8000)\n ld d,a\n ld a,($C000)\n ld e,a\nhere: jr here\n"
+            ),
+        )?;
+        let mut source = String::new();
+        // A marker 0x30 + n at the start of every page n, written through the paging window.
+        for page in 0..8u8 {
+            source += &format!(
+                " ld bc,$7FFD\n ld a,{page}\n out (c),a\n ld a,{}\n ld ($C000),a\n",
+                0x30 + page
+            );
+        }
+        for page in [3u8, 7] {
+            source += &format!(
+                " ld bc,$7FFD\n ld a,{page}\n out (c),a\n ld hl,stub\n ld de,$C800\n ld bc,{}\n ldir\n",
+                stub.len()
+            );
+        }
+        source += " ld bc,$7FFD\n ld a,3\n out (c),a\n jp $C800\nstub:\n";
+        for byte in &stub {
+            source += &format!(" .byte {byte}\n");
+        }
+        let out = run_program(env, ROM_PLUS3, "special", 0x8100, &source, 3, &[])?;
+        let (hl, de) = (out.reg("HL")?, out.reg("DE")?);
+        let got = [
+            (hl >> 8) as u8,
+            (hl & 0xFF) as u8,
+            (de >> 8) as u8,
+            (de & 0xFF) as u8,
+        ];
+        let want = banks.map(|b| 0x30 + b);
+        expect_eq(
+            &format!("pages at 0x0000, 0x4000, 0x8000, 0xC000 with 0x1FFD = {port_value:#05b}"),
+            got,
+            want,
+        )?;
+    }
+    Ok(())
+}
+
+fn the_rom_number_combines_bit_4_of_0x7ffd_and_bit_2_of_0x1ffd(env: &Env) -> Result<(), String> {
+    let mut source = String::new();
+    for rom in 0..4u8 {
+        source += &format!(
+            " ld bc,$1FFD\n ld a,{}\n out (c),a\n ld bc,$7FFD\n ld a,{}\n out (c),a\n ld hl,$0100\n ld de,${:04X}\n ld bc,16\n ldir\n",
+            (rom >> 1) << 2,
+            (rom & 1) << 4,
+            0x9000 + 16 * u16::from(rom)
+        );
+    }
+    source += "here: jr here\n";
+    let out = run_program(
+        env,
+        ROM_PLUS3,
+        "plus3rom",
+        0x8100,
+        &source,
+        3,
+        &[(0x9000, 64)],
+    )?;
+    let rom = std::fs::read(env.file(ROM_PLUS3)?).map_err(|e| e.to_string())?;
+    // WOS128: ROM 0 is the 128K editor, 1 the syntax checker, 2 +3DOS, 3 48K BASIC; the number is bit 2 of 0x1FFD (high)
+    // and bit 4 of 0x7FFD (low). The ROM file holds them in that order, 16K each.
+    for n in 0..4usize {
+        expect_eq(
+            &format!("ROM {n}"),
+            out.bytes(0x9000 + 16 * n as u16, 16)?,
+            rom[n * 0x4000 + 0x100..n * 0x4000 + 0x110].to_vec(),
+        )?;
+    }
+    Ok(())
+}
+
+/// WOS128: the +2A/+3 "share the same timing" as the 128K: 311 lines of 228 T-states.
+fn a_plus3_frame_is_70908_t_states(env: &Env) -> Result<(), String> {
+    frame_length(env, ROM_PLUS3, 70_908)
+}
+
+const PLUS3_CASES: &[Case] = &[
+    Case::new(
+        Area::Memory,
+        "special paging selects the four documented all-RAM maps",
+        "WOS128 port 0x1FFD bits 0-2 and the +2A/+3 memory table",
+        special_paging_selects_the_documented_all_ram_maps,
+    ),
+    Case::new(
+        Area::Rom,
+        "the ROM number is bit 2 of 0x1FFD and bit 4 of 0x7FFD",
+        "WOS128 +2A/+3 ROMs 0-3",
+        the_rom_number_combines_bit_4_of_0x7ffd_and_bit_2_of_0x1ffd,
+    ),
+    Case::new(
+        Area::Timers,
+        "a +2A/+3 frame is 70908 T-states",
+        "WOS128 (shares the 128K timing)",
+        a_plus3_frame_is_70908_t_states,
+    )
+    .gap("the Spectrum models all run a 70938 T frame, see the 48K case"),
+];
+
+#[test]
+fn spectrum_plus3() {
+    let Some(env) = Env::discover() else {
+        eprintln!("skipping: RETROCLAWD_BIN / RC_ROMS not set");
+        return;
+    };
+    if env.file(ROM_PLUS3).is_err() {
+        eprintln!("skipping: {ROM_PLUS3} not present");
+        return;
+    }
+    let report = run_cases(&env, PLUS3_CASES);
     eprintln!("{}", report.summary());
     assert!(report.ok(), "{}", report.summary());
 }
