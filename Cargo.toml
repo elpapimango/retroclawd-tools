@@ -10,27 +10,27 @@ publish = false
 
 [workspace.dependencies]
 # The retroclawd crates, by git revision (public repositories).
-machine = { git = "https://github.com/elpapimango/retroclawd-crates", rev = "4291f5dbe8733b0e743d45becadb1ece1d60746c" }
-z80 = { git = "https://github.com/elpapimango/retroclawd-crates", rev = "4291f5dbe8733b0e743d45becadb1ece1d60746c" }
-mos6502 = { git = "https://github.com/elpapimango/retroclawd-crates", rev = "4291f5dbe8733b0e743d45becadb1ece1d60746c" }
+machine = { git = "https://github.com/elpapimango/retroclawd-crates", rev = "a8cfb2ef44aef943d6900c98bce02758acf926eb" }
+z80 = { git = "https://github.com/elpapimango/retroclawd-crates", rev = "a8cfb2ef44aef943d6900c98bce02758acf926eb" }
+mos6502 = { git = "https://github.com/elpapimango/retroclawd-crates", rev = "a8cfb2ef44aef943d6900c98bce02758acf926eb" }
 # The Commodore format crates (retroclawd-commodore), by revision.
-cbm-dos = { git = "https://github.com/elpapimango/retroclawd-commodore", rev = "6b99fe540c62f5ac102fdf058351e18d5017b59b" }
-d64 = { git = "https://github.com/elpapimango/retroclawd-commodore", rev = "6b99fe540c62f5ac102fdf058351e18d5017b59b" }
-d71 = { git = "https://github.com/elpapimango/retroclawd-commodore", rev = "6b99fe540c62f5ac102fdf058351e18d5017b59b" }
-d81 = { git = "https://github.com/elpapimango/retroclawd-commodore", rev = "6b99fe540c62f5ac102fdf058351e18d5017b59b" }
-g64 = { git = "https://github.com/elpapimango/retroclawd-commodore", rev = "6b99fe540c62f5ac102fdf058351e18d5017b59b" }
-c64-tape = { git = "https://github.com/elpapimango/retroclawd-commodore", rev = "6b99fe540c62f5ac102fdf058351e18d5017b59b" }
-dsk = { git = "https://github.com/elpapimango/retroclawd-crates", rev = "4291f5dbe8733b0e743d45becadb1ece1d60746c" }
-zx-tape = { git = "https://github.com/elpapimango/retroclawd-crates", rev = "4291f5dbe8733b0e743d45becadb1ece1d60746c" }
+cbm-dos = { git = "https://github.com/elpapimango/retroclawd-commodore", rev = "f4cb47adad8d34d1658a3f22411a26f6ec5a5e14" }
+d64 = { git = "https://github.com/elpapimango/retroclawd-commodore", rev = "f4cb47adad8d34d1658a3f22411a26f6ec5a5e14" }
+d71 = { git = "https://github.com/elpapimango/retroclawd-commodore", rev = "f4cb47adad8d34d1658a3f22411a26f6ec5a5e14" }
+d81 = { git = "https://github.com/elpapimango/retroclawd-commodore", rev = "f4cb47adad8d34d1658a3f22411a26f6ec5a5e14" }
+g64 = { git = "https://github.com/elpapimango/retroclawd-commodore", rev = "f4cb47adad8d34d1658a3f22411a26f6ec5a5e14" }
+c64-tape = { git = "https://github.com/elpapimango/retroclawd-commodore", rev = "f4cb47adad8d34d1658a3f22411a26f6ec5a5e14" }
+dsk = { git = "https://github.com/elpapimango/retroclawd-crates", rev = "a8cfb2ef44aef943d6900c98bce02758acf926eb" }
+zx-tape = { git = "https://github.com/elpapimango/retroclawd-crates", rev = "a8cfb2ef44aef943d6900c98bce02758acf926eb" }
 # Snapshot and cartridge formats of the machine families (by revision). Their Z80 snapshot types use the
 # `retroclawd-crates` revision the families pin; keep it equal to the one above so there is one `z80` in the graph.
-z80-snapshot = { git = "https://github.com/elpapimango/retroclawd-sinclair", rev = "e6894b5642005dc1b6a7a426402acf7b11d2bd32" }
-sna-snapshot = { git = "https://github.com/elpapimango/retroclawd-sinclair", rev = "e6894b5642005dc1b6a7a426402acf7b11d2bd32" }
-szx-snapshot = { git = "https://github.com/elpapimango/retroclawd-sinclair", rev = "e6894b5642005dc1b6a7a426402acf7b11d2bd32" }
-zx81-snapshot = { git = "https://github.com/elpapimango/retroclawd-sinclair", rev = "e6894b5642005dc1b6a7a426402acf7b11d2bd32" }
-cpc-snapshot = { git = "https://github.com/elpapimango/retroclawd-amstrad", rev = "d3376733ad0d33c34b92c1aa3e216af58f2d5a21" }
-cpc-cartridge = { git = "https://github.com/elpapimango/retroclawd-amstrad", rev = "d3376733ad0d33c34b92c1aa3e216af58f2d5a21" }
-c64-cartridge = { git = "https://github.com/elpapimango/retroclawd-commodore", rev = "6b99fe540c62f5ac102fdf058351e18d5017b59b" }
+z80-snapshot = { git = "https://github.com/elpapimango/retroclawd-sinclair", rev = "93fa593f6150c101fc3d6ab83e46916cbbb50dcb" }
+sna-snapshot = { git = "https://github.com/elpapimango/retroclawd-sinclair", rev = "93fa593f6150c101fc3d6ab83e46916cbbb50dcb" }
+szx-snapshot = { git = "https://github.com/elpapimango/retroclawd-sinclair", rev = "93fa593f6150c101fc3d6ab83e46916cbbb50dcb" }
+zx81-snapshot = { git = "https://github.com/elpapimango/retroclawd-sinclair", rev = "93fa593f6150c101fc3d6ab83e46916cbbb50dcb" }
+cpc-snapshot = { git = "https://github.com/elpapimango/retroclawd-amstrad", rev = "34461e3e1faa6931b405b3b7896c3cbda71ce96a" }
+cpc-cartridge = { git = "https://github.com/elpapimango/retroclawd-amstrad", rev = "34461e3e1faa6931b405b3b7896c3cbda71ce96a" }
+c64-cartridge = { git = "https://github.com/elpapimango/retroclawd-commodore", rev = "f4cb47adad8d34d1658a3f22411a26f6ec5a5e14" }
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 clap = { version = "4", features = ["derive"] }
