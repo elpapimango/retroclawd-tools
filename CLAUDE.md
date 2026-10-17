@@ -163,6 +163,8 @@ purpose. Everything skips unless `RETROCLAWD_BIN`, `RETROCLAWD_MACHINE_PLUGIN_DI
   with `--at 2000:screenshot=FILE`; `rc_suite::Screen::read` is public for that). Mutation-checked in the amstrad plugin: swapped Up/Down
   bits, Left moved to bit 7, bit 7 stuck on writes to RAM banks 4+ (aliasing banks or byte pairs did NOT fail it: the program fills and verifies one
   pattern, so an alias is consistent to it). Not done: the sound test, the ROM test for a 464/664.
+  The +3 case `a +3 reads a sector from each of its two drives` (`--disk` + `--disk-b`) drives the FDC ports directly with a hand-made
+  one-sector DSK per drive (unit in the second command byte of Read Data); mutation-checked (drive B inserted into unit 0 fails it).
   Later the same day: the disk on a CPC664 (two cases: system information with the FDC detected, ROM test by checksum), eight PSG cases
   (`--dump-audio` through `rc_suite::Audio`: each channel's tone with sub-harmonic checks -- a square wave a third too slow still shows its
   third harmonic at the right frequency, which a first version missed and a mutation caught --, chord, mixer mute, noise, volume, register 1)

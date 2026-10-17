@@ -52,11 +52,30 @@ fn run_program(
     frames: u32,
     dumps: &[(u16, u16)],
 ) -> Result<Outcome, String> {
+    run_program_with(env, rom_file, tag, org, source, frames, dumps, &[])
+}
+
+/// `run_program` with more command-line arguments (a disk, say).
+#[allow(clippy::too_many_arguments)]
+fn run_program_with(
+    env: &Env,
+    rom_file: &str,
+    tag: &str,
+    org: u16,
+    source: &str,
+    frames: u32,
+    dumps: &[(u16, u16)],
+    extra: &[String],
+) -> Result<Outcome, String> {
     let file = z80_program(tag, org, source)?;
     let mut run = env
         .run(machine_name(rom_file))
         .rom(&env.file(rom_file)?)
-        .arg("--no-border")
+        .arg("--no-border");
+    for arg in extra {
+        run = run.arg(arg);
+    }
+    let mut run = run
         .arg("--program")
         .arg(file.to_string_lossy())
         .arg("--org")
@@ -756,6 +775,122 @@ fn a_plus3_frame_is_70908_t_states(env: &Env) -> Result<(), String> {
     frame_length(env, ROM_PLUS3, 70_908)
 }
 
+/// A one-track DSK holding a single 512-byte sector (cylinder 0, head 0, sector 1) that starts with `first`.
+fn one_sector_dsk(first: u8) -> Vec<u8> {
+    let mut bytes = vec![0u8; 0x100];
+    let sig = b"MV - CPCEMU Disk-File\r\nDisk-Info\r\n";
+    bytes[..sig.len()].copy_from_slice(sig);
+    bytes[0x30] = 1;
+    bytes[0x31] = 1;
+    bytes[0x32..0x34].copy_from_slice(&(0x100u16 + 512).to_le_bytes());
+    let mut track = vec![0u8; 0x100];
+    track[..12].copy_from_slice(b"Track-Info\r\n");
+    track[0x14] = 2; // N
+    track[0x15] = 1; // one sector
+    track[0x16] = 0x4E; // gap 3
+    track[0x17] = 0xE5; // filler
+    track[0x1A] = 1; // R
+    track[0x1B] = 2; // N
+    bytes.extend(track);
+    let mut data = vec![0xAAu8; 512];
+    data[0] = first;
+    bytes.extend(data);
+    bytes
+}
+
+/// The +3's optional second drive (`--disk-b`): a program reads the first sector of cylinder 0 through the FDC ports (data 3FFDh,
+/// status 2FFDh; Read Data with the unit in the second command byte) from unit 1 and then unit 0, and the two disks must answer
+/// separately. The motor is switched on at port 1FFDh bit 3. (The +3DOS ROM's own sector read was tried first: with the program
+/// run without its boot, the ROM's spin-up and seek delays never finish.)
+fn the_plus3_reads_each_of_its_two_drives(env: &Env) -> Result<(), String> {
+    let dir = std::env::temp_dir().join(format!("rc-suite-plus3b-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let (a, b) = (dir.join("a.dsk"), dir.join("b.dsk"));
+    std::fs::write(&a, one_sector_dsk(0x5A)).map_err(|e| e.to_string())?;
+    std::fs::write(&b, one_sector_dsk(0xC3)).map_err(|e| e.to_string())?;
+    let read = |unit: u8, dest: u16| {
+        format!(
+            "
+ ld bc,$3FFD
+ ld a,$46
+ out (c),a
+ ld a,{unit}
+ out (c),a
+ xor a
+ out (c),a
+ out (c),a
+ ld a,1
+ out (c),a
+ ld a,2
+ out (c),a
+ ld a,1
+ out (c),a
+ ld a,$1B
+ out (c),a
+ ld a,$FF
+ out (c),a
+ ld bc,$2FFD
+wait{unit}: in a,(c)
+ cp $F0
+ jr nz,wait{unit}
+ ld bc,$3FFD
+ ld hl,${dest:04X}
+ ld de,512
+data{unit}: in a,(c)
+ ld (hl),a
+ inc hl
+ dec de
+ ld a,d
+ or e
+ jr nz,data{unit}
+ ld e,7
+result{unit}: in a,(c)
+ dec e
+ jr nz,result{unit}
+"
+        )
+    };
+    let source = format!(
+        "
+ di
+ ld sp,$7F00
+ ld bc,$1FFD
+ ld a,$08
+ out (c),a
+{}{}here: jr here
+",
+        read(1, 0x9100),
+        read(0, 0x9200)
+    );
+    let out = run_program_with(
+        env,
+        ROM_PLUS3,
+        "plus3b",
+        0x8100,
+        &source,
+        30,
+        &[(0x9100, 4), (0x9200, 4)],
+        &[
+            "--disk".to_string(),
+            a.to_string_lossy().into_owned(),
+            "--disk-b".to_string(),
+            b.to_string_lossy().into_owned(),
+        ],
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+    let out = out?;
+    expect_eq(
+        "drive B (unit 1): its first byte",
+        out.bytes(0x9100, 2)?[0],
+        0xC3,
+    )?;
+    expect_eq(
+        "drive A (unit 0): its first byte",
+        out.bytes(0x9200, 2)?[0],
+        0x5A,
+    )
+}
+
 const PLUS3_CASES: &[Case] = &[
     Case::new(
         Area::Memory,
@@ -774,6 +909,12 @@ const PLUS3_CASES: &[Case] = &[
         "a +2A/+3 frame is 70908 T-states",
         "WOS128 (shares the 128K timing)",
         a_plus3_frame_is_70908_t_states,
+    ),
+    Case::new(
+        Area::Io,
+        "a +3 reads a sector from each of its two drives (--disk, --disk-b)",
+        "WOS128 +3 floppy ports 2FFDh/3FFDh/1FFDh; the uPD765A unit select (US0)",
+        the_plus3_reads_each_of_its_two_drives,
     ),
 ];
 
