@@ -292,7 +292,8 @@ pub struct Screen {
 }
 
 impl Screen {
-    fn read(path: &Path) -> Result<Screen, String> {
+    /// Reads a PNG written by `--dump-screen` or `--at N:screenshot=FILE`.
+    pub fn read(path: &Path) -> Result<Screen, String> {
         let file = std::fs::File::open(path)
             .map_err(|e| format!("no screen file {}: {e}", path.display()))?;
         let mut reader = png::Decoder::new(std::io::BufReader::new(file))

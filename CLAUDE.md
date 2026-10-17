@@ -155,9 +155,14 @@ purpose. Everything skips unless `RETROCLAWD_BIN`, `RETROCLAWD_MACHINE_PLUGIN_DI
   swapping `,` and `.` was mutation-checked); on a CPC6128 the disk (`RUN"DIAG`, then `q` padding typed while it loads, then the menu key)
   passes its upper RAM test and its ROM test names the lower ROM, BASIC and AMSDOS by checksum (read from how far each line's text reaches).
   The cartridge needed two fixes: its `.cpr` is malformed (`parse_lenient`) and a CPC+ must honour classic Gate Array ink writes (it showed
-  black). The first screen of the keyboard test ignores the first two keys, hence the sacrificial `z`. Not done: the soak, sound and
-  joystick tests, the ROM test for a 464/664, and the C64 cartridge: crystalct/C64UnifDiagCart (CERN-OHL-W-2.0, a hardware licence)
-  was not tried.
+  black). The first screen of the keyboard test ignores the first two keys, hence the sacrificial `z`. Five more cases (2026-10-16, `cpc_diagnostics`
+  now about 90 s in a debug build): the keyboard test's joystick cells (`--at N:key_down|key_up=Joy1*`, 10 frames per press, two
+  complementary runs: exactly the pressed cells light), the menu's JOYSTICK result after leaving the test by holding fire 1 (cyan `PASSED`
+  with up/down/left/right/fire 1 read; error-colour `FAILED` when right never was; the untouched keyboard is `FAILED`), and the 6128 disk's
+  soak test (`SOAK ITERATION N` in the title: banner still there, no error colour and a changed counter digit at frame 2000 versus 3800, taken
+  with `--at 2000:screenshot=FILE`; `rc_suite::Screen::read` is public for that). Mutation-checked in the amstrad plugin: swapped Up/Down
+  bits, Left moved to bit 7, bit 7 stuck on writes to RAM banks 4+ (aliasing banks or byte pairs did NOT fail it: the program fills and verifies one
+  pattern, so an alias is consistent to it). Not done: the sound test, the ROM test for a 464/664.
   The C64 dead test (crystalct/C64UnifDiagCart's modified rev 781220 ROM, a raw 8K Ultimax image fetched from a pinned commit; CERN-OHL-W-2.0
   repository, Commodore's code, so local use only) has one case in `tests/c64.rs` (`c64_diagnostics`, about 50 s in a debug build): wrapped in an
   Ultimax `.crt` it boots with no KERNAL involved and prints OK next to ZERO PAGE and STACK PAGE. The Spectrum suite also checks that both

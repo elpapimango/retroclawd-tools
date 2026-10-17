@@ -777,6 +777,228 @@ fn the_diagnostics_disk_recognises_the_roms_by_checksum(env: &Env) -> Result<(),
     Ok(())
 }
 
+/// The joystick part of the keyboard test: the cell of each direction and button, and the matrix key that presses it.
+const JOY_CELLS: &[(&str, usize, usize)] = &[
+    ("Joy1Up", 311, 364),
+    ("Joy1Left", 279, 395),
+    ("Joy1Right", 343, 395),
+    ("Joy1Down", 311, 426),
+    ("Joy1Fire1", 391, 395),
+    ("Joy1Fire2", 423, 395),
+    ("Joy1Fire3", 455, 395),
+];
+
+/// `--at` arguments that press each of `keys` for 10 frames, one after the other from frame `from`; returns the frame after.
+fn joystick_presses(keys: &[&str], from: u32) -> (Vec<String>, u32) {
+    let mut args = Vec::new();
+    let mut frame = from;
+    for key in keys {
+        args.push("--at".to_string());
+        args.push(format!("{frame}:key_down={key}"));
+        args.push("--at".to_string());
+        args.push(format!("{}:key_up={key}", frame + 10));
+        frame += 20;
+    }
+    (args, frame)
+}
+
+/// Opens the diagnostics' keyboard test (`k`, after two sacrificial keys) on the cartridge.
+fn diagnostics_keyboard_test(env: &Env) -> Result<rc_suite::Run<'_>, String> {
+    Ok(env
+        .run("gx4000")
+        .rom(&env.file(DIAG_CART)?)
+        .arg("--type-after")
+        .arg("300")
+        .arg("--type-delay")
+        .arg("160")
+        .arg("--type")
+        .arg("kzz"))
+}
+
+/// Presses `pressed` (machine key names) on the joystick and checks that exactly those cells of the keyboard test light up.
+fn joystick_lights_exactly(env: &Env, pressed: &[&str]) -> Result<(), String> {
+    let (at, end) = joystick_presses(pressed, 400);
+    let mut run = diagnostics_keyboard_test(env)?;
+    for a in at {
+        run = run.arg(a);
+    }
+    let out = run.frames(end + 40).screen().go()?;
+    let screen = out.screen()?;
+    let wrong: Vec<String> = JOY_CELLS
+        .iter()
+        .filter_map(|&(name, x, y)| {
+            let f = filled(screen, x, y);
+            let want = pressed.contains(&name);
+            let bad = if want { f < 0.55 } else { f >= 0.40 };
+            bad.then(|| {
+                format!(
+                    "{name} ({f:.2} filled, wanted {})",
+                    if want { "lit" } else { "dark" }
+                )
+            })
+        })
+        .collect();
+    expect_eq(
+        "joystick cells in the wrong state",
+        wrong,
+        Vec::<String>::new(),
+    )
+}
+
+fn the_diagnostics_keyboard_test_sees_up_right_and_fire_2_on_the_joystick(
+    env: &Env,
+) -> Result<(), String> {
+    joystick_lights_exactly(env, &["Joy1Up", "Joy1Right", "Joy1Fire2"])
+}
+
+fn the_diagnostics_keyboard_test_sees_down_left_fire_1_and_fire_3_on_the_joystick(
+    env: &Env,
+) -> Result<(), String> {
+    joystick_lights_exactly(env, &["Joy1Down", "Joy1Left", "Joy1Fire1", "Joy1Fire3"])
+}
+
+/// Presses `keys` on the joystick in the keyboard test, then holds fire 1 to leave it (the program exits after about 53
+/// frames of fire, ESC or TAB) and returns the menu: the JOYSTICK result row says whether all of up, down, left, right and
+/// fire 1 were seen in the matrix.
+fn joystick_result(env: &Env, keys: &[&str]) -> Result<rc_suite::Outcome, String> {
+    let (at, end) = joystick_presses(keys, 400);
+    let mut run = diagnostics_keyboard_test(env)?;
+    for a in at {
+        run = run.arg(a);
+    }
+    run.arg("--at")
+        .arg(format!("{end}:key_down=Joy1Fire1"))
+        .arg("--at")
+        .arg(format!("{}:key_up=Joy1Fire1", end + 70))
+        .frames(end + 70 + 60)
+        .screen()
+        .go()
+}
+
+/// Pixels of `colour` in the JOYSTICK row of the menu's result list (value column).
+fn joystick_row_pixels(screen: &rc_suite::Screen, colour: [u8; 3]) -> usize {
+    (360..378)
+        .flat_map(|y| (230..340).map(move |x| (x, y)))
+        .filter(|&(x, y)| screen.pixel(x, y) == colour)
+        .count()
+}
+
+fn is_error_colour(p: [u8; 3]) -> bool {
+    p[0] >= 200 && p[1] <= 60 && p[2] <= 60
+}
+
+fn the_diagnostics_report_a_working_joystick_as_passed(env: &Env) -> Result<(), String> {
+    let out = joystick_result(env, &["Joy1Up", "Joy1Down", "Joy1Left", "Joy1Right"])?;
+    let screen = out.screen()?;
+    let cyan = joystick_row_pixels(screen, [0, 255, 255]);
+    if cyan < 30 {
+        return Err(format!(
+            "no cyan JOYSTICK : PASSED ({cyan} cyan pixels in the row)"
+        ));
+    }
+    // And the keyboard, of which no key was typed, is reported as failed in the error colour.
+    let red = (344..362)
+        .flat_map(|y| (230..340).map(move |x| (x, y)))
+        .filter(|&(x, y)| is_error_colour(screen.pixel(x, y)))
+        .count();
+    if red < 30 {
+        return Err(format!(
+            "the untouched keyboard is not reported as FAILED ({red} red pixels)"
+        ));
+    }
+    Ok(())
+}
+
+fn the_diagnostics_report_a_joystick_missing_a_direction_as_failed(
+    env: &Env,
+) -> Result<(), String> {
+    let out = joystick_result(env, &["Joy1Up", "Joy1Down", "Joy1Left"])?;
+    let screen = out.screen()?;
+    let red = (360..378)
+        .flat_map(|y| (230..340).map(move |x| (x, y)))
+        .filter(|&(x, y)| is_error_colour(screen.pixel(x, y)))
+        .count();
+    if red < 30 {
+        return Err(format!(
+            "no red JOYSTICK : FAILED ({red} red pixels in the row)"
+        ));
+    }
+    expect_eq(
+        "cyan pixels in the JOYSTICK row",
+        joystick_row_pixels(screen, [0, 255, 255]),
+        0,
+    )
+}
+
+/// The soak test repeats the ROM check and the upper RAM test of a 6128 for ever, counting iterations in its title, and stops
+/// on the failing-bits screen at the first error. Two pictures of one run (`--at N:screenshot`): still the soak title, no error
+/// colour anywhere, and the iteration counter has moved on.
+fn the_diagnostics_soak_test_keeps_iterating_without_errors(env: &Env) -> Result<(), String> {
+    let first = std::env::temp_dir().join(format!("rc-suite-soak-{}.png", std::process::id()));
+    let wait = "q".repeat(60);
+    let out = env
+        .run("cpc6128")
+        .rom(&rom(env)?)
+        .arg("--disk")
+        .arg(env.file(DIAG_DISK)?.to_string_lossy())
+        .arg("--type-after")
+        .arg("150")
+        .arg("--type-delay")
+        .arg("80")
+        .arg("--type")
+        .arg(format!("RUN\"DIAG\n{wait}s"))
+        .arg("--at")
+        .arg(format!("2000:screenshot={}", first.display()))
+        .frames(3800)
+        .screen()
+        .go()?;
+    let early = rc_suite::Screen::read(&first)?;
+    let _ = std::fs::remove_file(&first);
+    let late = out.screen()?;
+    let cyan_banner = |s: &rc_suite::Screen| {
+        (70..690)
+            .filter(|&x| s.pixel(x, 88) == [0, 255, 255])
+            .count()
+    };
+    let red = |s: &rc_suite::Screen| {
+        (0..s.height)
+            .flat_map(|y| (0..s.width).map(move |x| (x, y)))
+            .filter(|&(x, y)| is_error_colour(s.pixel(x, y)))
+            .count()
+    };
+    for (when, s) in [("early", &early), ("late", late)] {
+        if cyan_banner(s) < 500 {
+            return Err(format!(
+                "the {when} picture has no title banner: the soak test is not running"
+            ));
+        }
+        expect_eq(
+            &format!("error-colour pixels in the {when} picture"),
+            red(s),
+            0,
+        )?;
+    }
+    // The title ends "SOAK ITERATION 00N": three characters 12 pixels apart at x=616..652, rows 88-104.
+    let digit = |s: &rc_suite::Screen, n: usize| -> Vec<bool> {
+        (88..104)
+            .flat_map(|y| (616 + 12 * n..628 + 12 * n).map(move |x| (x, y)))
+            .map(|(x, y)| s.pixel(x, y) != [0, 255, 255])
+            .collect()
+    };
+    if digit(&early, 0) != digit(&early, 1) {
+        return Err("the iteration counter is past 99 at frame 2000".to_string());
+    }
+    if digit(&early, 2) == digit(late, 2) {
+        return Err(
+            "the iteration counter did not change between frame 2000 and the end".to_string(),
+        );
+    }
+    if digit(late, 2) == digit(late, 0) {
+        return Err("the iteration counter is still 0 at the end".to_string());
+    }
+    Ok(())
+}
+
 const DIAG_CASES: &[Case] = &[
     Case::new(
         Area::Rom,
@@ -807,6 +1029,36 @@ const DIAG_CASES: &[Case] = &[
         "the AmstradDiag disk recognises the lower ROM, BASIC and AMSDOS by checksum",
         "AmstradDiag's ROM test (known ROMs by name and checksum, UNKNOWN otherwise; empty slots as dashes)",
         the_diagnostics_disk_recognises_the_roms_by_checksum,
+    ),
+    Case::new(
+        Area::Io,
+        "the AmstradDiag keyboard test sees joystick up, right and fire 2 where the CPC matrix has them",
+        "AmstradDiag's keyboard test (it paints a joystick cell from the matrix row it reads)",
+        the_diagnostics_keyboard_test_sees_up_right_and_fire_2_on_the_joystick,
+    ),
+    Case::new(
+        Area::Io,
+        "the AmstradDiag keyboard test sees joystick down, left, fire 1 and fire 3 where the CPC matrix has them",
+        "AmstradDiag's keyboard test (it paints a joystick cell from the matrix row it reads)",
+        the_diagnostics_keyboard_test_sees_down_left_fire_1_and_fire_3_on_the_joystick,
+    ),
+    Case::new(
+        Area::Io,
+        "the AmstradDiag reports a joystick that moved every way and fired as PASSED",
+        "AmstradDiag's joystick result (cyan PASSED once up, down, left, right and fire 1 were read)",
+        the_diagnostics_report_a_working_joystick_as_passed,
+    ),
+    Case::new(
+        Area::Io,
+        "the AmstradDiag reports a joystick that never went right as FAILED",
+        "AmstradDiag's joystick result (error colour when a direction was never read)",
+        the_diagnostics_report_a_joystick_missing_a_direction_as_failed,
+    ),
+    Case::new(
+        Area::Memory,
+        "the AmstradDiag soak test keeps iterating on a 6128 without an error",
+        "AmstradDiag's soak test (ROM check and upper RAM test repeated; its iteration counter; the error colour)",
+        the_diagnostics_soak_test_keeps_iterating_without_errors,
     ),
 ];
 
