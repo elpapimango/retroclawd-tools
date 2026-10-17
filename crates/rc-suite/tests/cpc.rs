@@ -1511,3 +1511,111 @@ fn cpc_diagnostics() {
     eprintln!("{}", report.summary());
     assert!(report.ok(), "{}", report.summary());
 }
+
+// ---- AmstradDiag's own sound test (repository head, not the v1.3 release)
+
+const DIAG_HEAD_DISK: &str = "amstrad/software/diagnostics/AmstradDiagHead.dsk";
+
+/// AmstradDiag's sound test (`[T]` in the menu; it is in the repository since 2024 and not in the v1.3 release, so the disk is built
+/// by `tools/build_amstradiag_head.sh`) run through the real firmware: it detects the chip from register 1, plays noise on channel A,
+/// then A and B, then A, B and C, and then the three tones of its chord (A2, C3 and E3: periods `$0238`, `$01DD`, `$017B`) the same
+/// way, each step about two seconds, ending muted. The case finds the first loud sound after the menu (the CPC's key click for the
+/// typed letters is quieter) and checks every step against what the program sets up: noise that grows as channels are added and has
+/// no tone in it, then each tone present exactly from the step that turns its channel on.
+fn the_diagnostics_sound_test_steps_through_noise_and_tones_on_each_channel(
+    env: &Env,
+) -> Result<(), String> {
+    let wait = "q".repeat(60);
+    let out = env
+        .run("cpc6128")
+        .rom(&rom(env)?)
+        .arg("--disk")
+        .arg(env.file(DIAG_HEAD_DISK)?.to_string_lossy())
+        .arg("--type-after")
+        .arg("150")
+        .arg("--type-delay")
+        .arg("80")
+        .arg("--type")
+        .arg(format!("RUN\"DIAG\n{wait}t"))
+        .frames(1900)
+        .audio()
+        .go()?;
+    let audio = out.audio()?;
+    let seconds: f64 = 1900.0 / 50.0;
+    // The first 0.1 s window louder than a key click.
+    let t0 = (0..(seconds * 10.0) as usize - 1)
+        .map(|i| i as f64 / 10.0)
+        .find(|&t| audio.rms(t, t + 0.1) > 0.05)
+        .ok_or("no sound at all: the sound test did not start")?;
+    // Noise: A, then A+B, then A+B+C, two seconds each; more channels are louder, and none of it is one of the chord's tones.
+    let noise: Vec<f64> = (0..3)
+        .map(|k| {
+            let from = t0 + 0.5 + 2.0 * k as f64;
+            audio.rms(from, from + 1.0)
+        })
+        .collect();
+    if !(noise[0] > 0.04 && noise[0] < noise[1] && noise[1] < noise[2]) {
+        return Err(format!(
+            "the noise steps should be audible and get louder with each channel: rms {noise:.3?}"
+        ));
+    }
+    for k in 0..3 {
+        let from = t0 + 0.5 + 2.0 * k as f64;
+        for ch in 0..3 {
+            let amplitude = audio.tone(psg_frequency(ch), from, from + 1.0);
+            if amplitude > 0.02 {
+                return Err(format!(
+                    "noise step {k} has a tone of {amplitude:.3} at {:.1} Hz in it",
+                    psg_frequency(ch)
+                ));
+            }
+        }
+    }
+    // Tones: A, then A+B, then A+B+C; each present exactly from the step that switches its channel on.
+    let sound = t0 + 6.5;
+    for k in 0..3 {
+        let from = sound + 0.5 + 2.0 * k as f64;
+        for ch in 0..3 {
+            let amplitude = audio.tone(psg_frequency(ch), from, from + 0.9);
+            let on = ch <= k;
+            if on && amplitude < 0.06 || !on && amplitude > 0.02 {
+                return Err(format!(
+                    "sound step {k}: channel {} should be {} but its tone ({:.1} Hz) is {amplitude:.3}",
+                    ["A", "B", "C"][ch],
+                    if on { "playing" } else { "silent" },
+                    psg_frequency(ch)
+                ));
+            }
+        }
+    }
+    // Then everything is muted.
+    let end = audio.rms(t0 + 12.5, t0 + 14.5);
+    if end > 0.002 {
+        return Err(format!("the channels should end muted, rms {end:.4}"));
+    }
+    Ok(())
+}
+
+const DIAG_HEAD_CASES: &[Case] = &[Case::new(
+    Area::Sound,
+    "AmstradDiag's sound test (repository head) plays noise then the A2-C3-E3 tones, one channel more at each step, and ends muted",
+    "AmstradDiag SoundTest.asm: PSG registers 0-7 through the PPI, mixer tables for noise and tone, per-step delays",
+    the_diagnostics_sound_test_steps_through_noise_and_tones_on_each_channel,
+)];
+
+#[test]
+fn cpc_diagnostics_head() {
+    let Some(env) = Env::discover() else {
+        eprintln!("skipping: RETROCLAWD_BIN / RC_ROMS not set");
+        return;
+    };
+    if env.file(DIAG_HEAD_DISK).is_err() {
+        eprintln!(
+            "skipping: {DIAG_HEAD_DISK} not present (tools/build_amstradiag_head.sh builds it; needs sjasmplus)"
+        );
+        return;
+    }
+    let report = run_cases(&env, DIAG_HEAD_CASES);
+    eprintln!("{}", report.summary());
+    assert!(report.ok(), "{}", report.summary());
+}

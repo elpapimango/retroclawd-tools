@@ -450,6 +450,30 @@ fn unified_crt(image: &[u8]) -> Vec<u8> {
     crt
 }
 
+/// The screen RAM of the whole unified cartridge (see below) after 8000 frames, with `extra` command-line arguments.
+fn unified_screen(env: &Env, extra: &[&str]) -> Result<Vec<u8>, String> {
+    let image = std::fs::read(env.file(UNIFIED_32K)?).map_err(|e| e.to_string())?;
+    if image.len() != 0x8000 {
+        return Err(format!(
+            "{UNIFIED_32K} is {} bytes, expected 32768",
+            image.len()
+        ));
+    }
+    let crt = std::env::temp_dir().join(format!(
+        "rc-suite-unified-{}-{}.crt",
+        std::process::id(),
+        extra.len()
+    ));
+    std::fs::write(&crt, unified_crt(&image)).map_err(|e| e.to_string())?;
+    let mut run = env.c64()?.arg("--cartridge").arg(crt.to_string_lossy());
+    for arg in extra {
+        run = run.arg(*arg);
+    }
+    let out = run.frames(8000).dump(0x0400, 1000).go();
+    let _ = std::fs::remove_file(&crt);
+    out?.bytes(0x0400, 1000)
+}
+
 /// The whole unified cartridge, as the hardware does it: the modified dead test runs in Ultimax mode (zero page, stack page, screen
 /// RAM, colour RAM, the low-RAM test, the sound test), ends its first cycle by copying a routine to `$0334` that writes `$01` to
 /// `$DE00` -- the board's flip-flop turns the cartridge into an ordinary 8K one -- and jumps to the KERNAL's reset routine, which finds
@@ -460,24 +484,7 @@ fn unified_crt(image: &[u8]) -> Vec<u8> {
 fn the_unified_cartridge_switches_to_the_standard_diagnostic_and_it_passes(
     env: &Env,
 ) -> Result<(), String> {
-    let image = std::fs::read(env.file(UNIFIED_32K)?).map_err(|e| e.to_string())?;
-    if image.len() != 0x8000 {
-        return Err(format!(
-            "{UNIFIED_32K} is {} bytes, expected 32768",
-            image.len()
-        ));
-    }
-    let crt = std::env::temp_dir().join(format!("rc-suite-unified-{}.crt", std::process::id()));
-    std::fs::write(&crt, unified_crt(&image)).map_err(|e| e.to_string())?;
-    let out = env
-        .c64()?
-        .arg("--cartridge")
-        .arg(crt.to_string_lossy())
-        .frames(8000)
-        .dump(0x0400, 1000)
-        .go();
-    let _ = std::fs::remove_file(&crt);
-    let screen = out?.bytes(0x0400, 1000)?;
+    let screen = unified_screen(env, &[])?;
     if find_text(&screen, "C-64 DIAGNOSTIC REV586220").is_none() {
         return Err(
             "the standard diagnostic's title is not on the screen: the cartridge never switched out of Ultimax mode".into(),
@@ -532,6 +539,30 @@ fn the_unified_cartridge_switches_to_the_standard_diagnostic_and_it_passes(
             ));
         }
     }
+    // The diagnostic judges the 6581 by reading POTX/POTY and wants both in $50-$8F, what its test plug (paddle resistors) gives; with
+    // nothing in the control ports they read $FF, as on a real machine, so the chip table marks it BAD.
+    if !has_bad(row_of("6581 U18")?) {
+        return Err("with no paddle in the ports the 6581 should read BAD (open POT lines)".into());
+    }
+    Ok(())
+}
+
+/// "BAD" (screen codes 2, 1, 4) somewhere in a screen row.
+fn has_bad(row: &[u8]) -> bool {
+    row.windows(3).any(|w| w == [0x02, 0x01, 0x04])
+}
+
+/// With a paddle on control port 2 (POT lines mid-range) the same diagnostic passes the 6581: its BAD was the missing test plug, not
+/// the SID. (The 4066 analog switch that selects between the two ports then shows BAD instead, because port 1 still has no pot.)
+fn the_unified_diagnostic_passes_the_6581_when_the_pot_lines_have_a_paddle(
+    env: &Env,
+) -> Result<(), String> {
+    let screen = unified_screen(env, &["--mouse", "paddle-port2"])?;
+    let at = find_text(&screen, "6581 U18").ok_or("no 6581 line in the chip table")?;
+    let row = &screen[at..(at / 40 + 1) * 40];
+    if has_bad(row) {
+        return Err("the 6581 still reads BAD with a paddle on port 2".into());
+    }
     Ok(())
 }
 
@@ -556,6 +587,12 @@ const DIAG_CASES: &[Case] = &[
         "the whole unified cartridge: the dead test switches it out of Ultimax mode and the standard diagnostic passes its RAM, ROM, timer and interrupt tests",
         "the Unified Diagnostic Cartridge: a write to $DE00 flips Ultimax to 8K mode, the KERNAL restarts and starts the standard diagnostic (rev 586220++)",
         the_unified_cartridge_switches_to_the_standard_diagnostic_and_it_passes,
+    ),
+    Case::new(
+        Area::Io,
+        "the standard diagnostic passes the 6581 once a paddle gives the POT lines a mid-range value",
+        "the Unified Diagnostic Cartridge's standard diagnostic: SID POTX/POTY in $50-$8F (its test plug); open lines read $FF",
+        the_unified_diagnostic_passes_the_6581_when_the_pot_lines_have_a_paddle,
     ),
 ];
 
