@@ -295,10 +295,27 @@ fn amsdos_load(
     name: &str,
     len: usize,
 ) -> Result<Loaded, String> {
+    amsdos_load_with(env, tag, disk, None, name, len)
+}
+
+/// `amsdos_load` with an optional disk in drive B too (`--disk-b`); a name like `B:FILE.BIN` reads from that drive.
+fn amsdos_load_with(
+    env: &Env,
+    tag: &str,
+    disk: &std::path::Path,
+    disk_b: Option<&std::path::Path>,
+    name: &str,
+    len: usize,
+) -> Result<Loaded, String> {
+    let mut extra = vec!["--disk".to_string(), disk.to_string_lossy().into_owned()];
+    if let Some(b) = disk_b {
+        extra.push("--disk-b".to_string());
+        extra.push(b.to_string_lossy().into_owned());
+    }
     let resident = Resident {
         machine: "cpc6128",
         rom: &rom(env)?,
-        extra: vec!["--disk".to_string(), disk.to_string_lossy().into_owned()],
+        extra,
         sna_version: None,
     };
     let out = resident.run(
@@ -391,6 +408,54 @@ fn a_multi_sector_file_rcdisk_added_loads_through_amsdos(env: &Env) -> Result<()
     expect_eq("the file's bytes", got.bytes, data)
 }
 
+/// A disk holding one binary, `name`, of `data`.
+fn disk_with(
+    dir: &std::path::Path,
+    file: &str,
+    name: &str,
+    data: &[u8],
+) -> Result<PathBuf, String> {
+    let mut disk = rcdisk::create("dsk", None, None)?;
+    disk.add(
+        name,
+        data,
+        &rcdisk::AddOptions {
+            header: Some("amsdos".to_string()),
+            load: Some(0x4000),
+            entry: Some(0x4000),
+            ..rcdisk::AddOptions::default()
+        },
+    )?;
+    let path = dir.join(file);
+    std::fs::write(&path, disk.to_bytes()).map_err(|e| e.to_string())?;
+    Ok(path)
+}
+
+/// The external drive B of a CPC6128 (`--disk-b`): AMSDOS finds the second disk through the same controller by the
+/// drive letter in the file name, and the two disks do not bleed into each other. Both disks carry a file called
+/// `SAME.BIN` with different bytes, so reading the wrong drive shows.
+fn a_6128_reads_its_second_drive_through_amsdos(env: &Env) -> Result<(), String> {
+    let dir = temp_dir("driveb")?;
+    let data_a: Vec<u8> = (0..700u32).map(|i| (i * 3 + 1) as u8).collect();
+    let data_b: Vec<u8> = (0..900u32).map(|i| (i * 5 + 77) as u8).collect();
+    let a = disk_with(&dir, "a.dsk", "SAME.BIN", &data_a)?;
+    let b = disk_with(&dir, "b.dsk", "SAME.BIN", &data_b)?;
+    let from_a = amsdos_load_with(env, "driveb-a", &a, Some(&b), "A:SAME.BIN", data_a.len())?;
+    expect_eq("drive A: the file opened", from_a.ok, true)?;
+    expect_eq("drive A: its bytes", from_a.bytes, data_a)?;
+    let from_b = amsdos_load_with(env, "driveb-b", &a, Some(&b), "B:SAME.BIN", data_b.len())?;
+    expect_eq("drive B: the file opened", from_b.ok, true)?;
+    expect_eq(
+        "drive B: its length from the header",
+        usize::from(from_b.length),
+        data_b.len(),
+    )?;
+    expect_eq("drive B: its bytes", from_b.bytes, data_b)?;
+    // Without a disk in B, naming drive B finds nothing (and does not fall back to A).
+    let none = amsdos_load_with(env, "driveb-none", &a, None, "B:SAME.BIN", 4)?;
+    expect_eq("an empty drive B opens nothing", none.ok, false)
+}
+
 fn a_sna_of_every_version_loads_and_runs(env: &Env) -> Result<(), String> {
     let rom = rom(env)?;
     for version in 1..=3u8 {
@@ -449,6 +514,245 @@ fn the_keyboard_types_every_punctuation_key_into_basic(env: &Env) -> Result<(), 
     )
 }
 
+// ---- the PSG (AY-3-8912) through the PPI, the way AmstradDiag's sound test drives it
+
+/// The tone periods AmstradDiag's sound test gives channels A, B and C (an A2-C3-E3 chord): at the CPC's 1 MHz PSG clock a tone
+/// of period P is 1 000 000 / (16 P) Hz. Taken from the program's source (MIT).
+const PSG_PERIODS: [u16; 3] = [0x0238, 0x01DD, 0x017B];
+
+fn psg_frequency(channel: usize) -> f64 {
+    1_000_000.0 / (16.0 * f64::from(PSG_PERIODS[channel]))
+}
+
+const PSG_RESULT: u16 = 0x4F00;
+
+/// Sets the PSG up the way the diagnostics do (register select and data through PPI port A and the BDIR/BC1 bits of port C), after
+/// reading register 1 back for the chip detection, and then plays with `mixer` (register 7) and `volume` on all three channels.
+fn psg_run(env: &Env, tag: &str, mixer: u8, volume: u8) -> Result<Outcome, String> {
+    let [a, b, c] = PSG_PERIODS;
+    let source = format!(
+        "di
+ ld sp,$7F00 ; the upper ROM shows at $C000, where a stack in high RAM would read back as ROM
+ ld bc,$F782
+ out (c),c
+ ld a,1
+ ld l,$1F
+ call ay_write
+ ld a,1
+ call ay_read
+ ld ({PSG_RESULT}),a
+ ld a,0
+ ld l,{al}
+ call ay_write
+ ld a,1
+ ld l,{ah}
+ call ay_write
+ ld a,2
+ ld l,{bl}
+ call ay_write
+ ld a,3
+ ld l,{bh}
+ call ay_write
+ ld a,4
+ ld l,{cl}
+ call ay_write
+ ld a,5
+ ld l,{ch}
+ call ay_write
+ ld a,8
+ ld l,{volume}
+ call ay_write
+ ld a,9
+ call ay_write
+ ld a,10
+ call ay_write
+ ld a,7
+ ld l,{mixer}
+ call ay_write
+forever: jr forever
+ay_write: ld b,$F4
+ ld c,a
+ out (c),c
+ ld bc,$F6C0
+ out (c),c
+ ld bc,$F600
+ out (c),c
+ ld b,$F4
+ ld c,l
+ out (c),c
+ ld bc,$F680
+ out (c),c
+ ld bc,$F600
+ out (c),c
+ ret
+ay_read: ld b,$F4
+ ld c,a
+ out (c),c
+ ld bc,$F6C0
+ out (c),c
+ ld bc,$F600
+ out (c),c
+ ld bc,$F792
+ out (c),c
+ ld bc,$F640
+ out (c),c
+ ld b,$F4
+ in a,(c)
+ ld bc,$F782
+ out (c),c
+ ld bc,$F600
+ out (c),c
+ ret
+",
+        al = a & 0xFF,
+        ah = a >> 8,
+        bl = b & 0xFF,
+        bh = b >> 8,
+        cl = c & 0xFF,
+        ch = c >> 8,
+    );
+    let file = z80_program(tag, 0x4000, &source)?;
+    env.run("cpc6128")
+        .rom(&rom(env)?)
+        .arg("--program")
+        .arg(file.to_string_lossy())
+        .arg("--org")
+        .arg("0x4000")
+        .frames(100)
+        .dump(PSG_RESULT, 1)
+        .audio()
+        .go()
+}
+
+/// The amplitude of each channel's tone in the second half of a run that plays `mixer`.
+fn psg_tones(audio: &rc_suite::Audio) -> [f64; 3] {
+    [0, 1, 2].map(|ch| audio.tone(psg_frequency(ch), 0.4, 1.8))
+}
+
+fn check_only_channels(env: &Env, tag: &str, mixer: u8, on: [bool; 3]) -> Result<(), String> {
+    let out = psg_run(env, tag, mixer, 12)?;
+    let audio = out.audio()?;
+    let tones = psg_tones(audio);
+    let loudest = tones.iter().cloned().fold(0.0, f64::max);
+    if loudest < 0.01 {
+        return Err(format!("nothing audible: tone amplitudes {tones:.4?}"));
+    }
+    for ch in 0..3 {
+        // A square wave has the odd harmonics of its fundamental, so a tone a third of the right frequency would still show
+        // its third harmonic at the right one: the fundamental has to be the strongest component, no subharmonic may rival it.
+        if on[ch] {
+            let f = psg_frequency(ch);
+            for divisor in [2.0, 3.0] {
+                let sub = audio.tone(f / divisor, 0.4, 1.8);
+                if sub > tones[ch] * 0.1 {
+                    return Err(format!(
+                        "channel {} plays too low: {sub:.4} at {:.1} Hz against {:.4} at {f:.1} Hz",
+                        ["A", "B", "C"][ch],
+                        f / divisor,
+                        tones[ch]
+                    ));
+                }
+            }
+        }
+        // A channel that is on has a tone near the strongest one of the chord; one that is off has (almost) none.
+        let wrong = if on[ch] {
+            tones[ch] < loudest * 0.4
+        } else {
+            tones[ch] > loudest * 0.1
+        };
+        if wrong {
+            return Err(format!(
+                "channel {} should be {} (tone amplitudes at {:.1}/{:.1}/{:.1} Hz: {tones:.4?})",
+                ["A", "B", "C"][ch],
+                if on[ch] { "playing" } else { "silent" },
+                psg_frequency(0),
+                psg_frequency(1),
+                psg_frequency(2),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn the_psg_plays_channel_a_alone_at_its_period_through_the_ppi(env: &Env) -> Result<(), String> {
+    check_only_channels(env, "psg-a", 0b1011_1110, [true, false, false])
+}
+
+fn the_psg_plays_channel_b_alone_at_its_period_through_the_ppi(env: &Env) -> Result<(), String> {
+    check_only_channels(env, "psg-b", 0b1011_1101, [false, true, false])
+}
+
+fn the_psg_plays_channel_c_alone_at_its_period_through_the_ppi(env: &Env) -> Result<(), String> {
+    check_only_channels(env, "psg-c", 0b1011_1011, [false, false, true])
+}
+
+fn the_psg_plays_all_three_channels_as_a_chord(env: &Env) -> Result<(), String> {
+    check_only_channels(env, "psg-abc", 0b1011_1000, [true, true, true])
+}
+
+fn the_psg_is_silent_when_the_mixer_turns_every_channel_off(env: &Env) -> Result<(), String> {
+    let out = psg_run(env, "psg-mute", 0b1011_1111, 12)?;
+    let rms = out.audio()?.rms(0.4, 1.8);
+    if rms > 0.001 {
+        return Err(format!("the muted PSG still plays (rms {rms:.4})"));
+    }
+    Ok(())
+}
+
+fn the_psg_noise_is_broadband_not_a_tone(env: &Env) -> Result<(), String> {
+    // Noise on channel A only (register 7 bit 3 clear, tone A off).
+    let out = psg_run(env, "psg-noise", 0b1011_0111, 12)?;
+    let audio = out.audio()?;
+    let rms = audio.rms(0.4, 1.8);
+    if rms < 0.01 {
+        return Err(format!("the noise channel is silent (rms {rms:.4})"));
+    }
+    // A tone of rms r has one DFT bin of amplitude about 1.27 r; noise spreads it over thousands of bins.
+    let peak = [
+        psg_frequency(0),
+        psg_frequency(1),
+        psg_frequency(2),
+        440.0,
+        1000.0,
+    ]
+    .iter()
+    .map(|&f| audio.tone(f, 0.4, 1.8))
+    .fold(0.0, f64::max);
+    if peak > rms * 0.5 {
+        return Err(format!(
+            "the noise has a tone in it (a bin of {peak:.4} against rms {rms:.4})"
+        ));
+    }
+    Ok(())
+}
+
+fn the_psg_volume_register_sets_the_level(env: &Env) -> Result<(), String> {
+    let level = |volume| -> Result<f64, String> {
+        Ok(psg_run(env, "psg-vol", 0b1011_1110, volume)?
+            .audio()?
+            .rms(0.4, 1.8))
+    };
+    let (quiet, loud) = (level(6)?, level(15)?);
+    // The AY's 16-step volume table is logarithmic (about 3 dB a step): level 15 is far louder than level 6.
+    if loud < quiet * 2.0 || quiet <= 0.0 {
+        return Err(format!(
+            "volume 15 (rms {loud:.4}) is not much louder than volume 6 (rms {quiet:.4})"
+        ));
+    }
+    Ok(())
+}
+
+/// AmstradDiag's chip detection writes `$1F` to register 1 and reads it back: all five bits back means a YM2149, four bits an
+/// AY-3-891x. The CPC6128 has an AY-3-8912, whose register 1 has only four bits.
+fn the_psg_register_1_has_four_bits_like_an_ay_3_8912(env: &Env) -> Result<(), String> {
+    let out = psg_run(env, "psg-id", 0b1011_1111, 0)?;
+    expect_eq(
+        "register 1 read back after writing 0x1F",
+        out.byte(PSG_RESULT)?,
+        0x0F,
+    )
+}
+
 const CASES: &[Case] = &[
     Case::new(
         Area::Timers,
@@ -497,6 +801,60 @@ const CASES: &[Case] = &[
         "every punctuation key can be typed into BASIC (including the quote)",
         "the CPC firmware's key tables (ROM 0x1D69); BASIC string handling",
         the_keyboard_types_every_punctuation_key_into_basic,
+    ),
+    Case::new(
+        Area::Io,
+        "the PSG plays channel A alone at its period when programmed through the PPI",
+        "AY-3-8912 tone period (f = 1 MHz / 16P) via PPI port A and the BDIR/BC1 lines of port C; register 7 enables",
+        the_psg_plays_channel_a_alone_at_its_period_through_the_ppi,
+    ),
+    Case::new(
+        Area::Io,
+        "the PSG plays channel B alone at its period when programmed through the PPI",
+        "AY-3-8912 tone period (f = 1 MHz / 16P) via PPI port A and the BDIR/BC1 lines of port C; register 7 enables",
+        the_psg_plays_channel_b_alone_at_its_period_through_the_ppi,
+    ),
+    Case::new(
+        Area::Io,
+        "the PSG plays channel C alone at its period when programmed through the PPI",
+        "AY-3-8912 tone period (f = 1 MHz / 16P) via PPI port A and the BDIR/BC1 lines of port C; register 7 enables",
+        the_psg_plays_channel_c_alone_at_its_period_through_the_ppi,
+    ),
+    Case::new(
+        Area::Io,
+        "the PSG plays all three channels as a chord",
+        "AY-3-8912 tone periods of AmstradDiag's sound test (110, 131 and 165 Hz)",
+        the_psg_plays_all_three_channels_as_a_chord,
+    ),
+    Case::new(
+        Area::Io,
+        "the PSG is silent when the mixer turns every channel off",
+        "AY-3-8912 register 7 (mixer): a set bit disables a tone or noise source",
+        the_psg_is_silent_when_the_mixer_turns_every_channel_off,
+    ),
+    Case::new(
+        Area::Io,
+        "the PSG noise channel is broadband, not a tone",
+        "AY-3-8912 noise generator (register 7 bit 3 enables noise on A)",
+        the_psg_noise_is_broadband_not_a_tone,
+    ),
+    Case::new(
+        Area::Io,
+        "the PSG volume register sets the level",
+        "AY-3-8912 amplitude registers 8-10 (16-step logarithmic volume table)",
+        the_psg_volume_register_sets_the_level,
+    ),
+    Case::new(
+        Area::Io,
+        "PSG register 1 reads back four bits, like an AY-3-8912",
+        "AY-3-8912 register 1 (tone A coarse) has 4 bits; AmstradDiag tells a YM2149 by reading 0x1F back",
+        the_psg_register_1_has_four_bits_like_an_ay_3_8912,
+    ),
+    Case::new(
+        Area::Io,
+        "a 6128 reads its second drive (--disk-b) through AMSDOS, apart from drive A",
+        "AMSDOS drive letters (A:/B:) and the uPD765A unit select: two drives on one controller",
+        a_6128_reads_its_second_drive_through_amsdos,
     ),
 ];
 
@@ -700,10 +1058,15 @@ const YELLOW: [u8; 3] = [255, 255, 0];
 /// Boots the diagnostics disk on a CPC6128 through the firmware (`RUN"DIAG`), waits for its menu and presses `key`. The
 /// `q` in between are typed while the disk loads (the program reads the matrix itself, so what BASIC does with them does not
 /// matter) and make the menu key arrive once the menu is up.
-fn diagnostics_disk_after_key(env: &Env, key: char) -> Result<rc_suite::Outcome, String> {
+fn diagnostics_disk_after_key(
+    env: &Env,
+    machine: &str,
+    firmware: &std::path::Path,
+    key: char,
+) -> Result<rc_suite::Outcome, String> {
     let wait = "q".repeat(60);
-    env.run("cpc6128")
-        .rom(&rom(env)?)
+    env.run(machine)
+        .rom(firmware)
         .arg("--disk")
         .arg(env.file(DIAG_DISK)?.to_string_lossy())
         .arg("--type-after")
@@ -718,7 +1081,7 @@ fn diagnostics_disk_after_key(env: &Env, key: char) -> Result<rc_suite::Outcome,
 }
 
 fn the_diagnostics_disk_passes_the_upper_ram_test_of_a_6128(env: &Env) -> Result<(), String> {
-    let out = diagnostics_disk_after_key(env, 'u')?;
+    let out = diagnostics_disk_after_key(env, "cpc6128", &rom(env)?, 'u')?;
     let screen = out.screen()?;
     // "UPPER RAM TESTS PASSED" is printed in the success colour (cyan) on the row under "C3 CONFIG: SUPPORTED"; a failure
     // uses the error colour (bright red).
@@ -742,11 +1105,28 @@ fn the_diagnostics_disk_passes_the_upper_ram_test_of_a_6128(env: &Env) -> Result
 }
 
 fn the_diagnostics_disk_recognises_the_roms_by_checksum(env: &Env) -> Result<(), String> {
+    diagnostics_rom_test(env, "cpc6128", &rom(env)?, 397)
+}
+
+/// The 664's firmware (lower ROM, BASIC 664 and AMSDOS in one 48K dump) read by the same ROM test.
+const ROM_664: &str = "amstrad/roms/cpc/cpc664.rom";
+
+fn the_diagnostics_disk_recognises_the_664_roms_by_checksum(env: &Env) -> Result<(), String> {
+    diagnostics_rom_test(env, "cpc664", &env.file(ROM_664)?, 349)
+}
+
+/// Runs the diagnostics disk's ROM test on `machine`. `name_end` is where the lower ROM's and ROM 00's text ends.
+fn diagnostics_rom_test(
+    env: &Env,
+    machine: &str,
+    firmware: &std::path::Path,
+    name_end: usize,
+) -> Result<(), String> {
     // The ROM test names a ROM it knows ("OS 6128 EN (B360)", "6128 BASIC EN (CAA0)", "AMSDOS (0F91)") and prints
     // "UNKNOWN: ..." for one it does not, so how far each line reaches shows which it is: the lower ROM and upper ROM 0 end
     // at x=397, AMSDOS in slot 7 at 313, and the empty slots are four dashes (x=207). That the checksums match shows the
     // lower ROM, the BASIC ROM and AMSDOS are paged in exactly as they are on the machine.
-    let out = diagnostics_disk_after_key(env, 'r')?;
+    let out = diagnostics_disk_after_key(env, machine, firmware, 'r')?;
     let screen = out.screen()?;
     let right_edge = |row: usize| {
         let y = 144 + 16 * row;
@@ -757,8 +1137,8 @@ fn the_diagnostics_disk_recognises_the_roms_by_checksum(env: &Env) -> Result<(),
     };
     // Rows: 0 lower ROM, 3 = ROM 00, 4..=9 ROMs 01-06, 10 = ROM 07, 11..=18 ROMs 08-0F (row 1-2 are the headings).
     let mut got = vec![
-        ("LOWER ROM", right_edge(0), 397),
-        ("ROM 00", right_edge(3), 397),
+        ("LOWER ROM", right_edge(0), name_end),
+        ("ROM 00", right_edge(3), name_end),
     ];
     for row in 4..10 {
         got.push(("empty slot", right_edge(row), 207));
@@ -999,6 +1379,49 @@ fn the_diagnostics_soak_test_keeps_iterating_without_errors(env: &Env) -> Result
     Ok(())
 }
 
+/// A CPC664 boots the diagnostics disk through the firmware: the system information names the machine and its floppy controller,
+/// and the power-on lower RAM test passes. The model name ("CPC 664") and the FDC line ("DETECTED", where the cartridge shows
+/// "NONE") are read from how far each line's text reaches.
+fn the_diagnostics_disk_identifies_a_cpc664_and_its_fdc(env: &Env) -> Result<(), String> {
+    let out = env
+        .run("cpc664")
+        .rom(&env.file(ROM_664)?)
+        .arg("--disk")
+        .arg(env.file(DIAG_DISK)?.to_string_lossy())
+        .arg("--type-after")
+        .arg("150")
+        .arg("--type-delay")
+        .arg("80")
+        .arg("--type")
+        .arg("RUN\"DIAG\n")
+        .frames(1000)
+        .screen()
+        .go()?;
+    let screen = out.screen()?;
+    let right_edge = |y: usize| {
+        (230..440)
+            .filter(|&x| (y - 5..y + 6).any(|yy| screen.pixel(x, yy) == YELLOW))
+            .max()
+            .unwrap_or(0)
+    };
+    for (what, y, want) in [("MODEL", 160, 315), ("FDC", 240, 327)] {
+        let edge = right_edge(y);
+        if edge.abs_diff(want) > 5 {
+            return Err(format!(
+                "{what}: its text ends at x={edge}, expected about {want}"
+            ));
+        }
+    }
+    let cyan = (282..296)
+        .flat_map(|y| (230..340).map(move |x| (x, y)))
+        .filter(|&(x, y)| screen.pixel(x, y) == [0, 255, 255])
+        .count();
+    if cyan < 40 {
+        return Err(format!("no cyan LOWER RAM : PASSED ({cyan} cyan pixels)"));
+    }
+    Ok(())
+}
+
 const DIAG_CASES: &[Case] = &[
     Case::new(
         Area::Rom,
@@ -1059,6 +1482,18 @@ const DIAG_CASES: &[Case] = &[
         "the AmstradDiag soak test keeps iterating on a 6128 without an error",
         "AmstradDiag's soak test (ROM check and upper RAM test repeated; its iteration counter; the error colour)",
         the_diagnostics_soak_test_keeps_iterating_without_errors,
+    ),
+    Case::new(
+        Area::Rom,
+        "the AmstradDiag disk identifies a CPC664 and its floppy controller and passes the lower RAM test",
+        "AmstradDiag's system information (model, FDC detected) and its lower RAM test",
+        the_diagnostics_disk_identifies_a_cpc664_and_its_fdc,
+    ),
+    Case::new(
+        Area::Rom,
+        "the AmstradDiag disk recognises the 664's lower ROM, BASIC and AMSDOS by checksum",
+        "AmstradDiag's ROM test (OS 664 FD6F, 664 BASIC 1440, AMSDOS 0F91)",
+        the_diagnostics_disk_recognises_the_664_roms_by_checksum,
     ),
 ];
 

@@ -376,7 +376,10 @@ fn ultimax_crt(rom: &[u8]) -> Vec<u8> {
 }
 
 /// The Commodore dead test (rev 781220, as modified for crystalct's unified cartridge) runs from an Ultimax cartridge with no
-/// KERNAL involved at all: it tests the zero page, the stack page and the screen RAM and prints OK next to each that passes.
+/// KERNAL involved at all: it tests the zero page, the stack page, the screen RAM and the colour RAM, prints OK next to each that
+/// passes, and goes on to the main RAM test. That one marches every byte of the 64K through 20 patterns with a delay loop each --
+/// about half an hour of machine time for a pass -- so the case stops once it has begun, at frame 4000 (about 80 s of machine
+/// time; the colour RAM test ends around frame 3500).
 fn the_dead_test_cartridge_boots_in_ultimax_mode_and_passes_the_low_ram_tests(
     env: &Env,
 ) -> Result<(), String> {
@@ -387,7 +390,7 @@ fn the_dead_test_cartridge_boots_in_ultimax_mode_and_passes_the_low_ram_tests(
         .c64()?
         .arg("--cartridge")
         .arg(crt.to_string_lossy())
-        .frames(1500)
+        .frames(4000)
         .dump(0x0400, 1000)
         .go();
     let _ = std::fs::remove_file(&crt);
@@ -400,19 +403,27 @@ fn the_dead_test_cartridge_boots_in_ultimax_mode_and_passes_the_low_ram_tests(
     }
     // "OK" (screen codes 15, 11) in the row of each result, after its label.
     let ok = [0x0F, 0x0B];
-    for label in ["ZERO PAGE", "STACK PAGE"] {
+    for label in ["ZERO PAGE", "STACK PAGE", "SCREEN RAM", "COLOR RAM"] {
         let at = find_text(&screen, label).ok_or(format!("no {label:?} line on the screen"))?;
         let row = &screen[at..(at / 40 + 1) * 40];
         if !row.windows(2).any(|w| w == ok) {
             return Err(format!("{label}: no OK on its line"));
         }
     }
+    // The main RAM test has begun (its label is up, with no result yet and no failure).
+    let at = find_text(&screen, "RAM TEST").ok_or("the main RAM test never started")?;
+    let row = &screen[at..(at / 40 + 1) * 40];
+    if row.windows(2).any(|w| w == ok) {
+        return Err(
+            "the main RAM test cannot be finished yet; the picture is not what was expected".into(),
+        );
+    }
     Ok(())
 }
 
 const DIAG_CASES: &[Case] = &[Case::new(
     Area::Memory,
-    "the Commodore dead test boots from an Ultimax cartridge and passes the zero page and stack tests",
+    "the Commodore dead test boots from an Ultimax cartridge, passes the zero page, stack, screen and colour RAM tests and starts the RAM test",
     "the dead test (rev 781220): OK printed per passing test; Ultimax reset vector from ROMH at $E000",
     the_dead_test_cartridge_boots_in_ultimax_mode_and_passes_the_low_ram_tests,
 )];

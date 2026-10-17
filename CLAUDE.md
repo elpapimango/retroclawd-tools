@@ -163,11 +163,17 @@ purpose. Everything skips unless `RETROCLAWD_BIN`, `RETROCLAWD_MACHINE_PLUGIN_DI
   with `--at 2000:screenshot=FILE`; `rc_suite::Screen::read` is public for that). Mutation-checked in the amstrad plugin: swapped Up/Down
   bits, Left moved to bit 7, bit 7 stuck on writes to RAM banks 4+ (aliasing banks or byte pairs did NOT fail it: the program fills and verifies one
   pattern, so an alias is consistent to it). Not done: the sound test, the ROM test for a 464/664.
+  Later the same day: the disk on a CPC664 (two cases: system information with the FDC detected, ROM test by checksum), eight PSG cases
+  (`--dump-audio` through `rc_suite::Audio`: each channel's tone with sub-harmonic checks -- a square wave a third too slow still shows its
+  third harmonic at the right frequency, which a first version missed and a mutation caught --, chord, mixer mute, noise, volume, register 1)
+  and one case reading `B:SAME.BIN` from drive B (`--disk-b`) through AMSDOS on a 6128. Note for programs run with `--program`: set SP below
+  `$C000`, the upper ROM shows there and a stack in high RAM reads back as ROM.
   The C64 dead test (crystalct/C64UnifDiagCart's modified rev 781220 ROM, a raw 8K Ultimax image fetched from a pinned commit; CERN-OHL-W-2.0
-  repository, Commodore's code, so local use only) has one case in `tests/c64.rs` (`c64_diagnostics`, about 50 s in a debug build): wrapped in an
-  Ultimax `.crt` it boots with no KERNAL involved and prints OK next to ZERO PAGE and STACK PAGE. The Spectrum suite also checks that both
+  repository, Commodore's code, so local use only) has one case in `tests/c64.rs` (`c64_diagnostics`, about 130 s in a debug build): wrapped in an
+  Ultimax `.crt` it boots with no KERNAL involved and, by frame 4000, prints OK next to ZERO PAGE, STACK PAGE, SCREEN RAM and COLOR RAM and
+  starts the main RAM test (a full pass is half an hour of machine time: not run). The Spectrum suite also checks that both
   16K halves of every 128K-family ROM variant appear at 0x0000 exactly as the file holds them.
-* Not testable headless yet: joysticks and sound.
+* Joysticks and sound are testable headless now: `--at N:key_down=Joy1Up` and `--dump-audio` (see above).
 
 ## Open points
 

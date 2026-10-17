@@ -69,6 +69,7 @@ impl Env {
             args: vec![machine.to_string(), "--headless".to_string()],
             dumps: Vec::new(),
             screen: false,
+            audio: false,
         }
     }
 }
@@ -137,6 +138,7 @@ pub struct Run<'e> {
     args: Vec<String>,
     dumps: Vec<(u16, u16)>,
     screen: bool,
+    audio: bool,
 }
 
 impl Run<'_> {
@@ -166,6 +168,12 @@ impl Run<'_> {
         self
     }
 
+    /// Also capture everything the machine played (`--dump-audio`, needs `--frames`).
+    pub fn audio(mut self) -> Self {
+        self.audio = true;
+        self
+    }
+
     /// Runs the emulator once per dump range (the CLI dumps one range at a time). A run is deterministic, so
     /// the ranges all describe the same moment.
     pub fn go(self) -> Result<Outcome, String> {
@@ -186,6 +194,16 @@ impl Run<'_> {
                 std::process::id(),
                 COUNTER.fetch_add(1, Ordering::Relaxed)
             ));
+            let want_audio = self.audio && i == 0;
+            let wav = std::env::temp_dir().join(format!(
+                "rc-suite-{}-{}.wav",
+                std::process::id(),
+                COUNTER.fetch_add(1, Ordering::Relaxed)
+            ));
+            if want_audio {
+                args.push("--dump-audio".to_string());
+                args.push(wav.to_string_lossy().into_owned());
+            }
             let want_screen = self.screen && i == 0;
             if want_screen {
                 args.push("--dump-screen".to_string());
@@ -204,6 +222,10 @@ impl Run<'_> {
                 ));
             }
             parse(&stdout, &mut out)?;
+            if want_audio {
+                out.audio = Some(Audio::read(&wav)?);
+                let _ = std::fs::remove_file(&wav);
+            }
             if want_screen {
                 out.screen = Some(Screen::read(&shot)?);
                 let _ = std::fs::remove_file(&shot);
@@ -220,6 +242,7 @@ pub struct Outcome {
     pub cycles: u64,
     memory: HashMap<u16, u8>,
     pub screen: Option<Screen>,
+    pub audio: Option<Audio>,
 }
 
 impl Outcome {
@@ -249,6 +272,75 @@ impl Outcome {
         self.screen
             .as_ref()
             .ok_or_else(|| "no screen was captured".to_string())
+    }
+
+    pub fn audio(&self) -> Result<&Audio, String> {
+        self.audio
+            .as_ref()
+            .ok_or_else(|| "no audio was captured".to_string())
+    }
+}
+
+/// What a run played: mono samples in -1..1.
+pub struct Audio {
+    pub rate: u32,
+    pub samples: Vec<f32>,
+}
+
+impl Audio {
+    /// Reads the 16-bit mono PCM `.wav` that `--dump-audio` writes.
+    pub fn read(path: &Path) -> Result<Audio, String> {
+        let bytes =
+            std::fs::read(path).map_err(|e| format!("no audio file {}: {e}", path.display()))?;
+        if bytes.len() < 44 || &bytes[..4] != b"RIFF" || &bytes[8..12] != b"WAVE" {
+            return Err("not a .wav file".to_string());
+        }
+        let rate = u32::from_le_bytes(bytes[24..28].try_into().expect("4 bytes"));
+        let samples = bytes[44..]
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|b| f32::from(i16::from_le_bytes(*b)) / 32768.0)
+            .collect();
+        Ok(Audio { rate, samples })
+    }
+
+    /// The samples from `from_s` to `to_s` seconds.
+    pub fn window(&self, from_s: f64, to_s: f64) -> &[f32] {
+        let a = ((from_s * f64::from(self.rate)) as usize).min(self.samples.len());
+        let b = ((to_s * f64::from(self.rate)) as usize).clamp(a, self.samples.len());
+        &self.samples[a..b]
+    }
+
+    /// Root-mean-square level of the samples from `from_s` to `to_s` with their mean (the DC offset) taken out: a PSG whose
+    /// channels are all disabled holds its output at a constant level, as the real chip does, which is silence to the ear.
+    pub fn rms(&self, from_s: f64, to_s: f64) -> f64 {
+        let w = self.window(from_s, to_s);
+        if w.is_empty() {
+            return 0.0;
+        }
+        let mean = w.iter().map(|&x| f64::from(x)).sum::<f64>() / w.len() as f64;
+        (w.iter()
+            .map(|&x| (f64::from(x) - mean).powi(2))
+            .sum::<f64>()
+            / w.len() as f64)
+            .sqrt()
+    }
+
+    /// The amplitude of a sine of `freq` Hz in the samples from `from_s` to `to_s` (a single-bin Goertzel/DFT): a square
+    /// wave of that frequency and peak `p` reads about `4p/pi`, a tone at another frequency near zero.
+    pub fn tone(&self, freq: f64, from_s: f64, to_s: f64) -> f64 {
+        let w = self.window(from_s, to_s);
+        if w.is_empty() {
+            return 0.0;
+        }
+        let (mut re, mut im) = (0.0, 0.0);
+        for (n, &x) in w.iter().enumerate() {
+            let phase = 2.0 * std::f64::consts::PI * freq * n as f64 / f64::from(self.rate);
+            re += f64::from(x) * phase.cos();
+            im += f64::from(x) * phase.sin();
+        }
+        2.0 * (re * re + im * im).sqrt() / w.len() as f64
     }
 }
 
