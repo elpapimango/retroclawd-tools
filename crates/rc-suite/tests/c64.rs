@@ -377,9 +377,10 @@ fn ultimax_crt(rom: &[u8]) -> Vec<u8> {
 
 /// The Commodore dead test (rev 781220, as modified for crystalct's unified cartridge) runs from an Ultimax cartridge with no
 /// KERNAL involved at all: it tests the zero page, the stack page, the screen RAM and the colour RAM, prints OK next to each that
-/// passes, and goes on to the main RAM test. That one marches every byte of the 64K through 20 patterns with a delay loop each --
-/// about half an hour of machine time for a pass -- so the case stops once it has begun, at frame 4000 (about 80 s of machine
-/// time; the colour RAM test ends around frame 3500).
+/// passes, and goes on to the main RAM test (only the low 4K that Ultimax leaves the CPU, so it is short: done by about frame
+/// 5000). This case stops while it has begun, at frame 4000 (the colour RAM test ends around frame 3500). On its own the modified
+/// dead test ends its first cycle by switching the cartridge to standard mode through `$DE00`, which a plain Ultimax cartridge
+/// cannot do: the next case runs the whole cartridge.
 fn the_dead_test_cartridge_boots_in_ultimax_mode_and_passes_the_low_ram_tests(
     env: &Env,
 ) -> Result<(), String> {
@@ -421,12 +422,142 @@ fn the_dead_test_cartridge_boots_in_ultimax_mode_and_passes_the_low_ram_tests(
     Ok(())
 }
 
-const DIAG_CASES: &[Case] = &[Case::new(
-    Area::Memory,
-    "the Commodore dead test boots from an Ultimax cartridge, passes the zero page, stack, screen and colour RAM tests and starts the RAM test",
-    "the dead test (rev 781220): OK printed per passing test; Ultimax reset vector from ROMH at $E000",
-    the_dead_test_cartridge_boots_in_ultimax_mode_and_passes_the_low_ram_tests,
-)];
+const UNIFIED_32K: &str = "commodore/software/diagnostics/unified_32k.bin";
+
+/// The `.crt` of crystalct's Unified Diagnostic Cartridge: retroclawd's own hardware type 0xC640 (the real board is written straight
+/// to an EPROM, the `.crt` format has no entry for it), the standard diagnostic as the 8K chip at `$8000` and the modified dead test
+/// as the one at `$E000`, EXROM high and GAME low for the board's default Ultimax start.
+fn unified_crt(image: &[u8]) -> Vec<u8> {
+    let mut crt = b"C64 CARTRIDGE   ".to_vec();
+    crt.extend_from_slice(&0x40u32.to_be_bytes());
+    crt.extend_from_slice(&0x0100u16.to_be_bytes());
+    crt.extend_from_slice(&0xC640u16.to_be_bytes());
+    crt.extend_from_slice(&[1, 0]);
+    crt.extend_from_slice(&[0; 6]);
+    crt.extend_from_slice(&[b"UNIFIED DIAG".as_slice(), &[0; 20]].concat());
+    for (load, half) in [
+        (0x8000u16, &image[..0x2000]),
+        (0xE000, &image[0x2000..0x4000]),
+    ] {
+        crt.extend_from_slice(b"CHIP");
+        crt.extend_from_slice(&(16 + half.len() as u32).to_be_bytes());
+        crt.extend_from_slice(&0u16.to_be_bytes());
+        crt.extend_from_slice(&0u16.to_be_bytes());
+        crt.extend_from_slice(&load.to_be_bytes());
+        crt.extend_from_slice(&(half.len() as u16).to_be_bytes());
+        crt.extend_from_slice(half);
+    }
+    crt
+}
+
+/// The whole unified cartridge, as the hardware does it: the modified dead test runs in Ultimax mode (zero page, stack page, screen
+/// RAM, colour RAM, the low-RAM test, the sound test), ends its first cycle by copying a routine to `$0334` that writes `$01` to
+/// `$DE00` -- the board's flip-flop turns the cartridge into an ordinary 8K one -- and jumps to the KERNAL's reset routine, which finds
+/// `CBM80` in the first 8K and starts the *standard* diagnostic (rev 586220++, Commodore's). The switch comes between frames 5000 and
+/// 6000; at frame 8000 the standard diagnostic has filled in its first pass. What it must show on a healthy machine without its test
+/// plugs: every RAM and ROM test OK, the three ROM checksums, and the CIA timers and interrupt OK. Cassette, control port, serial
+/// port and user port read BAD/OPEN, as they do on a real machine with nothing plugged in, so they are not asserted.
+fn the_unified_cartridge_switches_to_the_standard_diagnostic_and_it_passes(
+    env: &Env,
+) -> Result<(), String> {
+    let image = std::fs::read(env.file(UNIFIED_32K)?).map_err(|e| e.to_string())?;
+    if image.len() != 0x8000 {
+        return Err(format!(
+            "{UNIFIED_32K} is {} bytes, expected 32768",
+            image.len()
+        ));
+    }
+    let crt = std::env::temp_dir().join(format!("rc-suite-unified-{}.crt", std::process::id()));
+    std::fs::write(&crt, unified_crt(&image)).map_err(|e| e.to_string())?;
+    let out = env
+        .c64()?
+        .arg("--cartridge")
+        .arg(crt.to_string_lossy())
+        .frames(8000)
+        .dump(0x0400, 1000)
+        .go();
+    let _ = std::fs::remove_file(&crt);
+    let screen = out?.bytes(0x0400, 1000)?;
+    if find_text(&screen, "C-64 DIAGNOSTIC REV586220").is_none() {
+        return Err(
+            "the standard diagnostic's title is not on the screen: the cartridge never switched out of Ultimax mode".into(),
+        );
+    }
+    let ok = [0x0F, 0x0B];
+    let row_of = |label: &str| -> Result<&[u8], String> {
+        let at = find_text(&screen, label).ok_or(format!("no {label:?} on the screen"))?;
+        Ok(&screen[at..(at / 40 + 1) * 40])
+    };
+    let has_ok = |row: &[u8]| row.windows(2).any(|w| w == ok);
+    for label in [
+        "ZERO PAGE",
+        "STACK PAGE",
+        "SCREEN RAM",
+        "RAM TEST1",
+        "RAM TEST2",
+        "PLA TEST",
+        "COLOR RAM",
+        "INTERRUPT",
+    ] {
+        if !has_ok(row_of(label)?) {
+            return Err(format!("{label}: no OK on its line"));
+        }
+    }
+    // TIMER1 and TIMER2 each have an A line (the label's own) and a B line under it.
+    for label in ["TIMER1", "TIMER2"] {
+        let at = find_text(&screen, label).ok_or(format!("no {label:?} on the screen"))?;
+        let (a, b) = (at / 40, at / 40 + 1);
+        for row in [a, b] {
+            if !has_ok(&screen[row * 40 + 20..row * 40 + 40]) {
+                return Err(format!(
+                    "{label}: no OK on its line {}",
+                    if row == a { "A" } else { "B" }
+                ));
+            }
+        }
+    }
+    // The checksums of the three committed ROMs, as the diagnostic prints them.
+    for (label, sum) in [
+        ("KERNAL ROM", "B6C70A"),
+        ("BASIC ROM", "043D56"),
+        ("CHARAC ROM", "F3F7F8"),
+    ] {
+        let row = row_of(label)?;
+        let text =
+            String::from_utf8_lossy(&row.iter().map(|c| screen_char(*c)).collect::<Vec<u8>>())
+                .to_string();
+        if !text.contains(sum) {
+            return Err(format!(
+                "{label}: expected checksum {sum}, the line reads {text:?}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// A screen code as ASCII (upper case set: 1-26 letters, 48-57 digits, 32 space), anything else a dot.
+fn screen_char(code: u8) -> u8 {
+    match code {
+        1..=26 => b'A' + code - 1,
+        0x20..=0x3F => code,
+        _ => b'.',
+    }
+}
+
+const DIAG_CASES: &[Case] = &[
+    Case::new(
+        Area::Memory,
+        "the Commodore dead test boots from an Ultimax cartridge, passes the zero page, stack, screen and colour RAM tests and starts the RAM test",
+        "the dead test (rev 781220): OK printed per passing test; Ultimax reset vector from ROMH at $E000",
+        the_dead_test_cartridge_boots_in_ultimax_mode_and_passes_the_low_ram_tests,
+    ),
+    Case::new(
+        Area::Memory,
+        "the whole unified cartridge: the dead test switches it out of Ultimax mode and the standard diagnostic passes its RAM, ROM, timer and interrupt tests",
+        "the Unified Diagnostic Cartridge: a write to $DE00 flips Ultimax to 8K mode, the KERNAL restarts and starts the standard diagnostic (rev 586220++)",
+        the_unified_cartridge_switches_to_the_standard_diagnostic_and_it_passes,
+    ),
+];
 
 #[test]
 fn c64_diagnostics() {
@@ -434,10 +565,12 @@ fn c64_diagnostics() {
         eprintln!("skipping: RETROCLAWD_BIN / RC_ROMS not set");
         return;
     };
-    if env.file(DEAD_TEST).is_err() || env.file("commodore/roms/c64/kernal-901227-03.bin").is_err()
+    if env.file(DEAD_TEST).is_err()
+        || env.file(UNIFIED_32K).is_err()
+        || env.file("commodore/roms/c64/kernal-901227-03.bin").is_err()
     {
         eprintln!(
-            "skipping: {DEAD_TEST} or the C64 ROMs are not present (tools/fetch_diagnostics.sh fetches the former)"
+            "skipping: {DEAD_TEST}, {UNIFIED_32K} or the C64 ROMs are not present (tools/fetch_diagnostics.sh fetches the first two)"
         );
         return;
     }

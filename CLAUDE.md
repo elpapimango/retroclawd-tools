@@ -165,7 +165,7 @@ purpose. Everything skips unless `RETROCLAWD_BIN`, `RETROCLAWD_MACHINE_PLUGIN_DI
   pattern, so an alias is consistent to it). Not done: the sound test, the ROM test for a 464/664.
   The +3 case `a +3 reads a sector from each of its two drives` (`--disk` + `--disk-b`) drives the FDC ports directly with a hand-made
   one-sector DSK per drive (unit in the second command byte of Read Data); mutation-checked (drive B inserted into unit 0 fails it).
-  A full pass was run once by hand (release build, `--at N:screenshot=` every 6000 frames, 120000 frames in 7 min): the low tests are done by ~4000, the main RAM test blanks the screen until it ends before frame 96000 (about 32 min of machine time), the colour-bar video pattern follows (frame 96000), and the next cycle's low tests are on screen again by 108000; no failure map ever appeared. COUNT stays 000 and the screen is blank during the RAM test, so the RAM test's own OK was never seen -- that it finished is read from what comes next. Too slow for the suite in a debug build, so it stays a manual check.
+  The unified diagnostic cartridge (crystalct's board: the modified dead test in Ultimax mode plus a `$DE00` flip-flop that turns it into an ordinary 8K cartridge running the standard diagnostic rev 586220++) is the second case in `c64_diagnostics`, from the 32K EPROM image `tools/fetch_diagnostics.sh` fetches (`unified_32k.bin`, local use only). The `.crt` is built by the test (retroclawd's own hardware type 0xC640). By frame 8000 (30 s in a release build, about 5 min in a debug one) the dead test has finished and the cartridge switched (between frames 5000 and 6000), and the standard diagnostic shows its RAM/ROM tests OK, the ROM checksums (`B6C70A`, `043D56`, `F3F7F8`), TIMER1/2 A/B and INTERRUPT OK; the ports and cassette read BAD without the diagnostic's test plugs and are not asserted. An earlier note here that the dead test's RAM test takes half an hour was wrong (Ultimax leaves only the low 4K; a whole cycle is about 5000 frames).
   Later the same day: the disk on a CPC664 (two cases: system information with the FDC detected, ROM test by checksum), eight PSG cases
   (`--dump-audio` through `rc_suite::Audio`: each channel's tone with sub-harmonic checks -- a square wave a third too slow still shows its
   third harmonic at the right frequency, which a first version missed and a mutation caught --, chord, mixer mute, noise, volume, register 1)
@@ -174,7 +174,7 @@ purpose. Everything skips unless `RETROCLAWD_BIN`, `RETROCLAWD_MACHINE_PLUGIN_DI
   The C64 dead test (crystalct/C64UnifDiagCart's modified rev 781220 ROM, a raw 8K Ultimax image fetched from a pinned commit; CERN-OHL-W-2.0
   repository, Commodore's code, so local use only) has one case in `tests/c64.rs` (`c64_diagnostics`, about 130 s in a debug build): wrapped in an
   Ultimax `.crt` it boots with no KERNAL involved and, by frame 4000, prints OK next to ZERO PAGE, STACK PAGE, SCREEN RAM and COLOR RAM and
-  starts the main RAM test (a full pass is half an hour of machine time: not run). The Spectrum suite also checks that both
+  starts the main RAM test (which is short: the whole dead test, sound test included, ends by about frame 5000). The Spectrum suite also checks that both
   16K halves of every 128K-family ROM variant appear at 0x0000 exactly as the file holds them.
 * Joysticks and sound are testable headless now: `--at N:key_down=Joy1Up` and `--dump-audio` (see above).
 
