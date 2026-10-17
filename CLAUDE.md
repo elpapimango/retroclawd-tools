@@ -2,6 +2,16 @@
 
 Guidance for Claude Code working in this repository.
 
+## Testing approach (decided 2026-10-17)
+
+The point of these suites is **acid tests for an emulator**: programs and facts from outside (third-party diagnostics, published
+documents, other emulators we read) that show the emulator behaves like the real machine *as far as it is worth checking* -- not proof of
+real hardware, which we will never have and do not aim for. If games, demos and applications load and run, that is the goal. So:
+a case earns its place by being judged from outside (a third-party program, a document's number, a behaviour a game can see); a case that
+only checks our own plumbing, or repeats what another case already shows, does not. Pass 1 of the review (2026-10-17) cut the 101 cases to
+69: merged cases keep every check of the cases they replace, removed ones are listed in `TODO.md` of the host repository. Acid-style suites
+(CPC Acid Tests Suite, cpctech `test.zip`, Acid800 as a model for how an acid test is laid out) are added as cases with a known-gaps list.
+
 ## What this is
 
 `retroclawd-tools`: command-line tools on top of the retroclawd crates. A standalone Cargo workspace (it is **not** a

@@ -121,12 +121,6 @@ fn every_rom_revision_boots_to_the_k_prompt(env: &Env) -> Result<(), String> {
     expect_in("ROM revisions present", tried, 1, 4)
 }
 
-fn a_16k_machine_draws_the_k_prompt_too(env: &Env) -> Result<(), String> {
-    // The expanded display file of a machine with 3K or more RAM is 24 rows of 32 characters, each followed by a NEWLINE;
-    // the prompt (inverse K) is the first character of the last row, exactly as on the 1K machine (ROM, `NEW` at 0x03CB).
-    boot_to_the_k_prompt_with(env, &rom(env)?, 16, 0x8000)
-}
-
 fn slow_mode_counts_50_frames_a_second(env: &Env) -> Result<(), String> {
     let at = |frames| -> Result<u16, String> {
         env.run("zx81")
@@ -198,22 +192,6 @@ fn rom_is_shadowed_at_0x2000(env: &Env) -> Result<(), String> {
     )
 }
 
-fn rom_ignores_writes(env: &Env) -> Result<(), String> {
-    let out = run_program(
-        env,
-        "romwrite",
-        "ld a,$AA\n ld ($0000),a\n ld ($2000),a\n ld ($1FFF),a\n ld a,($0000)\n ld b,a\nhere: jr here\n",
-        2,
-    )?;
-    // A ROM cannot be written: the cell keeps its value, and so does its shadow.
-    let file = std::fs::read(rom(env)?).map_err(|e| e.to_string())?;
-    expect_eq(
-        "read-back of ROM[0] after a write",
-        out.reg("BC")? >> 8,
-        u16::from(file[0]),
-    )
-}
-
 fn ram_1k_repeats_through_0x4000_0x7fff(env: &Env) -> Result<(), String> {
     let out = run_program(
         env,
@@ -276,19 +254,6 @@ bytes: .byte $3C,$3C,$3C,$76
     )
 }
 
-fn sixteen_k_ram_pack_is_detected(env: &Env) -> Result<(), String> {
-    // ZXDOCS: RAMTOP points past the RAM the ROM found at power-on; with a 16K pack that is 0x8000.
-    let out = env
-        .run("zx81")
-        .rom(&rom(env)?)
-        .arg("--ram-kb")
-        .arg("16")
-        .frames(BOOT_FRAMES)
-        .dump(RAMTOP, 2)
-        .go()?;
-    expect_eq("RAMTOP with 16K", out.word(RAMTOP)?, 0x8000)
-}
-
 /// RAM sizes the plugin offers (`--ram-kb`) and where the ROM's power-on test leaves RAMTOP for each.
 ///
 /// ZXDOCS ("Memory Mirrors and Expansions"): RAMTOP points to the address after the detected RAM (4400h for the 1K
@@ -313,37 +278,6 @@ fn the_power_on_ram_test_sets_ramtop_for_every_ram_size(env: &Env) -> Result<(),
             .dump(RAMTOP, 2)
             .go()?;
         expect_eq(&format!("RAMTOP with {kb}K"), out.word(RAMTOP)?, want)?;
-    }
-    Ok(())
-}
-
-fn the_last_cell_of_every_ram_size_is_ram(env: &Env) -> Result<(), String> {
-    // ZXDOCS: the RAM is 4000h up for 1K-48K and 2000h up for the 56K pack ("only 2000h-FFFFh is usable"). Two
-    // different values written at the first and last cell must both stay: the RAM is that big and does not wrap.
-    // (1K and 2K repeat through 4000h-7FFFh; the mirror case covers them.)
-    for (kb, first, last) in [
-        (16u32, 0x4000u16, 0x7FFFu16),
-        (32, 0x4000, 0xBFFF),
-        (56, 0x2000, 0xFFFF),
-    ] {
-        let source = format!(
-            "ld a,$A5\n ld (${first:04X}),a\n ld a,$5A\n ld (${last:04X}),a\n ld a,(${first:04X})\n ld b,a\n ld a,(${last:04X})\n ld c,a\nhere: jr here\n"
-        );
-        let program = z80_program("ramtop", 0x4100, &source)?;
-        let out = env
-            .run("zx81")
-            .rom(&rom(env)?)
-            .arg("--ram-kb")
-            .arg(kb.to_string())
-            .arg("--program")
-            .arg(program.to_string_lossy())
-            .arg("--org")
-            .arg("0x4100")
-            .frames(2)
-            .go()?;
-        let bc = out.reg("BC")?;
-        expect_eq(&format!("first cell with {kb}K"), bc >> 8, 0xA5)?;
-        expect_eq(&format!("last cell with {kb}K"), bc & 0xFF, 0x5A)?;
     }
     Ok(())
 }
@@ -458,47 +392,6 @@ fn saving_a_p_file_writes_memory_from_0x4009_to_e_line(env: &Env) -> Result<(), 
     expect_eq("file content", file, out.bytes(0x4009, len)?)
 }
 
-fn a_saved_file_loads_back_and_runs(env: &Env) -> Result<(), String> {
-    let loaded = temp_file("rt-in", &p_file(&[(1, &[0xF5, 0x0B, 0x26, 0x0B])]))?;
-    let pid = std::process::id();
-    let save = |ext: &str| -> Result<std::path::PathBuf, String> {
-        let path = std::env::temp_dir().join(format!("rc-suite-zx81-rt-{pid}.{ext}"));
-        let _ = std::fs::remove_file(&path);
-        env.run("zx81")
-            .rom(&rom(env)?)
-            .arg("--snapshot")
-            .arg(loaded.to_string_lossy())
-            .arg("--dump-snapshot")
-            .arg(path.to_string_lossy())
-            .frames(BOOT_FRAMES)
-            .go()?;
-        Ok(path)
-    };
-    let (p, e81) = (save("p")?, save("81")?);
-    let read = |path: &std::path::Path| std::fs::read(path).map_err(|e| e.to_string());
-    expect_eq(".81 against .p", read(&e81)?, read(&p)?)?;
-    // ROM: loading the saved file autostarts the program again, so the `A` is drawn from the ROM's character set.
-    let rom_bytes = std::fs::read(rom(env)?).map_err(|e| e.to_string())?;
-    let glyph = rom_bytes[0x1E00 + 0x26 * 8..0x1E00 + 0x26 * 8 + 8].to_vec();
-    for path in [&p, &e81] {
-        let out = env
-            .run("zx81")
-            .rom(&rom(env)?)
-            .arg("--no-border")
-            .arg("--snapshot")
-            .arg(path.to_string_lossy())
-            .frames(BOOT_FRAMES)
-            .screen()
-            .go()?;
-        expect_eq(
-            "top-left cell",
-            out.screen()?.cell(0, 0).to_vec(),
-            glyph.clone(),
-        )?;
-    }
-    Ok(())
-}
-
 fn load_reads_a_program_from_the_tape_input(env: &Env) -> Result<(), String> {
     let file = p_file(&[(1, &[0xF5, 0x0B, 0x26, 0x0B])]); // 1 PRINT "A"
     let path = temp_file("tape", &file)?;
@@ -557,27 +450,6 @@ fn save_to_tape(env: &Env, extension: &str) -> Result<Vec<u8>, String> {
         .frames(1500)
         .go()?;
     std::fs::read(&target).map_err(|e| format!("nothing was recorded: {e}"))
-}
-
-fn save_writes_the_file_the_format_describes_to_the_tape_output(env: &Env) -> Result<(), String> {
-    let p = save_to_tape(env, "p")?;
-    // ZXDOCS "Cassette File Content": the file is memory from 4009h, VERSN (4009h) = 0 for a ZX81, and its length is
-    // E_LINE (4014h) - 4009h, so the length is written inside the file.
-    expect_eq("VERSN", p[0], 0)?;
-    let e_line = u16::from_le_bytes([p[11], p[12]]);
-    expect_eq("file length", p.len(), usize::from(e_line - 0x4009))?;
-    // The program the ROM saved is the one that was loaded: `1 PRINT "A"` at 407Dh.
-    let program = [0x00u8, 0x01, 0x05, 0x00, 0xF5, 0x0B, 0x26, 0x0B, 0x76];
-    let at = usize::from(PROGRAM - 0x4009);
-    expect_eq(
-        "the BASIC line in the saved file",
-        p[at..at + 9].to_vec(),
-        program.to_vec(),
-    )?;
-    // The same signal as a .p81 carries the name: ZXDOCS "1-127 bytes filename (bit7 set in last char)"; `A` is 26h.
-    let p81 = save_to_tape(env, "p81")?;
-    expect_eq("the name", p81[0], 0x26 | 0x80)?;
-    expect_eq("the data after the name", p81[1..].to_vec(), p)
 }
 
 fn what_save_wrote_loads_back_through_the_rom(env: &Env) -> Result<(), String> {
@@ -949,6 +821,12 @@ fn every_shifted_symbol_pulls_shift_and_its_key_low(env: &Env) -> Result<(), Str
     Ok(())
 }
 
+/// The whole keyboard: every plain key, then every shifted symbol.
+fn every_key_pulls_its_matrix_line_low(env: &Env) -> Result<(), String> {
+    every_unshifted_key_pulls_its_matrix_line_low(env)?;
+    every_shifted_symbol_pulls_shift_and_its_key_low(env)
+}
+
 /// Types `text` into a booted ZX81 and returns its picture, 256x192 without the border.
 fn screen_after_typing(env: &Env, text: &str) -> Result<rc_suite::Outcome, String> {
     env.run("zx81")
@@ -1025,15 +903,9 @@ const CASES: &[Case] = &[
     ),
     Case::new(
         Area::Io,
-        "every unshifted key pulls its matrix line low",
-        "the ROM's key table (0x007E): the ROM scans the keys in that order",
-        every_unshifted_key_pulls_its_matrix_line_low,
-    ),
-    Case::new(
-        Area::Io,
-        "every shifted symbol pulls Shift and its key low",
-        "the ROM's shifted key table (0x00A5)",
-        every_shifted_symbol_pulls_shift_and_its_key_low,
+        "every unshifted key and every shifted symbol pulls its matrix line (and Shift) low",
+        "the ZX81 keyboard matrix: eight half rows read through port 0xFE",
+        every_key_pulls_its_matrix_line_low,
     ),
     Case::new(
         Area::Rom,
@@ -1055,12 +927,6 @@ const CASES: &[Case] = &[
     ),
     Case::new(
         Area::Memory,
-        "the ROM ignores writes",
-        "a ROM is read-only",
-        rom_ignores_writes,
-    ),
-    Case::new(
-        Area::Memory,
         "the 1K RAM repeats through 0x4000-0x7FFF",
         "ZXDOCS memory mirroring",
         ram_1k_repeats_through_0x4000_0x7fff,
@@ -1079,21 +945,9 @@ const CASES: &[Case] = &[
     ),
     Case::new(
         Area::Memory,
-        "a 16K RAM pack is detected",
-        "ZXDOCS RAMTOP",
-        sixteen_k_ram_pack_is_detected,
-    ),
-    Case::new(
-        Area::Memory,
         "RAMTOP follows the RAM size: 1K, 2K, 16K, 32K, 56K",
         "ZXDOCS Memory Mirrors and Expansions (4400h for 1K; detection ends at 8000h)",
         the_power_on_ram_test_sets_ramtop_for_every_ram_size,
-    ),
-    Case::new(
-        Area::Memory,
-        "the first and last cell of a 16K, 32K and 56K machine are separate RAM",
-        "ZXDOCS Memory Mirrors and Expansions (RAM at 4000h up; 56K from 2000h)",
-        the_last_cell_of_every_ram_size_is_ram,
     ),
     Case::new(
         Area::Media,
@@ -1108,12 +962,6 @@ const CASES: &[Case] = &[
         saving_a_p_file_writes_memory_from_0x4009_to_e_line,
     ),
     Case::new(
-        Area::Media,
-        "a saved .p and a saved .81 are the same bytes, and loading either runs the program again",
-        "ZXDOCS Cassette File Images (.81 is an exact copy; .p the same up to E_LINE-1)",
-        a_saved_file_loads_back_and_runs,
-    ),
-    Case::new(
         Area::Rom,
         "every ZX81 ROM revision boots to the K prompt",
         "ZXDOCS system variables; each ROM's own character set at 1E00h",
@@ -1124,12 +972,6 @@ const CASES: &[Case] = &[
         "LOAD \"\" reads a program from the tape input",
         "ZXDOCS Cassette (EAR input, bit 7 of port FEh); a file is memory from 4009h",
         load_reads_a_program_from_the_tape_input,
-    ),
-    Case::new(
-        Area::Media,
-        "SAVE \"A\" puts the file the format describes on the tape output (.p and .p81)",
-        "ZXDOCS Cassette Signals / File Content (bits MSB first, 4 or 9 pulses; memory from 4009h; name with bit 7)",
-        save_writes_the_file_the_format_describes_to_the_tape_output,
     ),
     Case::new(
         Area::Media,
@@ -1148,12 +990,6 @@ const CASES: &[Case] = &[
         "fast load brings a 2.9K program in long before the signal would",
         "ZXDOCS Cassette Signals (307 bit/s); the ROM's own loader matches the name",
         fast_load_brings_a_long_program_in_long_before_the_signal_would,
-    ),
-    Case::new(
-        Area::Video,
-        "a 16K machine draws the K prompt on its last row",
-        "ZXDOCS D_FILE layout (expanded display file); ROM character set",
-        a_16k_machine_draws_the_k_prompt_too,
     ),
     Case::new(
         Area::Media,

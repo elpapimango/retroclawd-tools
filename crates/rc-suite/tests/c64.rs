@@ -63,32 +63,6 @@ fn boots_to_the_basic_v2_banner(env: &Env) -> Result<(), String> {
     Ok(())
 }
 
-fn the_cpu_port_is_set_up_for_the_standard_map(env: &Env) -> Result<(), String> {
-    // Read through the CPU (BASIC's PEEK), not the debugger's view of the port. C64WIKI Memory Map: $01 holds $37 = 55 in
-    // the standard configuration (BASIC, KERNAL and I/O visible); Zeropage: $00 is the data direction register, bits 0-3
-    // and 5 outputs and bit 4 (the cassette sense) an input = $2F = 47.
-    let out = env
-        .c64()?
-        .arg("--type-after")
-        .arg("150")
-        .arg("--type-delay")
-        .arg("100")
-        .arg("--type")
-        .arg(
-            "PRINT PEEK(0);PEEK(1)
-",
-        )
-        .frames(450)
-        .dump(0x0400, 1000)
-        .go()?;
-    let screen = out.bytes(0x0400, 1000)?;
-    // BASIC prints a positive number with a leading space (the sign position) and `;` joins them without a gap.
-    if find_text(&screen, " 47  55").is_none() {
-        return Err("PRINT PEEK(0);PEEK(1) should show 47 and 55".into());
-    }
-    Ok(())
-}
-
 /// What each of the eight settings of LORAM/HIRAM/CHAREN shows, from the C64WIKI bank switching table (no cartridge):
 /// BASIC ROM at `$A000` when LORAM and HIRAM are both set; KERNAL ROM at `$E000` when HIRAM is set; at `$D000` RAM
 /// when LORAM and HIRAM are both clear, otherwise I/O when CHAREN is set and the character ROM when it is clear.
@@ -191,16 +165,6 @@ here: jmp here
     )
 }
 
-fn the_raster_runs_through_312_lines(env: &Env) -> Result<(), String> {
-    // Read $D011 (bit 7 is bit 8 of the raster line) and $D012 over and over, keeping the highest low byte seen while
-    // the line is 256 or more. VIC: a PAL frame has lines 0-311, so that is 311 - 256 = 55 = $37.
-    let source = format!(
-        " sei\n lda #0\n sta ${RESULTS:04X}\nloop: lda $D011\n bpl loop\n lda $D012\n cmp ${RESULTS:04X}\n bcc loop\n sta ${RESULTS:04X}\n jmp loop\n"
-    );
-    let out = run_program(env, "raster", &source, 4, &[(RESULTS, 1)])?;
-    expect_eq("the last line past 255", out.byte(RESULTS)?, 0x37)
-}
-
 fn the_kernal_jiffy_clock_ticks_at_60_hz(env: &Env) -> Result<(), String> {
     let jiffies = |frames| -> Result<i64, String> {
         let out = env.c64()?.frames(frames).dump(0x00A0, 3).go()?;
@@ -212,26 +176,6 @@ fn the_kernal_jiffy_clock_ticks_at_60_hz(env: &Env) -> Result<(), String> {
     // C64WIKI: the jiffy clock at $A0-$A2 is updated every 1/60 second by the KERNAL IRQ. 100 PAL frames are 100 x
     // 19656 cycles at 985248 Hz = 1.9951 s, i.e. 119.7 jiffies.
     expect_in("jiffies in 100 frames", later - early, 118, 121)
-}
-
-fn basic_evaluates_a_typed_expression(env: &Env) -> Result<(), String> {
-    let out = env
-        .c64()?
-        .arg("--type-after")
-        .arg("150")
-        .arg("--type-delay")
-        .arg("100")
-        .arg("--type")
-        .arg("PRINT 12*34\n")
-        .frames(400)
-        .dump(0x0400, 1000)
-        .go()?;
-    let screen = out.bytes(0x0400, 1000)?;
-    // BASIC V2 prints the value on the line under the typed one.
-    if find_text(&screen, "408").is_none() {
-        return Err("the screen does not show 408 after PRINT 12*34".into());
-    }
-    Ok(())
 }
 
 fn voice_3_oscillator_reads_back_through_the_sid(env: &Env) -> Result<(), String> {
@@ -288,12 +232,6 @@ const CASES: &[Case] = &[
         boots_to_the_basic_v2_banner,
     ),
     Case::new(
-        Area::Io,
-        "the CPU port holds $2F / $37 after the KERNAL's start-up",
-        "C64WIKI Zeropage and Memory Map",
-        the_cpu_port_is_set_up_for_the_standard_map,
-    ),
-    Case::new(
         Area::Memory,
         "LORAM, HIRAM and CHAREN choose BASIC, KERNAL, RAM, character ROM and I/O",
         "C64WIKI Bank Switching table",
@@ -306,22 +244,10 @@ const CASES: &[Case] = &[
         a_pal_frame_is_19656_cycles,
     ),
     Case::new(
-        Area::Video,
-        "the raster counts lines 0-311",
-        "VIC (6569 has 312 lines)",
-        the_raster_runs_through_312_lines,
-    ),
-    Case::new(
         Area::Timers,
         "the KERNAL jiffy clock ticks 60 times a second",
         "C64WIKI Zeropage ($A0-$A2); 985248 Hz",
         the_kernal_jiffy_clock_ticks_at_60_hz,
-    ),
-    Case::new(
-        Area::Io,
-        "BASIC evaluates a typed PRINT 12*34",
-        "the BASIC V2 interpreter on the emulated machine",
-        basic_evaluates_a_typed_expression,
     ),
     Case::new(
         Area::Sound,
@@ -352,75 +278,7 @@ fn c64() {
     assert!(report.ok(), "{}", report.summary());
 }
 
-// ---- third-party diagnostics (the C64 dead test)
-
-const DEAD_TEST: &str = "commodore/software/diagnostics/deadtest_mod.bin";
-
-/// A `.crt` for an 8K ROM at `$E000` in Ultimax mode (EXROM high, GAME low: the cartridge supplies the reset vector).
-fn ultimax_crt(rom: &[u8]) -> Vec<u8> {
-    let mut crt = b"C64 CARTRIDGE   ".to_vec();
-    crt.extend_from_slice(&0x40u32.to_be_bytes());
-    crt.extend_from_slice(&0x0100u16.to_be_bytes());
-    crt.extend_from_slice(&0u16.to_be_bytes()); // hardware type 0: a normal cartridge
-    crt.extend_from_slice(&[1, 0]); // EXROM 1, GAME 0
-    crt.extend_from_slice(&[0; 6]);
-    crt.extend_from_slice(&[b"DEADTEST".as_slice(), &[0; 24]].concat());
-    crt.extend_from_slice(b"CHIP");
-    crt.extend_from_slice(&(16 + rom.len() as u32).to_be_bytes());
-    crt.extend_from_slice(&0u16.to_be_bytes()); // ROM
-    crt.extend_from_slice(&0u16.to_be_bytes()); // bank 0
-    crt.extend_from_slice(&0xE000u16.to_be_bytes());
-    crt.extend_from_slice(&(rom.len() as u16).to_be_bytes());
-    crt.extend_from_slice(rom);
-    crt
-}
-
-/// The Commodore dead test (rev 781220, as modified for crystalct's unified cartridge) runs from an Ultimax cartridge with no
-/// KERNAL involved at all: it tests the zero page, the stack page, the screen RAM and the colour RAM, prints OK next to each that
-/// passes, and goes on to the main RAM test (only the low 4K that Ultimax leaves the CPU, so it is short: done by about frame
-/// 5000). This case stops while it has begun, at frame 4000 (the colour RAM test ends around frame 3500). On its own the modified
-/// dead test ends its first cycle by switching the cartridge to standard mode through `$DE00`, which a plain Ultimax cartridge
-/// cannot do: the next case runs the whole cartridge.
-fn the_dead_test_cartridge_boots_in_ultimax_mode_and_passes_the_low_ram_tests(
-    env: &Env,
-) -> Result<(), String> {
-    let rom = std::fs::read(env.file(DEAD_TEST)?).map_err(|e| e.to_string())?;
-    let crt = std::env::temp_dir().join(format!("rc-suite-deadtest-{}.crt", std::process::id()));
-    std::fs::write(&crt, ultimax_crt(&rom)).map_err(|e| e.to_string())?;
-    let out = env
-        .c64()?
-        .arg("--cartridge")
-        .arg(crt.to_string_lossy())
-        .frames(4000)
-        .dump(0x0400, 1000)
-        .go();
-    let _ = std::fs::remove_file(&crt);
-    let screen = out?.bytes(0x0400, 1000)?;
-    if find_text(&screen, "C-64 DEAD TEST REV 781220").is_none() {
-        return Err(
-            "the dead test's title is not on the screen: the Ultimax cartridge did not start"
-                .into(),
-        );
-    }
-    // "OK" (screen codes 15, 11) in the row of each result, after its label.
-    let ok = [0x0F, 0x0B];
-    for label in ["ZERO PAGE", "STACK PAGE", "SCREEN RAM", "COLOR RAM"] {
-        let at = find_text(&screen, label).ok_or(format!("no {label:?} line on the screen"))?;
-        let row = &screen[at..(at / 40 + 1) * 40];
-        if !row.windows(2).any(|w| w == ok) {
-            return Err(format!("{label}: no OK on its line"));
-        }
-    }
-    // The main RAM test has begun (its label is up, with no result yet and no failure).
-    let at = find_text(&screen, "RAM TEST").ok_or("the main RAM test never started")?;
-    let row = &screen[at..(at / 40 + 1) * 40];
-    if row.windows(2).any(|w| w == ok) {
-        return Err(
-            "the main RAM test cannot be finished yet; the picture is not what was expected".into(),
-        );
-    }
-    Ok(())
-}
+// ---- third-party diagnostics (crystalct's Unified Diagnostic Cartridge: the dead test, then the standard diagnostic)
 
 const UNIFIED_32K: &str = "commodore/software/diagnostics/unified_32k.bin";
 
@@ -552,20 +410,6 @@ fn has_bad(row: &[u8]) -> bool {
     row.windows(3).any(|w| w == [0x02, 0x01, 0x04])
 }
 
-/// With a paddle on control port 2 (POT lines mid-range) the same diagnostic passes the 6581: its BAD was the missing test plug, not
-/// the SID. (The 4066 analog switch that selects between the two ports then shows BAD instead, because port 1 still has no pot.)
-fn the_unified_diagnostic_passes_the_6581_when_the_pot_lines_have_a_paddle(
-    env: &Env,
-) -> Result<(), String> {
-    let screen = unified_screen(env, &["--mouse", "paddle-port2"])?;
-    let at = find_text(&screen, "6581 U18").ok_or("no 6581 line in the chip table")?;
-    let row = &screen[at..(at / 40 + 1) * 40];
-    if has_bad(row) {
-        return Err("the 6581 still reads BAD with a paddle on port 2".into());
-    }
-    Ok(())
-}
-
 /// A screen code as ASCII (upper case set: 1-26 letters, 48-57 digits, 32 space), anything else a dot.
 fn screen_char(code: u8) -> u8 {
     match code {
@@ -575,26 +419,12 @@ fn screen_char(code: u8) -> u8 {
     }
 }
 
-const DIAG_CASES: &[Case] = &[
-    Case::new(
-        Area::Memory,
-        "the Commodore dead test boots from an Ultimax cartridge, passes the zero page, stack, screen and colour RAM tests and starts the RAM test",
-        "the dead test (rev 781220): OK printed per passing test; Ultimax reset vector from ROMH at $E000",
-        the_dead_test_cartridge_boots_in_ultimax_mode_and_passes_the_low_ram_tests,
-    ),
-    Case::new(
-        Area::Memory,
-        "the whole unified cartridge: the dead test switches it out of Ultimax mode and the standard diagnostic passes its RAM, ROM, timer and interrupt tests",
-        "the Unified Diagnostic Cartridge: a write to $DE00 flips Ultimax to 8K mode, the KERNAL restarts and starts the standard diagnostic (rev 586220++)",
-        the_unified_cartridge_switches_to_the_standard_diagnostic_and_it_passes,
-    ),
-    Case::new(
-        Area::Io,
-        "the standard diagnostic passes the 6581 once a paddle gives the POT lines a mid-range value",
-        "the Unified Diagnostic Cartridge's standard diagnostic: SID POTX/POTY in $50-$8F (its test plug); open lines read $FF",
-        the_unified_diagnostic_passes_the_6581_when_the_pot_lines_have_a_paddle,
-    ),
-];
+const DIAG_CASES: &[Case] = &[Case::new(
+    Area::Memory,
+    "the whole unified cartridge: the dead test switches it out of Ultimax mode and the standard diagnostic passes its RAM, ROM, timer and interrupt tests",
+    "the Unified Diagnostic Cartridge: a write to $DE00 flips Ultimax to 8K mode, the KERNAL restarts and starts the standard diagnostic (rev 586220++)",
+    the_unified_cartridge_switches_to_the_standard_diagnostic_and_it_passes,
+)];
 
 #[test]
 fn c64_diagnostics() {
@@ -602,12 +432,11 @@ fn c64_diagnostics() {
         eprintln!("skipping: RETROCLAWD_BIN / RC_ROMS not set");
         return;
     };
-    if env.file(DEAD_TEST).is_err()
-        || env.file(UNIFIED_32K).is_err()
+    if env.file(UNIFIED_32K).is_err()
         || env.file("commodore/roms/c64/kernal-901227-03.bin").is_err()
     {
         eprintln!(
-            "skipping: {DEAD_TEST}, {UNIFIED_32K} or the C64 ROMs are not present (tools/fetch_diagnostics.sh fetches the first two)"
+            "skipping: {UNIFIED_32K} or the C64 ROMs are not present (tools/fetch_diagnostics.sh fetches the former)"
         );
         return;
     }

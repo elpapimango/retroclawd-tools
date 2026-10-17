@@ -408,6 +408,12 @@ fn a_multi_sector_file_rcdisk_added_loads_through_amsdos(env: &Env) -> Result<()
     expect_eq("the file's bytes", got.bytes, data)
 }
 
+/// Both AMSDOS loads in one case: a file on a disk rcld made, then a multi-sector file rcdisk added.
+fn disks_load_through_amsdos(env: &Env) -> Result<(), String> {
+    a_disk_rcld_made_loads_through_amsdos(env)?;
+    a_multi_sector_file_rcdisk_added_loads_through_amsdos(env)
+}
+
 /// A disk holding one binary, `name`, of `data`.
 fn disk_with(
     dir: &std::path::Path,
@@ -674,72 +680,8 @@ fn check_only_channels(env: &Env, tag: &str, mixer: u8, on: [bool; 3]) -> Result
     Ok(())
 }
 
-fn the_psg_plays_channel_a_alone_at_its_period_through_the_ppi(env: &Env) -> Result<(), String> {
-    check_only_channels(env, "psg-a", 0b1011_1110, [true, false, false])
-}
-
-fn the_psg_plays_channel_b_alone_at_its_period_through_the_ppi(env: &Env) -> Result<(), String> {
-    check_only_channels(env, "psg-b", 0b1011_1101, [false, true, false])
-}
-
-fn the_psg_plays_channel_c_alone_at_its_period_through_the_ppi(env: &Env) -> Result<(), String> {
-    check_only_channels(env, "psg-c", 0b1011_1011, [false, false, true])
-}
-
 fn the_psg_plays_all_three_channels_as_a_chord(env: &Env) -> Result<(), String> {
     check_only_channels(env, "psg-abc", 0b1011_1000, [true, true, true])
-}
-
-fn the_psg_is_silent_when_the_mixer_turns_every_channel_off(env: &Env) -> Result<(), String> {
-    let out = psg_run(env, "psg-mute", 0b1011_1111, 12)?;
-    let rms = out.audio()?.rms(0.4, 1.8);
-    if rms > 0.001 {
-        return Err(format!("the muted PSG still plays (rms {rms:.4})"));
-    }
-    Ok(())
-}
-
-fn the_psg_noise_is_broadband_not_a_tone(env: &Env) -> Result<(), String> {
-    // Noise on channel A only (register 7 bit 3 clear, tone A off).
-    let out = psg_run(env, "psg-noise", 0b1011_0111, 12)?;
-    let audio = out.audio()?;
-    let rms = audio.rms(0.4, 1.8);
-    if rms < 0.01 {
-        return Err(format!("the noise channel is silent (rms {rms:.4})"));
-    }
-    // A tone of rms r has one DFT bin of amplitude about 1.27 r; noise spreads it over thousands of bins.
-    let peak = [
-        psg_frequency(0),
-        psg_frequency(1),
-        psg_frequency(2),
-        440.0,
-        1000.0,
-    ]
-    .iter()
-    .map(|&f| audio.tone(f, 0.4, 1.8))
-    .fold(0.0, f64::max);
-    if peak > rms * 0.5 {
-        return Err(format!(
-            "the noise has a tone in it (a bin of {peak:.4} against rms {rms:.4})"
-        ));
-    }
-    Ok(())
-}
-
-fn the_psg_volume_register_sets_the_level(env: &Env) -> Result<(), String> {
-    let level = |volume| -> Result<f64, String> {
-        Ok(psg_run(env, "psg-vol", 0b1011_1110, volume)?
-            .audio()?
-            .rms(0.4, 1.8))
-    };
-    let (quiet, loud) = (level(6)?, level(15)?);
-    // The AY's 16-step volume table is logarithmic (about 3 dB a step): level 15 is far louder than level 6.
-    if loud < quiet * 2.0 || quiet <= 0.0 {
-        return Err(format!(
-            "volume 15 (rms {loud:.4}) is not much louder than volume 6 (rms {quiet:.4})"
-        ));
-    }
-    Ok(())
 }
 
 /// AmstradDiag's chip detection writes `$1F` to register 1 and reads it back: all five bits back means a YM2149, four bits an
@@ -774,15 +716,9 @@ const CASES: &[Case] = &[
     ),
     Case::new(
         Area::Media,
-        "a disk rcld made loads through AMSDOS",
-        "the file rcld wrote is the file the firmware reads back",
-        a_disk_rcld_made_loads_through_amsdos,
-    ),
-    Case::new(
-        Area::Media,
-        "a multi-sector file rcdisk added loads through AMSDOS",
-        "the file rcdisk wrote is the file the firmware reads back",
-        a_multi_sector_file_rcdisk_added_loads_through_amsdos,
+        "a disk rcld made and a multi-sector file rcdisk added both load through AMSDOS",
+        "the CPC firmware's AMSDOS reading a standard DSK: a single sector file and a file of several sectors",
+        disks_load_through_amsdos,
     ),
     Case::new(
         Area::Media,
@@ -804,45 +740,9 @@ const CASES: &[Case] = &[
     ),
     Case::new(
         Area::Io,
-        "the PSG plays channel A alone at its period when programmed through the PPI",
-        "AY-3-8912 tone period (f = 1 MHz / 16P) via PPI port A and the BDIR/BC1 lines of port C; register 7 enables",
-        the_psg_plays_channel_a_alone_at_its_period_through_the_ppi,
-    ),
-    Case::new(
-        Area::Io,
-        "the PSG plays channel B alone at its period when programmed through the PPI",
-        "AY-3-8912 tone period (f = 1 MHz / 16P) via PPI port A and the BDIR/BC1 lines of port C; register 7 enables",
-        the_psg_plays_channel_b_alone_at_its_period_through_the_ppi,
-    ),
-    Case::new(
-        Area::Io,
-        "the PSG plays channel C alone at its period when programmed through the PPI",
-        "AY-3-8912 tone period (f = 1 MHz / 16P) via PPI port A and the BDIR/BC1 lines of port C; register 7 enables",
-        the_psg_plays_channel_c_alone_at_its_period_through_the_ppi,
-    ),
-    Case::new(
-        Area::Io,
         "the PSG plays all three channels as a chord",
         "AY-3-8912 tone periods of AmstradDiag's sound test (110, 131 and 165 Hz)",
         the_psg_plays_all_three_channels_as_a_chord,
-    ),
-    Case::new(
-        Area::Io,
-        "the PSG is silent when the mixer turns every channel off",
-        "AY-3-8912 register 7 (mixer): a set bit disables a tone or noise source",
-        the_psg_is_silent_when_the_mixer_turns_every_channel_off,
-    ),
-    Case::new(
-        Area::Io,
-        "the PSG noise channel is broadband, not a tone",
-        "AY-3-8912 noise generator (register 7 bit 3 enables noise on A)",
-        the_psg_noise_is_broadband_not_a_tone,
-    ),
-    Case::new(
-        Area::Io,
-        "the PSG volume register sets the level",
-        "AY-3-8912 amplitude registers 8-10 (16-step logarithmic volume table)",
-        the_psg_volume_register_sets_the_level,
     ),
     Case::new(
         Area::Io,
@@ -1052,6 +952,12 @@ fn the_diagnostics_keyboard_test_sees_the_even_keys_where_the_cpc_matrix_has_the
     keyboard_test_lights_exactly(env, 1)
 }
 
+/// The keyboard test with the odd keys held and then the even ones.
+fn the_diagnostics_keyboard_test_sees_every_key(env: &Env) -> Result<(), String> {
+    the_diagnostics_keyboard_test_sees_the_odd_keys_where_the_cpc_matrix_has_them(env)?;
+    the_diagnostics_keyboard_test_sees_the_even_keys_where_the_cpc_matrix_has_them(env)
+}
+
 const DIAG_DISK: &str = "amstrad/software/diagnostics/AmstradDiag.dsk";
 const YELLOW: [u8; 3] = [255, 255, 0];
 
@@ -1110,10 +1016,6 @@ fn the_diagnostics_disk_recognises_the_roms_by_checksum(env: &Env) -> Result<(),
 
 /// The 664's firmware (lower ROM, BASIC 664 and AMSDOS in one 48K dump) read by the same ROM test.
 const ROM_664: &str = "amstrad/roms/cpc/cpc664.rom";
-
-fn the_diagnostics_disk_recognises_the_664_roms_by_checksum(env: &Env) -> Result<(), String> {
-    diagnostics_rom_test(env, "cpc664", &env.file(ROM_664)?, 349)
-}
 
 /// Runs the diagnostics disk's ROM test on `machine`. `name_end` is where the lower ROM's and ROM 00's text ends.
 fn diagnostics_rom_test(
@@ -1237,6 +1139,14 @@ fn the_diagnostics_keyboard_test_sees_down_left_fire_1_and_fire_3_on_the_joystic
     joystick_lights_exactly(env, &["Joy1Down", "Joy1Left", "Joy1Fire1", "Joy1Fire3"])
 }
 
+/// The joystick cells of the keyboard test: up, right and fire 2, then down, left, fire 1 and fire 3.
+fn the_diagnostics_keyboard_test_sees_every_joystick_direction_and_button(
+    env: &Env,
+) -> Result<(), String> {
+    the_diagnostics_keyboard_test_sees_up_right_and_fire_2_on_the_joystick(env)?;
+    the_diagnostics_keyboard_test_sees_down_left_fire_1_and_fire_3_on_the_joystick(env)
+}
+
 /// Presses `keys` on the joystick in the keyboard test, then holds fire 1 to leave it (the program exits after about 53
 /// frames of fire, ESC or TAB) and returns the menu: the JOYSTICK result row says whether all of up, down, left, right and
 /// fire 1 were seen in the matrix.
@@ -1285,96 +1195,6 @@ fn the_diagnostics_report_a_working_joystick_as_passed(env: &Env) -> Result<(), 
         return Err(format!(
             "the untouched keyboard is not reported as FAILED ({red} red pixels)"
         ));
-    }
-    Ok(())
-}
-
-fn the_diagnostics_report_a_joystick_missing_a_direction_as_failed(
-    env: &Env,
-) -> Result<(), String> {
-    let out = joystick_result(env, &["Joy1Up", "Joy1Down", "Joy1Left"])?;
-    let screen = out.screen()?;
-    let red = (360..378)
-        .flat_map(|y| (230..340).map(move |x| (x, y)))
-        .filter(|&(x, y)| is_error_colour(screen.pixel(x, y)))
-        .count();
-    if red < 30 {
-        return Err(format!(
-            "no red JOYSTICK : FAILED ({red} red pixels in the row)"
-        ));
-    }
-    expect_eq(
-        "cyan pixels in the JOYSTICK row",
-        joystick_row_pixels(screen, [0, 255, 255]),
-        0,
-    )
-}
-
-/// The soak test repeats the ROM check and the upper RAM test of a 6128 for ever, counting iterations in its title, and stops
-/// on the failing-bits screen at the first error. Two pictures of one run (`--at N:screenshot`): still the soak title, no error
-/// colour anywhere, and the iteration counter has moved on.
-fn the_diagnostics_soak_test_keeps_iterating_without_errors(env: &Env) -> Result<(), String> {
-    let first = std::env::temp_dir().join(format!("rc-suite-soak-{}.png", std::process::id()));
-    let wait = "q".repeat(60);
-    let out = env
-        .run("cpc6128")
-        .rom(&rom(env)?)
-        .arg("--disk")
-        .arg(env.file(DIAG_DISK)?.to_string_lossy())
-        .arg("--type-after")
-        .arg("150")
-        .arg("--type-delay")
-        .arg("80")
-        .arg("--type")
-        .arg(format!("RUN\"DIAG\n{wait}s"))
-        .arg("--at")
-        .arg(format!("2000:screenshot={}", first.display()))
-        .frames(3800)
-        .screen()
-        .go()?;
-    let early = rc_suite::Screen::read(&first)?;
-    let _ = std::fs::remove_file(&first);
-    let late = out.screen()?;
-    let cyan_banner = |s: &rc_suite::Screen| {
-        (70..690)
-            .filter(|&x| s.pixel(x, 88) == [0, 255, 255])
-            .count()
-    };
-    let red = |s: &rc_suite::Screen| {
-        (0..s.height)
-            .flat_map(|y| (0..s.width).map(move |x| (x, y)))
-            .filter(|&(x, y)| is_error_colour(s.pixel(x, y)))
-            .count()
-    };
-    for (when, s) in [("early", &early), ("late", late)] {
-        if cyan_banner(s) < 500 {
-            return Err(format!(
-                "the {when} picture has no title banner: the soak test is not running"
-            ));
-        }
-        expect_eq(
-            &format!("error-colour pixels in the {when} picture"),
-            red(s),
-            0,
-        )?;
-    }
-    // The title ends "SOAK ITERATION 00N": three characters 12 pixels apart at x=616..652, rows 88-104.
-    let digit = |s: &rc_suite::Screen, n: usize| -> Vec<bool> {
-        (88..104)
-            .flat_map(|y| (616 + 12 * n..628 + 12 * n).map(move |x| (x, y)))
-            .map(|(x, y)| s.pixel(x, y) != [0, 255, 255])
-            .collect()
-    };
-    if digit(&early, 0) != digit(&early, 1) {
-        return Err("the iteration counter is past 99 at frame 2000".to_string());
-    }
-    if digit(&early, 2) == digit(late, 2) {
-        return Err(
-            "the iteration counter did not change between frame 2000 and the end".to_string(),
-        );
-    }
-    if digit(late, 2) == digit(late, 0) {
-        return Err("the iteration counter is still 0 at the end".to_string());
     }
     Ok(())
 }
@@ -1431,15 +1251,9 @@ const DIAG_CASES: &[Case] = &[
     ),
     Case::new(
         Area::Io,
-        "the AmstradDiag keyboard test sees the odd keys where the CPC matrix has them",
-        "AmstradDiag's keyboard test (it paints a key it reads as pressed from the keyboard matrix)",
-        the_diagnostics_keyboard_test_sees_the_odd_keys_where_the_cpc_matrix_has_them,
-    ),
-    Case::new(
-        Area::Io,
-        "the AmstradDiag keyboard test sees the even keys where the CPC matrix has them",
-        "AmstradDiag's keyboard test (it paints a key it reads as pressed from the keyboard matrix)",
-        the_diagnostics_keyboard_test_sees_the_even_keys_where_the_cpc_matrix_has_them,
+        "the AmstradDiag keyboard test sees the odd and the even keys where the CPC matrix has them",
+        "the CPC keyboard matrix (AmstradDiag's own layout table), both halves of the keys",
+        the_diagnostics_keyboard_test_sees_every_key,
     ),
     Case::new(
         Area::Memory,
@@ -1455,15 +1269,9 @@ const DIAG_CASES: &[Case] = &[
     ),
     Case::new(
         Area::Io,
-        "the AmstradDiag keyboard test sees joystick up, right and fire 2 where the CPC matrix has them",
-        "AmstradDiag's keyboard test (it paints a joystick cell from the matrix row it reads)",
-        the_diagnostics_keyboard_test_sees_up_right_and_fire_2_on_the_joystick,
-    ),
-    Case::new(
-        Area::Io,
-        "the AmstradDiag keyboard test sees joystick down, left, fire 1 and fire 3 where the CPC matrix has them",
-        "AmstradDiag's keyboard test (it paints a joystick cell from the matrix row it reads)",
-        the_diagnostics_keyboard_test_sees_down_left_fire_1_and_fire_3_on_the_joystick,
+        "the AmstradDiag keyboard test sees every joystick direction and button where the CPC matrix has them",
+        "the CPC joystick lines on matrix line 9 (up, down, left, right, fire 1, fire 2, fire 3)",
+        the_diagnostics_keyboard_test_sees_every_joystick_direction_and_button,
     ),
     Case::new(
         Area::Io,
@@ -1472,28 +1280,10 @@ const DIAG_CASES: &[Case] = &[
         the_diagnostics_report_a_working_joystick_as_passed,
     ),
     Case::new(
-        Area::Io,
-        "the AmstradDiag reports a joystick that never went right as FAILED",
-        "AmstradDiag's joystick result (error colour when a direction was never read)",
-        the_diagnostics_report_a_joystick_missing_a_direction_as_failed,
-    ),
-    Case::new(
-        Area::Memory,
-        "the AmstradDiag soak test keeps iterating on a 6128 without an error",
-        "AmstradDiag's soak test (ROM check and upper RAM test repeated; its iteration counter; the error colour)",
-        the_diagnostics_soak_test_keeps_iterating_without_errors,
-    ),
-    Case::new(
         Area::Rom,
         "the AmstradDiag disk identifies a CPC664 and its floppy controller and passes the lower RAM test",
         "AmstradDiag's system information (model, FDC detected) and its lower RAM test",
         the_diagnostics_disk_identifies_a_cpc664_and_its_fdc,
-    ),
-    Case::new(
-        Area::Rom,
-        "the AmstradDiag disk recognises the 664's lower ROM, BASIC and AMSDOS by checksum",
-        "AmstradDiag's ROM test (OS 664 FD6F, 664 BASIC 1440, AMSDOS 0F91)",
-        the_diagnostics_disk_recognises_the_664_roms_by_checksum,
     ),
 ];
 

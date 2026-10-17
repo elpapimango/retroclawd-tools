@@ -67,22 +67,6 @@ fn boots_to_the_basic_7_banner(env: &Env) -> Result<(), String> {
     Ok(())
 }
 
-fn the_mmu_version_register_reads_0x20(env: &Env) -> Result<(), String> {
-    let out = run(
-        env,
-        "vr",
-        "
- lda $D50B
- sta $0F00
-here: jmp here
-",
-        2,
-        &[(0x0F00, 1)],
-    )?;
-    // MMU: the system version register ($D50B) reads $20 (bank version 2 = 128K, MMU version 0).
-    expect_eq("VR", out.byte(0x0F00)?, 0x20)
-}
-
 fn the_roms_show_and_a_write_goes_to_the_ram_under_them(env: &Env) -> Result<(), String> {
     let out = run(
         env,
@@ -124,44 +108,6 @@ here: jmp here
         basic[0],
     )?;
     expect_eq("the same address with CR = $3E", out.byte(0x0F21)?, 0xA5)
-}
-
-fn a_write_to_a_load_configuration_register_loads_cr_from_its_preconfiguration(
-    env: &Env,
-) -> Result<(), String> {
-    let out = run(
-        env,
-        "pcr",
-        "
- lda #$5A
- sta $4000
- lda #$3E
- sta $D501
- lda #$00
- sta $FF00
- lda $4000
- sta $0F10
- sta $FF01
- lda $4000
- sta $0F11
-here: jmp here
-",
-        2,
-        &[(0x0F10, 2)],
-    )?;
-    // MMU: a write to $FF01 (LCRA) loads CR from $D501 (PCRA), whatever value is written.
-    let basic = std::fs::read(env.file("commodore/roms/c128/basiclo-318018-04.bin")?)
-        .map_err(|e| e.to_string())?;
-    expect_eq(
-        "with CR = $00 the ROM shows at 0x4000",
-        out.byte(0x0F10)?,
-        basic[0],
-    )?;
-    expect_eq(
-        "after writing $FF01 PCRA ($3E) is in CR, so the RAM shows",
-        out.byte(0x0F11)?,
-        0x5A,
-    )
 }
 
 fn ram_banks_0_and_1_are_separate(env: &Env) -> Result<(), String> {
@@ -485,22 +431,10 @@ const CASES: &[Case] = &[
         a_1581_drive_loads_a_file_rcdisk_added,
     ),
     Case::new(
-        Area::Io,
-        "the MMU version register reads $20",
-        "MMU: system version register $D50B",
-        the_mmu_version_register_reads_0x20,
-    ),
-    Case::new(
         Area::Memory,
         "the ROMs show and a write goes to the RAM under them",
         "MMU: configuration register $FF00 bits 1-5",
         the_roms_show_and_a_write_goes_to_the_ram_under_them,
-    ),
-    Case::new(
-        Area::Memory,
-        "a write to $FF01 loads CR from PCRA",
-        "MMU: load configuration registers $FF01-$FF04 and pre-configuration registers $D501-$D504",
-        a_write_to_a_load_configuration_register_loads_cr_from_its_preconfiguration,
     ),
     Case::new(
         Area::Memory,

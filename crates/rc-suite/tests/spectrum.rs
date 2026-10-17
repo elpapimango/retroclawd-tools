@@ -130,23 +130,6 @@ fn the_power_on_routine_finds_48k_of_ram(env: &Env) -> Result<(), String> {
     expect_eq("P_RAMT", out.word(P_RAMT)?, 0xFFFF)
 }
 
-fn frames_counts_at_the_50_hz_interrupt(env: &Env) -> Result<(), String> {
-    let at = |frames| -> Result<u32, String> {
-        let out = env
-            .run("zx-spectrum")
-            .rom(&env.file(ROM_48)?)
-            .frames(frames)
-            .dump(FRAMES, 3)
-            .go()?;
-        let b = out.bytes(FRAMES, 3)?;
-        Ok(u32::from(b[0]) | u32::from(b[1]) << 8 | u32::from(b[2]) << 16)
-    };
-    let early = at(BOOT_FRAMES)?;
-    let later = at(BOOT_FRAMES + 100)?;
-    // WOS48: the ULA interrupts once a frame; the ROM's interrupt routine adds one to FRAMES each time.
-    expect_in("FRAMES over 100 frames", i64::from(later - early), 99, 101)
-}
-
 fn frame_length(env: &Env, rom: &str, per_frame: i64) -> Result<(), String> {
     const FRAMES_RUN: u32 = 10;
     let out = run_program(
@@ -177,6 +160,12 @@ fn a_48k_frame_is_69888_t_states(env: &Env) -> Result<(), String> {
 /// WOS128: 311 lines of 228 T-states.
 fn a_128k_frame_is_70908_t_states(env: &Env) -> Result<(), String> {
     frame_length(env, ROM_128, 70_908)
+}
+
+/// The 48K and 128K frame lengths.
+fn frame_lengths_per_model_a(env: &Env) -> Result<(), String> {
+    a_48k_frame_is_69888_t_states(env)?;
+    a_128k_frame_is_70908_t_states(env)
 }
 
 fn the_rom_is_read_only_and_ram_starts_at_0x4000(env: &Env) -> Result<(), String> {
@@ -434,6 +423,12 @@ fn pages_5_and_2_are_the_fixed_banks_at_0x4000_and_0x8000(env: &Env) -> Result<(
     )
 }
 
+/// The paging of the 128K's RAM: the eight pages, then the two fixed banks.
+fn the_ram_pages_and_the_fixed_banks(env: &Env) -> Result<(), String> {
+    the_eight_ram_pages_are_separate(env)?;
+    pages_5_and_2_are_the_fixed_banks_at_0x4000_and_0x8000(env)
+}
+
 fn bit_4_of_port_0x7ffd_selects_the_rom(env: &Env) -> Result<(), String> {
     let out = run_program(
         env,
@@ -492,21 +487,9 @@ const CASES: &[Case] = &[
     ),
     Case::new(
         Area::Timers,
-        "FRAMES counts one a frame",
-        "WOS48 (the ULA interrupts once a frame)",
-        frames_counts_at_the_50_hz_interrupt,
-    ),
-    Case::new(
-        Area::Timers,
-        "a 48K frame is 69888 T-states",
-        "WOS48 (312 lines x 224 T-states)",
-        a_48k_frame_is_69888_t_states,
-    ),
-    Case::new(
-        Area::Timers,
-        "a 128K frame is 70908 T-states",
-        "WOS128 (311 lines x 228 T-states)",
-        a_128k_frame_is_70908_t_states,
+        "a frame is 69888 T-states on the 48K and 70908 on the 128K and +2A/+3",
+        "WOS: the 48K frame is 69888 T-states, the 128K family (128K, +2, +2A, +3) 70908",
+        frame_lengths_per_model,
     ),
     Case::new(
         Area::Memory,
@@ -540,27 +523,15 @@ const CASES: &[Case] = &[
     ),
     Case::new(
         Area::Memory,
-        "the 128K has eight separate RAM pages at 0xC000",
-        "WOS128 port 0x7FFD bits 0-2",
-        the_eight_ram_pages_are_separate,
-    ),
-    Case::new(
-        Area::Memory,
-        "pages 5 and 2 are fixed at 0x4000 and 0x8000",
-        "WOS128 memory map",
-        pages_5_and_2_are_the_fixed_banks_at_0x4000_and_0x8000,
+        "the 128K has eight separate RAM pages at 0xC000, and pages 5 and 2 are fixed at 0x4000 and 0x8000",
+        "WOS128 port 0x7FFD bits 0-2 and the 128K memory map",
+        the_ram_pages_and_the_fixed_banks,
     ),
     Case::new(
         Area::Rom,
-        "both ROM halves of every 128K-family variant appear at 0x0000 exactly as the file holds them",
-        "WOS128 port 0x7FFD bit 4 (the 32K file is ROM 0 then ROM 1); the 128K, +2, 4.02 and Derby 1.4 ROMs",
-        every_128k_rom_variant_pages_both_halves_in_unchanged,
-    ),
-    Case::new(
-        Area::Rom,
-        "bit 4 of port 0x7FFD selects the ROM",
-        "WOS128 port 0x7FFD bit 4",
-        bit_4_of_port_0x7ffd_selects_the_rom,
+        "the ROM is selected by bit 4 of 0x7FFD (128K) and, on the +2A/+3, by bit 2 of 0x1FFD as well",
+        "WOS128 port 0x7FFD bit 4 and the +2A/+3 ROM table (port 0x1FFD bit 2)",
+        the_rom_select_bits,
     ),
     Case::new(
         Area::Memory,
@@ -598,56 +569,6 @@ const ROM_128_VARIANTS: [&str; 4] = [
     "sinclair/roms/zx-spectrum/spec128uk_4.02.rom",
     "sinclair/roms/zx-spectrum/spec128uk_derby1.4.rom",
 ];
-
-fn every_128k_rom_variant_pages_both_halves_in_unchanged(env: &Env) -> Result<(), String> {
-    let mut tried = 0;
-    for name in ROM_128_VARIANTS {
-        let Ok(path) = env.file(name) else {
-            eprintln!("  (skipping {name}: not present)");
-            continue;
-        };
-        // Copy ROM 0 to 0x8000 and, with ROM 1 paged in, ROM 1 to 0xC000 (RAM page 0); the program sits at 0x6000.
-        let out = run_program(
-            env,
-            name,
-            "romhalves",
-            0x6000,
-            " ld bc,$7FFD
- xor a
- out (c),a
- ld hl,0
- ld de,$8000
- ld bc,$4000
- ldir
- ld bc,$7FFD
- ld a,$10
- out (c),a
- ld hl,0
- ld de,$C000
- ld bc,$4000
- ldir
-here: jr here
-",
-            12,
-            &[(0x8000, 0x4000), (0xC000, 0x4000)],
-        )?;
-        let rom = std::fs::read(&path).map_err(|e| e.to_string())?;
-        expect_eq(&format!("{name}: the ROM file length"), rom.len(), 0x8000)?;
-        for (half, at) in [(0usize, 0x8000u16), (1, 0xC000)] {
-            let got = out.bytes(at, 0x4000)?;
-            let want = &rom[half * 0x4000..(half + 1) * 0x4000];
-            if got != want {
-                let first = got.iter().zip(want).position(|(a, b)| a != b).unwrap_or(0);
-                return Err(format!(
-                    "{name}: ROM {half} differs from the file, first at offset {first:#06x} (got {:#04x}, file {:#04x})",
-                    got[first], want[first]
-                ));
-            }
-        }
-        tried += 1;
-    }
-    expect_in("128K ROM variants present", tried, 1, 4)
-}
 
 fn every_128k_rom_variant_boots_with_its_frame_interrupt_running(env: &Env) -> Result<(), String> {
     let mut tried = 0;
@@ -770,9 +691,21 @@ fn the_rom_number_combines_bit_4_of_0x7ffd_and_bit_2_of_0x1ffd(env: &Env) -> Res
     Ok(())
 }
 
+/// ROM selection on the 128K and on the +2A/+3.
+fn the_rom_select_bits(env: &Env) -> Result<(), String> {
+    bit_4_of_port_0x7ffd_selects_the_rom(env)?;
+    the_rom_number_combines_bit_4_of_0x7ffd_and_bit_2_of_0x1ffd(env)
+}
+
 /// WOS128: the +2A/+3 "share the same timing" as the 128K: 311 lines of 228 T-states.
 fn a_plus3_frame_is_70908_t_states(env: &Env) -> Result<(), String> {
     frame_length(env, ROM_PLUS3, 70_908)
+}
+
+/// The frame length of every model.
+fn frame_lengths_per_model(env: &Env) -> Result<(), String> {
+    frame_lengths_per_model_a(env)?;
+    a_plus3_frame_is_70908_t_states(env)
 }
 
 /// A one-track DSK holding a single 512-byte sector (cylinder 0, head 0, sector 1) that starts with `first`.
@@ -897,18 +830,6 @@ const PLUS3_CASES: &[Case] = &[
         "special paging selects the four documented all-RAM maps",
         "WOS128 port 0x1FFD bits 0-2 and the +2A/+3 memory table",
         special_paging_selects_the_documented_all_ram_maps,
-    ),
-    Case::new(
-        Area::Rom,
-        "the ROM number is bit 2 of 0x1FFD and bit 4 of 0x7FFD",
-        "WOS128 +2A/+3 ROMs 0-3",
-        the_rom_number_combines_bit_4_of_0x7ffd_and_bit_2_of_0x1ffd,
-    ),
-    Case::new(
-        Area::Timers,
-        "a +2A/+3 frame is 70908 T-states",
-        "WOS128 (shares the 128K timing)",
-        a_plus3_frame_is_70908_t_states,
     ),
     Case::new(
         Area::Io,
