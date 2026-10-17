@@ -137,7 +137,6 @@ fn every_block() -> Vec<Block> {
     ]
 }
 
-#[test]
 fn every_block_kind_comes_back_byte_for_byte() {
     let tape = Tape {
         major: 1,
@@ -150,7 +149,6 @@ fn every_block_kind_comes_back_byte_for_byte() {
     assert_eq!(back.to_bytes(), bytes);
 }
 
-#[test]
 fn a_tape_with_an_unknown_block_says_where() {
     let mut bytes = Tape::new().to_bytes();
     bytes.extend_from_slice(&[0x10, 0, 0, 1, 0, 0xAA]);
@@ -159,7 +157,6 @@ fn a_tape_with_an_unknown_block_says_where() {
     assert!(e.contains("block 2") && e.contains("0x77"), "{e}");
 }
 
-#[test]
 fn a_cut_off_tape_says_which_block() {
     let mut bytes = Tape::new().to_bytes();
     bytes.extend_from_slice(&[0x10, 0, 0, 5, 0, 1, 2]);
@@ -167,8 +164,13 @@ fn a_cut_off_tape_says_which_block() {
     assert!(e.contains("block 1") && e.contains("past the end"), "{e}");
     assert!(Tape::parse(b"nope nope nope").is_err());
 }
-
+/// Merged (every check kept): `a_tape_with_an_unknown_block_says_where`, `a_cut_off_tape_says_which_block`.
 #[test]
+fn damaged_tapes() {
+    a_tape_with_an_unknown_block_says_where();
+    a_cut_off_tape_says_which_block();
+}
+
 fn tap_to_tzx_and_back_is_the_identity() {
     let mut tap = Vec::new();
     for b in program("hello", &[1, 2, 3, 4])
@@ -197,7 +199,6 @@ fn tap_to_tzx_and_back_is_the_identity() {
     );
 }
 
-#[test]
 fn only_standard_blocks_fit_a_tap() {
     let mut tape = Tape::new();
     tape.blocks.push(Block::standard(&framed(0xFF, &[1]), 1000));
@@ -214,8 +215,14 @@ fn only_standard_blocks_fit_a_tap() {
     });
     assert!(rctape::to_tap(&tape, true).unwrap_err().contains("block 4"));
 }
-
+/// Merged (every check kept): `every_block_kind_comes_back_byte_for_byte`, `tap_to_tzx_and_back_is_the_identity`, `only_standard_blocks_fit_a_tap`.
 #[test]
+fn block_round_trips() {
+    every_block_kind_comes_back_byte_for_byte();
+    tap_to_tzx_and_back_is_the_identity();
+    only_standard_blocks_fit_a_tap();
+}
+
 fn headers_decode_and_describe_themselves() {
     let h = make_header(Kind::Program, "LOADER", 1234, 10, 1200);
     assert!(checksum_ok(&h));
@@ -234,7 +241,6 @@ fn headers_decode_and_describe_themselves() {
     assert!(!checksum_ok(&bad));
 }
 
-#[test]
 fn basic_is_listed_with_its_tokens() {
     // 10 PRINT "HI": 3.5 ; 20 LET a=5 (with the hidden number form)
     let mut prog = vec![0, 10, 6, 0, 0xF5, b'"', b'H', b'I', b'"', 0x0D];
@@ -248,8 +254,13 @@ fn basic_is_listed_with_its_tokens() {
     prog.extend_from_slice(&line2);
     assert_eq!(spectrum::list_basic(&prog), "10 PRINT \"HI\"\n20 LET a=5\n");
 }
-
+/// Merged (every check kept): `headers_decode_and_describe_themselves`, `basic_is_listed_with_its_tokens`.
 #[test]
+fn headers_and_basic() {
+    headers_decode_and_describe_themselves();
+    basic_is_listed_with_its_tokens();
+}
+
 fn block_ranges() {
     assert_eq!(rctape::parse_selection("2-3,5", 6).unwrap(), vec![1, 2, 4]);
     assert_eq!(rctape::parse_selection("4-", 6).unwrap(), vec![3, 4, 5]);
@@ -266,7 +277,6 @@ fn block_ranges() {
     assert!(rctape::parse_selection("x", 5).is_err());
 }
 
-#[test]
 fn split_and_merge_are_inverse() {
     let mut tape = Tape::new();
     tape.blocks.push(Block::text("a collection"));
@@ -284,8 +294,13 @@ fn split_and_merge_are_inverse() {
     let tapes: Vec<Tape> = parts.into_iter().map(|p| p.1).collect();
     assert_eq!(rctape::merge(&tapes), tape);
 }
-
+/// Merged (every check kept): `block_ranges`, `split_and_merge_are_inverse`.
 #[test]
+fn ranges_and_splits() {
+    block_ranges();
+    split_and_merge_are_inverse();
+}
+
 fn cleanup_does_what_it_is_asked() {
     let mut bad = framed(0xFF, &[1, 2, 3]);
     *bad.last_mut().unwrap() ^= 0xFF;
@@ -321,7 +336,6 @@ fn cleanup_does_what_it_is_asked() {
     assert!(again.is_empty(), "{again:?}");
 }
 
-#[test]
 fn extract_names_files_after_their_headers() {
     let mut tape = Tape::new();
     tape.blocks.extend(program("screen", &[1, 2, 3]));
@@ -341,6 +355,12 @@ fn extract_names_files_after_their_headers() {
         ["001-header.bin", "002-data.bin"]
     );
     assert_eq!(raw[1].bytes, framed(0xFF, &[1, 2, 3]));
+}
+/// Merged (every check kept): `cleanup_does_what_it_is_asked`, `extract_names_files_after_their_headers`.
+#[test]
+fn cleanup_and_extract() {
+    cleanup_does_what_it_is_asked();
+    extract_names_files_after_their_headers();
 }
 
 #[test]

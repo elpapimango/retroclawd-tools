@@ -96,7 +96,7 @@ fn a_spectrum_program_runs_in_the_emulator() {
         &[
             "zx-spectrum",
             "--rom",
-            roms.join("sinclair/roms/zx-spectrum/48.rom")
+            roms.join("sinclair/roms/zx-spectrum/spec48.rom")
                 .to_str()
                 .unwrap(),
             "--program",

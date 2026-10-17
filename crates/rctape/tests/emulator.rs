@@ -49,7 +49,7 @@ fn run(tape_file: &str, tag: &str, expect: &[u8], header_first: bool) {
     std::fs::create_dir_all(&dir).unwrap();
     let program = dir.join("loader.bin");
     std::fs::write(&program, loader(0x9000, expect.len() as u16, header_first)).unwrap();
-    let rom = roms.join("sinclair/roms/zx-spectrum/48.rom");
+    let rom = roms.join("sinclair/roms/zx-spectrum/spec48.rom");
     // --program and --tape do not go together, so the loader is first put into a saved state (the program,
     // placed and about to run), and that state is then started with the tape in the drive.
     let state = dir.join("loader.state");

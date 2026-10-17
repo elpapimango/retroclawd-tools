@@ -67,7 +67,6 @@ fn bytes(len: usize, seed: u8) -> Vec<u8> {
         .collect()
 }
 
-#[test]
 fn create_info_dump_in_every_format() {
     let t = Temp::new("create");
     let prog = t.write("prog.bin", &bytes(300, 1));
@@ -101,7 +100,6 @@ fn create_info_dump_in_every_format() {
     assert!(fails(&["dump", &t.path("p.z80"), "--bank", "1"]).contains("48K"));
 }
 
-#[test]
 fn convert_between_the_spectrum_formats() {
     let t = Temp::new("convert");
     let prog = t.write("prog.bin", &bytes(64, 5));
@@ -137,8 +135,13 @@ fn convert_between_the_spectrum_formats() {
         "{json}"
     );
 }
-
+/// Merged (every check kept): `create_info_dump_in_every_format`, `convert_between_the_spectrum_formats`.
 #[test]
+fn spectrum_snapshot_commands() {
+    create_info_dump_in_every_format();
+    convert_between_the_spectrum_formats();
+}
+
 fn create_rejects_bad_requests() {
     let t = Temp::new("bad");
     let prog = t.write("prog.bin", &[1, 2, 3]);
@@ -260,10 +263,15 @@ fn a_cpc_snapshot_is_described_and_changes_version() {
     assert_eq!(dumped.stdout, bytes(64 * 1024, 2)[0x100..0x104]);
 }
 
-#[test]
 fn unknown_and_damaged_files_are_refused() {
     let t = Temp::new("junk");
     assert!(fails(&["info", &t.write("x.txt", b"hello")]).contains("not a snapshot"));
     assert!(fails(&["info", &t.write("x.z80", b"short")]).contains("not a valid .z80"));
     assert!(fails(&["info", &t.write("x.crt", b"C64 CARTRIDGE   ")]).contains(".crt"));
+}
+/// Merged (every check kept): `create_rejects_bad_requests`, `unknown_and_damaged_files_are_refused`.
+#[test]
+fn bad_requests() {
+    create_rejects_bad_requests();
+    unknown_and_damaged_files_are_refused();
 }

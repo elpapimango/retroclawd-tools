@@ -31,7 +31,7 @@ fn program() -> Vec<u8> {
 }
 
 fn emulator(bin: &Path, roms: &Path, args: &[&str]) -> String {
-    machine(bin, roms, "zx-spectrum", "48.rom", args)
+    machine(bin, roms, "zx-spectrum", "spec48.rom", args)
 }
 
 fn machine(bin: &Path, roms: &Path, id: &str, rom: &str, args: &[&str]) -> String {

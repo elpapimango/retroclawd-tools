@@ -71,7 +71,6 @@ fn spec2a3() -> Spec {
 
 const ALL: [Format; 3] = [Format::Z80, Format::Sna, Format::Szx];
 
-#[test]
 fn a_48k_snapshot_survives_every_format() {
     let s = spec48();
     for f in ALL {
@@ -95,7 +94,6 @@ fn a_48k_snapshot_survives_every_format() {
     }
 }
 
-#[test]
 fn a_128k_snapshot_survives_every_format() {
     let s = spec128();
     for f in ALL {
@@ -104,7 +102,6 @@ fn a_128k_snapshot_survives_every_format() {
     }
 }
 
-#[test]
 fn a_plus3_snapshot_survives_z80_and_szx_and_not_sna() {
     let s = spec2a3();
     for f in [Format::Z80, Format::Szx] {
@@ -116,6 +113,13 @@ fn a_plus3_snapshot_survives_z80_and_szx_and_not_sna() {
             .unwrap_err()
             .contains("+2A/+3")
     );
+}
+/// Merged (every check kept): `a_48k_snapshot_survives_every_format`, `a_128k_snapshot_survives_every_format`, `a_plus3_snapshot_survives_z80_and_szx_and_not_sna`.
+#[test]
+fn snapshots_survive_every_format() {
+    a_48k_snapshot_survives_every_format();
+    a_128k_snapshot_survives_every_format();
+    a_plus3_snapshot_survives_z80_and_szx_and_not_sna();
 }
 
 #[test]
@@ -175,7 +179,6 @@ fn the_ay_chip_goes_through_szx() {
     assert_eq!(back.ay, s.ay);
 }
 
-#[test]
 fn the_cpu_address_space_follows_the_paging() {
     let s = spec128();
     let space = s.address_space();
@@ -191,7 +194,6 @@ fn the_cpu_address_space_follows_the_paging() {
     assert!(s.read(0xFFFF, 2).is_err());
 }
 
-#[test]
 fn poke_stays_inside_ram() {
     let mut s = Spec::blank48(0x8000);
     s.poke(0x8000, &[1, 2, 3]).unwrap();
@@ -199,6 +201,12 @@ fn poke_stays_inside_ram() {
     assert!(s.poke(0x3FFF, &[1]).unwrap_err().contains("ROM"));
     assert!(s.poke(0xFFFF, &[1, 2]).is_err());
     assert!(spec128().poke(0x8000, &[1]).is_err());
+}
+/// Merged (every check kept): `the_cpu_address_space_follows_the_paging`, `poke_stays_inside_ram`.
+#[test]
+fn address_space_and_poke() {
+    the_cpu_address_space_follows_the_paging();
+    poke_stays_inside_ram();
 }
 
 #[test]
@@ -214,7 +222,6 @@ fn the_z80_version_is_read_from_the_header() {
     assert_eq!(spectrum::z80_version(&v1), Some(1));
 }
 
-#[test]
 fn zx81_names_round_trip() {
     for name in ["HELLO WORLD", "TEST 1.0", "A-B+C=D"] {
         let p81 = zx81::write_p81(name, &[1, 2, 3, 4]).unwrap();
@@ -233,7 +240,6 @@ fn zx81_names_round_trip() {
     assert!(zx81::write_p81("", &[]).is_err());
 }
 
-#[test]
 fn zx81_system_variables_give_the_basic_lines() {
     // VERSN, E_PPC, D_FILE (0x4082), DF_CC, VARS (0x4082), DEST, E_LINE (0x4082), ...; one line: 10 REM
     let mut data = vec![0u8; 0x407D - 0x4009];
@@ -249,8 +255,13 @@ fn zx81_system_variables_give_the_basic_lines() {
         (1, Some(10), Some(10))
     );
 }
-
+/// Merged (every check kept): `zx81_names_round_trip`, `zx81_system_variables_give_the_basic_lines`.
 #[test]
+fn zx81_names_and_variables() {
+    zx81_names_round_trip();
+    zx81_system_variables_give_the_basic_lines();
+}
+
 fn plain_cartridges_go_to_raw_and_back() {
     let rom8 = pattern(0x2000, 9);
     let crt = carts::crt_from_raw("TEST", &rom8).unwrap();
@@ -279,7 +290,6 @@ fn plain_cartridges_go_to_raw_and_back() {
     assert_eq!(carts::crt_type_name(99), "type 99");
 }
 
-#[test]
 fn cpr_pages_go_to_raw_and_back() {
     let raw = pattern(3 * cpc_cartridge::PAGE_SIZE, 4);
     let (cart, note) = carts::cpr_from_raw(&raw).unwrap();
@@ -297,4 +307,10 @@ fn cpr_pages_go_to_raw_and_back() {
     );
     assert!(carts::cpr_from_raw(&[]).is_err());
     assert!(carts::cpr_from_raw(&vec![0; 33 * cpc_cartridge::PAGE_SIZE]).is_err());
+}
+/// Merged (every check kept): `plain_cartridges_go_to_raw_and_back`, `cpr_pages_go_to_raw_and_back`.
+#[test]
+fn cartridge_conversions() {
+    plain_cartridges_go_to_raw_and_back();
+    cpr_pages_go_to_raw_and_back();
 }

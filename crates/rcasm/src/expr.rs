@@ -385,7 +385,6 @@ mod tests {
         parse(text)?.eval(&env).map_err(|e| e.to_string())
     }
 
-    #[test]
     fn number_notations() {
         assert_eq!(eval("$FF"), Ok(255));
         assert_eq!(eval("0xff"), Ok(255));
@@ -403,7 +402,6 @@ mod tests {
         assert_eq!(eval("'''"), Ok(39));
     }
 
-    #[test]
     fn the_current_address() {
         assert_eq!(eval("*"), Ok(0x1000));
         assert_eq!(eval("$"), Ok(0x1000));
@@ -411,8 +409,13 @@ mod tests {
         assert_eq!(eval("$ - start"), Ok(0x1000 - 0xC000));
         assert_eq!(eval("2 * 3"), Ok(6));
     }
-
+    /// Merged (every check kept): `number_notations`, `the_current_address`.
     #[test]
+    fn literals() {
+        number_notations();
+        the_current_address();
+    }
+
     fn precedence_and_grouping() {
         assert_eq!(eval("1 + 2 * 3"), Ok(7));
         assert_eq!(eval("(1 + 2) * 3"), Ok(9));
@@ -427,15 +430,19 @@ mod tests {
         assert_eq!(eval("!5"), Ok(0));
     }
 
-    #[test]
     fn low_and_high_byte() {
         assert_eq!(eval("<start"), Ok(0));
         assert_eq!(eval(">start"), Ok(0xC0));
         assert_eq!(eval("<$1234 + 1"), Ok(0x35));
         assert_eq!(eval(">($1234 + $100)"), Ok(0x13));
     }
-
+    /// Merged (every check kept): `precedence_and_grouping`, `low_and_high_byte`.
     #[test]
+    fn operators() {
+        precedence_and_grouping();
+        low_and_high_byte();
+    }
+
     fn symbols_and_errors() {
         assert_eq!(eval("start + n"), Ok(0xC005));
         assert_eq!(
@@ -453,11 +460,16 @@ mod tests {
         assert_eq!(eval("0 && missing"), Ok(0));
     }
 
-    #[test]
     fn local_and_dotted_symbol_names() {
         let e = parse("@loop + .x").unwrap();
         let mut names = Vec::new();
         e.symbols(&mut names);
         assert_eq!(names, ["@loop", ".x"]);
+    }
+    /// Merged (every check kept): `symbols_and_errors`, `local_and_dotted_symbol_names`.
+    #[test]
+    fn symbols() {
+        symbols_and_errors();
+        local_and_dotted_symbol_names();
     }
 }

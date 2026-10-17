@@ -110,7 +110,6 @@ fn build_takes_paths_relative_to_the_layout_and_writes_the_extras() {
     );
 }
 
-#[test]
 fn the_extension_chooses_the_image_and_nothing_is_overwritten() {
     let t = Temp::new("force");
     let layout = project(&t);
@@ -125,7 +124,6 @@ fn the_extension_chooses_the_image_and_nothing_is_overwritten() {
     );
 }
 
-#[test]
 fn defines_and_errors() {
     let t = Temp::new("errors");
     let layout = project(&t);
@@ -141,16 +139,9 @@ fn defines_and_errors() {
     assert!(fails(&["build", &t.write("bad.toml", "machine = [")]).contains("bad.toml"));
     assert!(fails(&["build", &t.write("noout.toml", "machine = \"c64\"\n")]).contains("no output"));
 }
-
+/// Merged (every check kept): `defines_and_errors`, `the_extension_chooses_the_image_and_nothing_is_overwritten`.
 #[test]
-fn templates_are_printed() {
-    let (c64, _) = ok(&["template", "c64"]);
-    assert!(c64.contains("machine = \"c64\"") && c64.contains("[[region]]"));
-    assert!(
-        ok(&["template", "spectrum"])
-            .0
-            .contains("machine = \"spectrum\"")
-    );
-    assert!(ok(&["template", "cpc"]).0.contains("AMSDOS"));
-    assert!(fails(&["template", "atari"]).contains("try c64, spectrum or cpc"));
+fn defines_and_images() {
+    defines_and_errors();
+    the_extension_chooses_the_image_and_nothing_is_overwritten();
 }

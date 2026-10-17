@@ -57,7 +57,6 @@ fn errors(cpu: Cpu, source: &str) -> Vec<String> {
     run(cpu, source).expect_err("expected an error")
 }
 
-#[test]
 fn a_6502_program_with_forward_and_backward_labels() {
     let asm = run(
         Cpu::Mos6502,
@@ -93,7 +92,6 @@ text:   .text \"HI\"
     assert_eq!(symbol(&asm, "text"), 0xC00E);
 }
 
-#[test]
 fn zero_page_versus_absolute_follows_the_symbol_value_and_stays_stable() {
     // `zp` is defined before use and small: zero-page. `later` is defined after use: absolute even
     // though its value is small, in both passes (the size must not change between them).
@@ -121,7 +119,6 @@ later   = $12
     );
 }
 
-#[test]
 fn six_five_o_two_addressing_modes() {
     let b = bytes(
         Cpu::Mos6502,
@@ -146,6 +143,13 @@ fn six_five_o_two_addressing_modes() {
             0x10, 0xFE, 0x34, 0x12, 0xC9, 0x41, 0x18
         ]
     );
+}
+/// Merged (every check kept): `a_6502_program_with_forward_and_backward_labels`, `zero_page_versus_absolute_follows_the_symbol_value_and_stays_stable`, `six_five_o_two_addressing_modes`.
+#[test]
+fn six_five_o_two_programs() {
+    a_6502_program_with_forward_and_backward_labels();
+    zero_page_versus_absolute_follows_the_symbol_value_and_stays_stable();
+    six_five_o_two_addressing_modes();
 }
 
 #[test]
@@ -172,7 +176,6 @@ fn undocumented_6502_opcodes_need_the_flag() {
     assert_eq!(asm.segments[0].bytes, [0xA7, 0x10, 0xEA]);
 }
 
-#[test]
 fn a_z80_program() {
     let b = bytes(
         Cpu::Z80,
@@ -203,7 +206,6 @@ len     equ $ - msg
     );
 }
 
-#[test]
 fn z80_operand_forms() {
     let b = bytes(
         Cpu::Z80,
@@ -275,7 +277,6 @@ fn z80_operand_forms() {
     );
 }
 
-#[test]
 fn z80_relative_jumps_take_absolute_targets() {
     let b = bytes(
         Cpu::Z80,
@@ -285,8 +286,14 @@ fn z80_relative_jumps_take_absolute_targets() {
     let e = errors(Cpu::Z80, ".org 0x8000\n jr far\n .fill 200\nfar: nop\n");
     assert!(e[0].contains("out of range"), "{e:?}");
 }
-
+/// Merged (every check kept): `a_z80_program`, `z80_operand_forms`, `z80_relative_jumps_take_absolute_targets`.
 #[test]
+fn z80_programs() {
+    a_z80_program();
+    z80_operand_forms();
+    z80_relative_jumps_take_absolute_targets();
+}
+
 fn data_directives() {
     let b = bytes(
         Cpu::Mos6502,
@@ -311,7 +318,6 @@ label:  .asciiz \"ok\"
     );
 }
 
-#[test]
 fn org_starts_segments_and_continuing_org_merges() {
     let asm = run(
         Cpu::Mos6502,
@@ -330,7 +336,6 @@ fn org_starts_segments_and_continuing_org_merges() {
     assert_eq!(b, [0x4C, 0x00, 0xC0]);
 }
 
-#[test]
 fn local_labels_are_scoped_to_the_last_global_label() {
     let b = bytes(
         Cpu::Z80,
@@ -346,7 +351,6 @@ two:    ld b,4
     assert!(e[0].contains("already defined"), "{e:?}");
 }
 
-#[test]
 fn macros_with_arguments_and_their_own_local_labels() {
     let b = bytes(
         Cpu::Mos6502,
@@ -367,7 +371,6 @@ fn macros_with_arguments_and_their_own_local_labels() {
     );
 }
 
-#[test]
 fn conditionals_and_defines() {
     let src = ".org 0
 .if DEBUG
@@ -397,6 +400,13 @@ fn conditionals_and_defines() {
     let e = errors(Cpu::Mos6502, ".endif\n");
     assert!(e[0].contains("without"), "{e:?}");
 }
+/// Merged (every check kept): `macros_with_arguments_and_their_own_local_labels`, `conditionals_and_defines`, `local_labels_are_scoped_to_the_last_global_label`.
+#[test]
+fn macros_and_conditionals() {
+    macros_with_arguments_and_their_own_local_labels();
+    conditionals_and_defines();
+    local_labels_are_scoped_to_the_last_global_label();
+}
 
 #[test]
 fn include_and_incbin_read_files() {
@@ -412,7 +422,6 @@ fn include_and_incbin_read_files() {
     assert!(e[0].contains("nope.inc"), "{e:?}");
 }
 
-#[test]
 fn the_current_address_and_expressions() {
     let b = bytes(
         Cpu::Z80,
@@ -424,8 +433,14 @@ fn the_current_address_and_expressions() {
     );
     assert_eq!(b, [0x21, 0x03, 0x90, 0x11, 0x09, 0x90, 0x01, 0x13, 0x00]);
 }
-
+/// Merged (every check kept): `data_directives`, `org_starts_segments_and_continuing_org_merges`, `the_current_address_and_expressions`.
 #[test]
+fn data_and_segments() {
+    data_directives();
+    org_starts_segments_and_continuing_org_merges();
+    the_current_address_and_expressions();
+}
+
 fn assert_and_error_directives() {
     assert!(run(Cpu::Mos6502, ".org 0\n.assert 1 == 1\n").is_ok());
     let e = errors(
@@ -437,7 +452,6 @@ fn assert_and_error_directives() {
     assert!(e[0].contains("stop here"), "{e:?}");
 }
 
-#[test]
 fn diagnostics_name_file_and_line() {
     let e = errors(Cpu::Mos6502, ".org 0\n nop\n bogus $10\n lda #300\n");
     assert!(
@@ -455,8 +469,13 @@ fn diagnostics_name_file_and_line() {
     let e = errors(Cpu::Z80, ".org 0\nx = 1\nx = 2\n");
     assert!(e[0].contains("already defined"), "{e:?}");
 }
-
+/// Merged (every check kept): `assert_and_error_directives`, `diagnostics_name_file_and_line`.
 #[test]
+fn assert_and_diagnostics() {
+    assert_and_error_directives();
+    diagnostics_name_file_and_line();
+}
+
 fn the_cpu_can_come_from_the_source() {
     let opts = Options::default();
     let asm = assemble(
@@ -472,7 +491,6 @@ fn the_cpu_can_come_from_the_source() {
     assert!(e[0].to_string().contains("no CPU selected"), "{e:?}");
 }
 
-#[test]
 fn symbol_and_listing_output() {
     let asm = run(
         Cpu::Mos6502,
@@ -492,4 +510,10 @@ fn symbol_and_listing_output() {
     let listing = rcasm::listing_text(&asm);
     assert!(listing.contains("C000  A9 04"), "{listing}");
     assert!(listing.contains("C002  60"), "{listing}");
+}
+/// Merged (every check kept): `symbol_and_listing_output`, `the_cpu_can_come_from_the_source`.
+#[test]
+fn symbols_listing_and_cpu() {
+    symbol_and_listing_output();
+    the_cpu_can_come_from_the_source();
 }

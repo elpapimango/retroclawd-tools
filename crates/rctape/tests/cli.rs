@@ -69,7 +69,6 @@ fn two_programs(t: &Temp) -> String {
     tape
 }
 
-#[test]
 fn add_list_extract_round_trip() {
     let t = Temp::new("add");
     let tape = two_programs(&t);
@@ -96,7 +95,6 @@ fn add_list_extract_round_trip() {
     assert!(fails(&["extract", &tape, "-o", &t.path("many.bin")]).contains("exactly one"));
 }
 
-#[test]
 fn json_listing_and_info() {
     let t = Temp::new("json");
     let tape = two_programs(&t);
@@ -115,7 +113,6 @@ fn json_listing_and_info() {
     assert!(ok(&["info", &tape, "--json"]).contains("\"blocks\": 4"));
 }
 
-#[test]
 fn convert_between_tap_and_tzx_keeps_the_data() {
     let t = Temp::new("convert");
     let tape = two_programs(&t);
@@ -134,7 +131,6 @@ fn convert_between_tap_and_tzx_keeps_the_data() {
     assert!(fails(&["convert", &tape, &t.path("x.wav")]).contains(".tap or .tzx"));
 }
 
-#[test]
 fn cut_rm_merge_split() {
     let t = Temp::new("edit");
     let tape = two_programs(&t);
@@ -164,6 +160,12 @@ fn cut_rm_merge_split() {
     assert_eq!(names, ["01-Second.tap", "02-Second-2.tap"]);
     assert!(fails(&["merge", &second, "-o", &t.path("m.tzx")]).contains("at least two"));
 }
+/// Merged (every check kept): `convert_between_tap_and_tzx_keeps_the_data`, `cut_rm_merge_split`.
+#[test]
+fn convert_and_edit() {
+    convert_between_tap_and_tzx_keeps_the_data();
+    cut_rm_merge_split();
+}
 
 #[test]
 fn validate_finds_a_wrong_checksum_and_cleanup_fixes_it() {
@@ -188,7 +190,6 @@ fn validate_finds_a_wrong_checksum_and_cleanup_fixes_it() {
     assert!(String::from_utf8_lossy(&out.stdout).contains("has no data block"));
 }
 
-#[test]
 fn cat_prints_data_hex_and_basic() {
     let t = Temp::new("cat");
     let listing = t.write(
@@ -204,8 +205,14 @@ fn cat_prints_data_hex_and_basic() {
     assert_eq!(raw.stdout, std::fs::read(&listing).unwrap());
     assert!(fails(&["cat", &tape, "3"]).contains("no block 3"));
 }
-
+/// Merged (every check kept): `add_list_extract_round_trip`, `json_listing_and_info`, `cat_prints_data_hex_and_basic`.
 #[test]
+fn listing_commands() {
+    add_list_extract_round_trip();
+    json_listing_and_info();
+    cat_prints_data_hex_and_basic();
+}
+
 fn a_headerless_data_block_and_clear_errors() {
     let t = Temp::new("data");
     let f = t.write("raw.dat", &[1, 2, 3]);
@@ -238,7 +245,6 @@ fn t64(name: &[u8], load: u16, data: &[u8]) -> Vec<u8> {
     v
 }
 
-#[test]
 fn a_t64_lists_and_extracts_prg_files() {
     let t = Temp::new("t64");
     let file = t.write("game.t64", &t64(b"HELLO", 0x0801, &[1, 2, 3, 4, 5]));
@@ -253,7 +259,6 @@ fn a_t64_lists_and_extracts_prg_files() {
     assert!(fails(&["rm", &file, "1"]).contains("no blocks"));
 }
 
-#[test]
 fn a_commodore_tap_is_described() {
     let t = Temp::new("c64tap");
     let mut tap = b"C64-TAPE-RAW".to_vec();
@@ -267,4 +272,11 @@ fn a_commodore_tap_is_described() {
     );
     assert!(info.contains("384 to 688"), "{info}");
     assert!(fails(&["extract", &file]).contains("pulses"));
+}
+/// Merged (every check kept): `a_headerless_data_block_and_clear_errors`, `a_t64_lists_and_extracts_prg_files`, `a_commodore_tap_is_described`.
+#[test]
+fn tape_edge_cases() {
+    a_headerless_data_block_and_clear_errors();
+    a_t64_lists_and_extracts_prg_files();
+    a_commodore_tap_is_described();
 }

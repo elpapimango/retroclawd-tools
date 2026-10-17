@@ -53,7 +53,6 @@ fn noise(seed: u64, len: usize) -> Vec<u8> {
         .collect()
 }
 
-#[test]
 fn random_bytes_round_trip_on_the_6502() {
     for seed in 1..=8 {
         let bytes = noise(seed, 20_000);
@@ -61,7 +60,6 @@ fn random_bytes_round_trip_on_the_6502() {
     }
 }
 
-#[test]
 fn random_bytes_round_trip_on_the_z80() {
     for seed in 1..=8 {
         let bytes = noise(seed, 20_000);
@@ -69,7 +67,6 @@ fn random_bytes_round_trip_on_the_z80() {
     }
 }
 
-#[test]
 fn random_bytes_round_trip_in_flow_mode_too() {
     for seed in 1..=4 {
         let bytes = noise(seed * 7, 8_000);
@@ -80,8 +77,14 @@ fn random_bytes_round_trip_in_flow_mode_too() {
         }
     }
 }
-
+/// Merged (every check kept): `random_bytes_round_trip_on_the_6502`, `random_bytes_round_trip_on_the_z80`, `random_bytes_round_trip_in_flow_mode_too`.
 #[test]
+fn random_bytes_round_trips() {
+    random_bytes_round_trip_on_the_6502();
+    random_bytes_round_trip_on_the_z80();
+    random_bytes_round_trip_in_flow_mode_too();
+}
+
 fn flow_mode_keeps_data_between_routines_as_data() {
     // jsr sub / rts / .byte "HI" / sub: lda #1 / rts
     let program = [
@@ -103,7 +106,6 @@ fn flow_mode_keeps_data_between_routines_as_data() {
     assert!(!linear.contains(".byte $48"), "{linear}");
 }
 
-#[test]
 fn z80_flow_follows_jumps_calls_and_relative_branches() {
     let program = [
         0xCD, 0x08, 0x80, // 8000 call 8008
@@ -119,8 +121,13 @@ fn z80_flow_follows_jumps_calls_and_relative_branches() {
     assert!(source.contains("JR L_8008"), "{source}");
     assert!(source.contains(".byte $DE,$AD,$BE"), "{source}");
 }
-
+/// Merged (every check kept): `flow_mode_keeps_data_between_routines_as_data`, `z80_flow_follows_jumps_calls_and_relative_branches`.
 #[test]
+fn flow_mode() {
+    flow_mode_keeps_data_between_routines_as_data();
+    z80_flow_follows_jumps_calls_and_relative_branches();
+}
+
 fn symbol_files_name_addresses_inside_and_outside_the_image() {
     let program = [
         0x20, 0xD2, 0xFF, // jsr $FFD2
@@ -156,7 +163,6 @@ fn an_encoding_the_assembler_cannot_reproduce_becomes_data() {
     assert!(source.contains(".byte"), "{source}");
 }
 
-#[test]
 fn data_ranges_and_address_comments() {
     let bytes = [0xA9, 0x01, 0xEA, 0xEA, 0x60];
     let mut opts = Options::new(Cpu::Mos6502, 0x1000);
@@ -167,13 +173,19 @@ fn data_ranges_and_address_comments() {
     assert!(source.contains("; 1000: A9 01"), "{source}");
 }
 
-#[test]
 fn bad_input_is_an_error() {
     let mut opts = Options::new(Cpu::Mos6502, 0xFFF0);
     assert!(disassemble(&[0; 32], &opts).unwrap_err().contains("$FFFF"));
     opts = Options::new(Cpu::Mos6502, 0xC000);
     opts.entries = vec![0x1000];
     assert!(disassemble(&[0; 4], &opts).unwrap_err().contains("outside"));
+}
+/// Merged (every check kept): `symbol_files_name_addresses_inside_and_outside_the_image`, `data_ranges_and_address_comments`, `bad_input_is_an_error`.
+#[test]
+fn symbols_ranges_and_bad_input() {
+    symbol_files_name_addresses_inside_and_outside_the_image();
+    data_ranges_and_address_comments();
+    bad_input_is_an_error();
 }
 
 // ---- real ROMs, when the machine repositories are checked out ----
@@ -193,7 +205,7 @@ fn rom(relative: &str) -> Option<Vec<u8>> {
 #[test]
 fn real_roms_round_trip_byte_for_byte() {
     let roms: [(&str, Cpu, u16); 7] = [
-        ("sinclair/roms/zx-spectrum/48.rom", Cpu::Z80, 0x0000),
+        ("sinclair/roms/zx-spectrum/spec48.rom", Cpu::Z80, 0x0000),
         ("sinclair/roms/zx81/zx81.rom", Cpu::Z80, 0x0000),
         ("amstrad/roms/cpc/cpc464.rom", Cpu::Z80, 0x0000),
         (

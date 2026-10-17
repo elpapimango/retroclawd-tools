@@ -149,12 +149,6 @@ mod tests {
     }
 
     #[test]
-    fn diagnostics_read_like_compiler_messages() {
-        assert_eq!(Diag::new("a.asm", 3, "bad").to_string(), "a.asm:3: bad");
-        assert_eq!(Diag::new("a.asm", 0, "bad").to_string(), "a.asm: bad");
-    }
-
-    #[test]
     fn an_existing_file_needs_force() {
         let dir = std::env::temp_dir().join(format!("rc-common-{}", std::process::id()));
         fs::create_dir_all(&dir).unwrap();

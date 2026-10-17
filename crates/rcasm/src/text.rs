@@ -145,7 +145,6 @@ pub fn as_string_literal(text: &str) -> Option<Result<Vec<u8>, String>> {
 mod tests {
     use super::*;
 
-    #[test]
     fn splits_only_at_top_level_commas() {
         assert_eq!(split_top("A,B"), ["A", "B"]);
         assert_eq!(split_top("(IX+1), 'x'"), ["(IX+1)", "'x'"]);
@@ -155,14 +154,18 @@ mod tests {
         assert!(split_top("  ").is_empty());
     }
 
-    #[test]
     fn finds_the_closing_paren() {
         assert_eq!(matching_paren("(1+(2))*3"), Some(6));
         assert_eq!(matching_paren("(abc"), None);
         assert_eq!(matching_paren("(')')"), Some(4));
     }
-
+    /// Merged (every check kept): `splits_only_at_top_level_commas`, `finds_the_closing_paren`.
     #[test]
+    fn splitting() {
+        splits_only_at_top_level_commas();
+        finds_the_closing_paren();
+    }
+
     fn comments_end_at_a_semicolon_outside_quotes() {
         assert_eq!(strip_comment("lda #1 ; set"), "lda #1 ");
         assert_eq!(strip_comment(".text \"a;b\" ; c"), ".text \"a;b\" ");
@@ -170,7 +173,6 @@ mod tests {
         assert_eq!(strip_comment("ex af,af' ; swap"), "ex af,af' ");
     }
 
-    #[test]
     fn strings_decode_escapes() {
         assert_eq!(unescape("a\\n\\x41\\\\").unwrap(), b"a\nA\\");
         assert!(unescape("\\q").is_err());
@@ -178,5 +180,11 @@ mod tests {
         assert_eq!(as_string_literal("\"hi\"").unwrap().unwrap(), b"hi");
         assert!(as_string_literal("\"a\" + \"b\"").is_none());
         assert!(as_string_literal("1").is_none());
+    }
+    /// Merged (every check kept): `comments_end_at_a_semicolon_outside_quotes`, `strings_decode_escapes`.
+    #[test]
+    fn comments_and_strings() {
+        comments_end_at_a_semicolon_outside_quotes();
+        strings_decode_escapes();
     }
 }

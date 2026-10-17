@@ -49,7 +49,6 @@ fn z80_layout(extra: &str) -> String {
     )
 }
 
-#[test]
 fn a_c64_prg_gets_a_basic_line_that_calls_the_entry() {
     let p = Project::new("prg");
     p.file("main.asm", C64_CODE);
@@ -80,7 +79,6 @@ fn a_c64_prg_gets_a_basic_line_that_calls_the_entry() {
     );
 }
 
-#[test]
 fn the_basic_line_can_be_left_out_and_is_not_added_over_basic() {
     let p = Project::new("nostub");
     p.file("main.asm", "* = $0801\n .word 0\nstart: rts\n");
@@ -102,8 +100,13 @@ fn the_basic_line_can_be_left_out_and_is_not_added_over_basic() {
     let e = p.build(&layout, "x.prg").unwrap_err();
     assert!(e.contains("BASIC loader") && e.contains("overlaps"), "{e}");
 }
-
+/// Merged (every check kept): `a_c64_prg_gets_a_basic_line_that_calls_the_entry`, `the_basic_line_can_be_left_out_and_is_not_added_over_basic`.
 #[test]
+fn c64_basic_line() {
+    a_c64_prg_gets_a_basic_line_that_calls_the_entry();
+    the_basic_line_can_be_left_out_and_is_not_added_over_basic();
+}
+
 fn a_hole_is_an_error_unless_filled() {
     let p = Project::new("gaps");
     p.file("main.asm", "* = $080D\nstart: rts\n* = $0820\n nop\n");
@@ -122,7 +125,6 @@ fn a_hole_is_an_error_unless_filled() {
     );
 }
 
-#[test]
 fn overlaps_regions_and_reserved_ranges_are_refused_by_name() {
     let p = Project::new("checks");
     p.file("main.asm", C64_CODE).bytes("data.bin", &[1; 16]);
@@ -154,7 +156,6 @@ fn overlaps_regions_and_reserved_ranges_are_refused_by_name() {
     );
 }
 
-#[test]
 fn bins_prgs_and_symbol_files_are_inputs() {
     let p = Project::new("inputs");
     p.file("main.asm", "* = $080D\nstart: jsr helper\n jmp *\n")
@@ -196,7 +197,6 @@ fn a_path_with_a_backslash_reaches_the_assembler_intact() {
     assert_eq!(b.bytes[..2], [0x01, 0x08]);
 }
 
-#[test]
 fn constants_come_from_the_layout() {
     let p = Project::new("define");
     p.file("main.asm", "* = $080D\nstart: lda #LEVEL\n jmp *\n");
@@ -212,6 +212,12 @@ fn constants_come_from_the_layout() {
     )
     .unwrap();
     assert_eq!(b.bytes[2 + 12 + 1], 9, "-D on the command line wins");
+}
+/// Merged (every check kept): `bins_prgs_and_symbol_files_are_inputs`, `constants_come_from_the_layout`.
+#[test]
+fn inputs_and_constants() {
+    bins_prgs_and_symbol_files_are_inputs();
+    constants_come_from_the_layout();
 }
 
 #[test]
@@ -298,7 +304,6 @@ fn a_flat_binary_is_the_pieces_from_the_lowest_address() {
     );
 }
 
-#[test]
 fn a_spectrum_tape_has_a_basic_loader_and_the_code() {
     let p = Project::new("tap");
     p.file("main.asm", Z80_CODE);
@@ -340,7 +345,6 @@ fn a_spectrum_tape_has_a_basic_loader_and_the_code() {
     }
 }
 
-#[test]
 fn a_spectrum_tape_loads_each_run_and_an_optional_screen() {
     let p = Project::new("tap2");
     p.file(
@@ -382,7 +386,6 @@ fn a_spectrum_tape_loads_each_run_and_an_optional_screen() {
     );
 }
 
-#[test]
 fn a_tape_without_a_loader_is_bare_blocks_and_low_code_needs_that() {
     let p = Project::new("tap3");
     p.file("main.asm", Z80_CODE)
@@ -405,6 +408,13 @@ fn a_tape_without_a_loader_is_bare_blocks_and_low_code_needs_that() {
             .unwrap_err()
             .contains("ROM")
     );
+}
+/// Merged (every check kept): `a_spectrum_tape_has_a_basic_loader_and_the_code`, `a_spectrum_tape_loads_each_run_and_an_optional_screen`, `a_tape_without_a_loader_is_bare_blocks_and_low_code_needs_that`.
+#[test]
+fn spectrum_tapes() {
+    a_spectrum_tape_has_a_basic_loader_and_the_code();
+    a_spectrum_tape_loads_each_run_and_an_optional_screen();
+    a_tape_without_a_loader_is_bare_blocks_and_low_code_needs_that();
 }
 
 #[test]
@@ -442,7 +452,6 @@ fn spectrum_snapshots_start_at_the_entry_with_the_requested_state() {
     assert!(e.contains("border"), "{e}");
 }
 
-#[test]
 fn a_cpc_disk_has_an_amsdos_binary() {
     let p = Project::new("cpc");
     p.file("main.asm", ".org 0x4000\nstart: ld a,1\n jr start\n")
@@ -471,7 +480,6 @@ fn a_cpc_disk_has_an_amsdos_binary() {
     assert!(disk.check().errors.is_empty());
 }
 
-#[test]
 fn a_plus3_disk_has_a_3dos_binary() {
     let p = Project::new("plus3");
     p.file("main.asm", Z80_CODE);
@@ -485,8 +493,13 @@ fn a_plus3_disk_has_a_3dos_binary() {
         [0x3E, 0x2A, 0x32, 0x00, 0x90, 0x18, 0xFE, 1, 2, 3]
     );
 }
-
+/// Merged (every check kept): `a_cpc_disk_has_an_amsdos_binary`, `a_plus3_disk_has_a_3dos_binary`.
 #[test]
+fn cpc_and_plus3_disks() {
+    a_cpc_disk_has_an_amsdos_binary();
+    a_plus3_disk_has_a_3dos_binary();
+}
+
 fn a_machine_that_cannot_make_the_output_says_what_it_can() {
     let p = Project::new("wrong");
     p.file("main.asm", C64_CODE);
@@ -498,7 +511,6 @@ fn a_machine_that_cannot_make_the_output_says_what_it_can() {
     );
 }
 
-#[test]
 fn layout_mistakes_are_named() {
     let p = Project::new("mistakes");
     p.file("main.asm", C64_CODE);
@@ -556,6 +568,14 @@ fn layout_mistakes_are_named() {
             .unwrap_err()
             .contains("nothing to put")
     );
+}
+/// Merged (every check kept): `a_hole_is_an_error_unless_filled`, `overlaps_regions_and_reserved_ranges_are_refused_by_name`, `layout_mistakes_are_named`, `a_machine_that_cannot_make_the_output_says_what_it_can`.
+#[test]
+fn layout_errors() {
+    a_hole_is_an_error_unless_filled();
+    overlaps_regions_and_reserved_ranges_are_refused_by_name();
+    layout_mistakes_are_named();
+    a_machine_that_cannot_make_the_output_says_what_it_can();
 }
 
 #[test]

@@ -108,7 +108,7 @@ fn a_spectrum_snapshot_from_a_layout_runs() {
             &[
                 "zx-spectrum",
                 "--rom",
-                roms.join("sinclair/roms/zx-spectrum/48.rom")
+                roms.join("sinclair/roms/zx-spectrum/spec48.rom")
                     .to_str()
                     .unwrap(),
                 "--snapshot",
@@ -153,7 +153,7 @@ fn the_spectrum_rom_loads_the_loader_and_the_code_from_a_tape_rcld_made() {
         ),
     );
     let w2 = Work::new("tap-run");
-    let rom = roms.join("sinclair/roms/zx-spectrum/48.rom");
+    let rom = roms.join("sinclair/roms/zx-spectrum/spec48.rom");
     let program = w2.write("loader.bin", loader);
     let state = w2.path("loader.state");
     run(
