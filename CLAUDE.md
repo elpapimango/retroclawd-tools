@@ -165,6 +165,7 @@ purpose. Everything skips unless `RETROCLAWD_BIN`, `RETROCLAWD_MACHINE_PLUGIN_DI
   pattern, so an alias is consistent to it). Not done: the sound test, the ROM test for a 464/664.
   The +3 case `a +3 reads a sector from each of its two drives` (`--disk` + `--disk-b`) drives the FDC ports directly with a hand-made
   one-sector DSK per drive (unit in the second command byte of Read Data); mutation-checked (drive B inserted into unit 0 fails it).
+  A full pass was run once by hand (release build, `--at N:screenshot=` every 6000 frames, 120000 frames in 7 min): the low tests are done by ~4000, the main RAM test blanks the screen until it ends before frame 96000 (about 32 min of machine time), the colour-bar video pattern follows (frame 96000), and the next cycle's low tests are on screen again by 108000; no failure map ever appeared. COUNT stays 000 and the screen is blank during the RAM test, so the RAM test's own OK was never seen -- that it finished is read from what comes next. Too slow for the suite in a debug build, so it stays a manual check.
   Later the same day: the disk on a CPC664 (two cases: system information with the FDC detected, ROM test by checksum), eight PSG cases
   (`--dump-audio` through `rc_suite::Audio`: each channel's tone with sub-harmonic checks -- a square wave a third too slow still shows its
   third harmonic at the right frequency, which a first version missed and a mutation caught --, chord, mixer mute, noise, volume, register 1)
