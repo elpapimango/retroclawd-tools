@@ -12,7 +12,7 @@ only checks our own plumbing, or repeats what another case already shows, does n
 69: merged cases keep every check of the cases they replace, removed ones are listed in `TODO.md` of the host repository. Acid-style suites
 (CPC Acid Tests Suite, cpctech `test.zip`, Acid800 as a model for how an acid test is laid out) are added as cases with a known-gaps list. Pass 2 (2026-10-17) applied the same rules to every unit and integration test of every repository (this repository's own tools went 145 -> 90); see `TODO.md` in the host repository.
 
-Acid tests fetched so far (copied by the host's `tools/fetch_acid.sh --from <folder>`, never committed): Patrik Rak's z80test on the 48K (`spectrum_z80test`; memptr is a known gap). CPC: the self-checking programs of Kevin Thacker's suite (`cpc_acid_tests`; every program has a recorded state in `BASELINE`, regenerate with `RC_ACID_PRINT=1`; `RC_ACID_ONLY=name` runs one). Our own acid programs: `spectrum_timing` (T-state counts against the WOS48 contention rules), `spectrum_io`, `c64_hardware` (cases name their document in the file header; `.gap(..)` marks what the emulator does not do yet).
+Acid tests fetched so far (copied by the host's `tools/fetch_acid.sh --from <folder>`, never committed): Patrik Rak's z80test on the 48K (`spectrum_z80test`; all variants pass). CPC: the self-checking programs of Kevin Thacker's suite (`cpc_acid_tests`; every program has a recorded state in `BASELINE`, regenerate with `RC_ACID_PRINT=1`; `RC_ACID_ONLY=name` runs one). Our own acid programs: `spectrum_timing` (T-state counts against the WOS48 contention rules), `spectrum_io`, `c64_hardware` (cases name their document in the file header; `.gap(..)` marks what the emulator does not do yet).
 
 ## What this is
 

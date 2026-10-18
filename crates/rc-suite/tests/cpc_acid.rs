@@ -35,6 +35,10 @@ struct Spec {
     /// (text of a prompt, key to press when output stops after it; the prompt shown last wins) -- Space otherwise.
     answers: &'static [(&'static str, &'static str)],
     max_frames: u32,
+    /// From the moment this text is on the screen Space is held down for the rest of the run (empty: never): the
+    /// program's own paging then runs at the keyboard's repeat rate instead of stalling for a press per page. Only
+    /// for programs that do not read the keyboard matrix themselves.
+    hold_after: &'static str,
 }
 
 const fn spec(
@@ -52,6 +56,7 @@ const fn spec(
         extra: &[],
         answers: &[],
         max_frames,
+        hold_after: "",
     }
 }
 
@@ -61,6 +66,19 @@ struct Outcome {
     failed: BTreeSet<String>,
     last_line: String,
     frames: u32,
+}
+
+/// A name with every run of one repeated character squeezed to one. The transcript is taken each time the CPU
+/// reaches the firmware's TXT OUTPUT entry, and an interrupt taken exactly there makes the entry count twice, so
+/// a character can appear doubled ("throughh"): names are compared without such runs.
+fn squeezed(name: &str) -> String {
+    let mut out = String::new();
+    for c in name.chars() {
+        if !out.ends_with(c) {
+            out.push(c);
+        }
+    }
+    out
 }
 
 /// `name-PASS` / `name-FAIL` lines; a first test's name can be glued to the prompt before it.
@@ -78,7 +96,11 @@ fn results(transcript: &str) -> Vec<(String, bool)> {
         if head.ends_with(' ') || head.is_empty() {
             continue; // "0009: got FF expected 09 - FAIL": a detail line, not a result
         }
-        let head = head.strip_prefix("Press a key to start").unwrap_or(head);
+        // A first test's name can be glued to the prompt printed before it.
+        let head = ["Press a key to start", "Press a key to continue"]
+            .iter()
+            .find_map(|prompt| head.strip_prefix(prompt))
+            .unwrap_or(head);
         out.push((head.to_string(), ok));
     }
     out
@@ -96,6 +118,7 @@ fn transcript_of(env: &Env, spec: &Spec) -> Result<Outcome, String> {
     let mut press = false;
     let mut silent = 0u32;
     let mut first = true;
+    let mut held = false;
     let outcome = loop {
         let len = if first { FIRST_SEGMENT } else { SEGMENT };
         let mut run = env
@@ -121,7 +144,10 @@ fn transcript_of(env: &Env, spec: &Spec) -> Result<Outcome, String> {
         } else {
             run = run.arg("--load-state").arg(state.to_string_lossy());
         }
-        if press {
+        if !spec.hold_after.is_empty() && !held && text.contains(spec.hold_after) {
+            held = true;
+            run = run.arg("--at").arg("0:key_down=Space");
+        } else if press && !held {
             // The prompt shown last decides the key (several questions in a row each wait for one).
             let plain = text.replace('\r', "\n");
             let key = spec
@@ -185,7 +211,18 @@ fn check(env: &Env, spec: &Spec) -> Result<Option<String>, String> {
         .iter()
         .find(|b| b.0 == spec.name)
         .map_or((true, &[][..]), |b| (b.1, b.2));
-    let want: BTreeSet<String> = failing.iter().map(|s| s.to_string()).collect();
+    let mut got = got;
+    got.passed = got.passed.iter().map(|n| squeezed(n)).collect();
+    got.failed = got.failed.iter().map(|n| squeezed(n)).collect();
+    // Tests the author himself marks as unreliable on real hardware ("todo: fix, vsync gets in the way"): the
+    // result depends on where in the frame the machine happens to be, so neither outcome is a finding.
+    for (program, test) in UNRELIABLE {
+        if *program == spec.name {
+            got.passed.remove(&squeezed(test));
+            got.failed.remove(&squeezed(test));
+        }
+    }
+    let want: BTreeSet<String> = failing.iter().map(|s| squeezed(s)).collect();
     let mut problems = Vec::new();
     if got.finished != finishes {
         problems.push(format!(
@@ -226,23 +263,8 @@ fn check(env: &Env, spec: &Spec) -> Result<Option<String>, String> {
 #[rustfmt::skip]
 const BASELINE: &[(&str, bool, &[&str])] = &[
     ("ppi", true, &[
-        "mode 0: port b control write reset test",
-        "mode 0: port b output latch r/w",
-        "mode 0: ppi port a output",
-        "mode 0: psg control with bit set/reset",
-        "mode 1: port A mode 1 (input), port B mode 0, port C bits input",
-        "mode 1: port A mode 1 (input), port B mode 0, port C bits output",
-        "mode 1: port A mode 1 (output), port B mode 0, port C bits input",
-        "mode 1: port A mode 1 (output), port B mode 0, port C bits output",
-        "mode 2: port A mode 2, port B mode 0,  port C bits output",
-        "mode 2: port A mode 2, port B mode 0, port C bits input",
-        "ppi port reset from control",
     ]),
     ("psg", true, &[
-        "invalid register write test",
-        "port A out r/w test",
-        "port A w through test",
-        "reg write/read mask test",
     ]),
     ("cpctest", false, &[
         "CPC int (HSYNC pos)",
@@ -251,17 +273,13 @@ const BASELINE: &[(&str, bool, &[&str])] = &[
     ("romtest", true, &[
     ]),
     ("type1ctrl", true, &[
-        "type 1 status (clear lpen)",
-        "type 1 status (lpen)",
     ]),
     ("asicfloat", false, &[
         "asic ram float (5000-50ff)",
     ]),
     ("asiclock", true, &[
-        "asic RMR2 lock",
     ]),
     ("asicppi", false, &[
-        "mode 0: psg control with bit set/reset",
     ]),
     ("asicrom", true, &[
         "RMR2 (bits 2..0) - low rom cart page",
@@ -308,9 +326,90 @@ const BASELINE: &[(&str, bool, &[&str])] = &[
         "pri repeat (r9>8)",
         "pri wrap",
     ]),
+    ("fdc_gen", false, &[
+        "read id (execution phase)",
+        "read id not ready",
+        "ready change, sense interrupt status, ready change, sense interrupt status (drive 0 best)",
+        "sense clears fdd busy (only after seek)",
+        "sense drive status (2 drives)",
+    ]),
+    ("fdc_hang", true, &[
+    ]),
+    ("fdc_lowlevel", true, &[
+        "9 SC, Format N=1, ID N=3",
+        "9 SC, Format N=2, ID N=2, Write GPL>FFormat GPL",
+    ]),
+    ("fdc_read", false, &[
+        "read data x bytes and skip",
+    ]),
+    ("fdc_seek", false, &[
+        "recal then seek",
+        "seek command repeat (while seeking)",
+        "seek then invalid (&ff) command",
+    ]),
+    ("fdc_time", false, &[
+        "read data timing (cmd->execution phase start)",
+        "read data timing (data end->result phase)",
+        "seek (fdc busy to not busy after seek command sent)",
+    ]),
+    ("fdc_wp", false, &[
+    ]),
+    ("fdc_write", false, &[
+        "write deleted data (data error - remove)",
+    ]),
+    ("fdctest3", false, &[
+        "format (force data error)",
+        "format (not ready)",
+        "format (ss)",
+        "read sector (using write data register)",
+        "scan equal (cpu=ff, sector=pattern)",
+        "scan equal (cpu=pattern, sector=ff)",
+        "scan equal (match)",
+        "scan equal (no match)",
+        "scan equal (not ready)",
+        "scan equal (sector not found)",
+        "scan high or equal (cpu=ff, sector=pattern)",
+        "scan high or equal (cpu=pattern, sector=ff)",
+        "scan high or equal (equal)",
+        "scan high or equal (less & greater)",
+        "scan high or equal (not ready)",
+        "scan high or equal (sector not found)",
+        "scan low or equal (cpu=ff, sector=pattern)",
+        "scan low or equal (cpu=pattern, sector=ff)",
+        "scan low or equal (equal)",
+        "scan low or equal (less & greater)",
+        "scan low or equal (not ready)",
+        "scan low or equal (sector not found)",
+        "write sector (using read data_register)",
+    ]),
 ];
 
+/// (program, test) pairs the acid test's author marks as unreliable (`ppi.asm`: "todo: fix, vsync gets in the way and
+/// sometimes cassette write"): the vsync-on read of Port B depends on the frame phase the earlier tests leave.
+const UNRELIABLE: &[(&str, &str)] = &[("ppi", "mode 0: port b read (vsync on)")];
+
 const D: &str = "amstrad/software/acid";
+
+/// The disc programs ask for the FDC (NEC D765AC-2), the /DACK wiring (CPC6128), the drive configuration (two drives
+/// at most), whether several drives may be used at once (no), the main drive (0), the drive type (40 tracks) and the
+/// ready speed (slow, a 3 inch drive); after "Testing drive" Space is held to page through their long output.
+const FDC_ANSWERS: &[(&str, &str)] = &[
+    ("UM8272", "Digit2"),
+    ("6128Plus, 6128 cost down", "Digit1"),
+    ("Four drives MAX", "Digit1"),
+    ("the main drive and other drives", "KeyN"),
+    ("Choose drive (0,1,2 or 3)", "Digit0"),
+    ("80 track double sided", "Digit1"),
+    ("2: Fast (e.g. 3.5inch", "Digit1"),
+];
+
+fn fdc(name: &'static str, disk: &'static str) -> Spec {
+    Spec {
+        answers: FDC_ANSWERS,
+        hold_after: "Testing drive",
+        ..spec(name, "cpc6128", disk, "FDCTEST.BIN", 60_000)
+    }
+}
 
 fn specs() -> Vec<Spec> {
     let d = |rest: &str| -> &'static str { Box::leak(format!("{D}/{rest}").into_boxed_str()) };
@@ -361,13 +460,20 @@ fn specs() -> Vec<Spec> {
             "TEST",
             60_000,
         ),
-        spec(
-            "asic_external_ram",
-            "cpc6128plus",
-            d("plus/asic1.dsk"),
-            "EXTNRAM",
-            20_000,
-        ),
+        // The program asks what RAM the machine has: a 6128Plus has 128K, no expansion (its own list: "Y then N").
+        Spec {
+            answers: &[
+                ("Has internal extra 64KB", "KeyY"),
+                ("Has external extra 64KB", "KeyN"),
+            ],
+            ..spec(
+                "asic_external_ram",
+                "cpc6128plus",
+                d("plus/asic1.dsk"),
+                "EXTNRAM",
+                20_000,
+            )
+        },
         spec(
             "dmatest",
             "cpc6128plus",
@@ -382,6 +488,15 @@ fn specs() -> Vec<Spec> {
             "PRITEST",
             60_000,
         ),
+        fdc("fdc_gen", d("disc/fdc_gen/cpc_fdctest.dsk")),
+        fdc("fdc_hang", d("disc/fdc_hang/cpc_fdctest.dsk")),
+        fdc("fdc_lowlevel", d("disc/fdc_lowlevel/cpc_fdctest.dsk")),
+        fdc("fdc_read", d("disc/fdc_read/cpc_fdctest.dsk")),
+        fdc("fdc_seek", d("disc/fdc_seek/cpc_fdctest.dsk")),
+        fdc("fdc_time", d("disc/fdc_time/cpc_fdctest.dsk")),
+        fdc("fdc_wp", d("disc/fdc_wp/cpc_fdctest.dsk")),
+        fdc("fdc_write", d("disc/fdc_write/cpc_fdctest.dsk")),
+        fdc("fdctest3", d("disc/fdctest3/cpc_fdctest.dsk")),
     ]
 }
 

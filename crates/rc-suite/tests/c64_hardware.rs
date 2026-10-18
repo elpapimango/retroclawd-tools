@@ -176,7 +176,14 @@ second: lda $FB
         RESULTS,
         RESULTS + 1
     );
-    let out = run_program(env, "badlines", &source, 4, &[(RESULTS, 2)], &[])?;
+    let out = run_program(
+        env,
+        "badlines",
+        &source,
+        4,
+        &[(RESULTS, 2)],
+        &["--vic-accuracy", "cycle"],
+    )?;
     let (low, high) = (
         i64::from(out.byte(RESULTS)?),
         i64::from(out.byte(RESULTS + 1)?),
@@ -584,8 +591,7 @@ const CASES: &[Case] = &[
         "bad lines stun the processor for 40-43 cycles each: a frame with the display on leaves 1000-1075 fewer cycles",
         C64_SOURCE,
         bad_lines_stun_the_processor_for_40_to_43_cycles_each,
-    )
-    .gap("the VIC steals no cycles from the processor on bad lines: a frame costs the same with the display on and off (cycle-exact VIC access is the planned `vic_accuracy = cycle`, see TODO.md)"),
+    ),
     Case::new(
         Area::Video,
         "a PAL frame has 312 lines, numbered from 0",
@@ -609,15 +615,13 @@ const CASES: &[Case] = &[
         "the unconnected bits of the VIC registers read as 1",
         C64_SOURCE,
         the_unconnected_bits_of_the_vic_registers_read_one,
-    )
-    .gap("the unconnected bits read back as written (0): $D020 after writing 0 reads $00 where BAUER's table gives $F0"),
+    ),
     Case::new(
         Area::Io,
         "$D02F-$D03F read $FF and ignore writes",
         C64_SOURCE,
         the_unused_vic_addresses_read_ff_and_ignore_writes,
-    )
-    .gap("writes to the unused VIC addresses are stored and read back ($55), where BAUER says they read $FF and are ignored"),
+    ),
     Case::new(
         Area::Io,
         "the VIC registers repeat every 64 bytes up to $D3FF",

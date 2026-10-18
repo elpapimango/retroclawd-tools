@@ -1059,13 +1059,42 @@ fn z80test_memptr(env: &Env) -> Result<(), String> {
 const Z80TEST_SOURCE: &str = "Patrik Rak's z80test 1.0: CRCs of exhaustive runs compared with a real 48K Spectrum (Zilog Z80)";
 
 const Z80TEST_CASES: &[Case] = &[
-    Case::new(Area::Cpu, "z80test full: all flags and registers", Z80TEST_SOURCE, z80test_full),
-    Case::new(Area::Cpu, "z80test doc: all registers, documented flags", Z80TEST_SOURCE, z80test_doc),
-    Case::new(Area::Cpu, "z80test flags: all flags, undocumented included", Z80TEST_SOURCE, z80test_flags),
-    Case::new(Area::Cpu, "z80test docflags: documented flags only", Z80TEST_SOURCE, z80test_docflags),
-    Case::new(Area::Cpu, "z80test ccf: SCF/CCF F3/F5 after each instruction", Z80TEST_SOURCE, z80test_ccf),
-    Case::new(Area::Cpu, "z80test memptr: the hidden MEMPTR (WZ) register", Z80TEST_SOURCE, z80test_memptr)
-        .gap("MEMPTR (WZ) is not modelled in the Z80 core: 41 of 152 tests fail (ADD HL,rr, DJNZ, CALL, RET, EX (SP),HL, LD (BC),A ...)"),
+    Case::new(
+        Area::Cpu,
+        "z80test full: all flags and registers",
+        Z80TEST_SOURCE,
+        z80test_full,
+    ),
+    Case::new(
+        Area::Cpu,
+        "z80test doc: all registers, documented flags",
+        Z80TEST_SOURCE,
+        z80test_doc,
+    ),
+    Case::new(
+        Area::Cpu,
+        "z80test flags: all flags, undocumented included",
+        Z80TEST_SOURCE,
+        z80test_flags,
+    ),
+    Case::new(
+        Area::Cpu,
+        "z80test docflags: documented flags only",
+        Z80TEST_SOURCE,
+        z80test_docflags,
+    ),
+    Case::new(
+        Area::Cpu,
+        "z80test ccf: SCF/CCF F3/F5 after each instruction",
+        Z80TEST_SOURCE,
+        z80test_ccf,
+    ),
+    Case::new(
+        Area::Cpu,
+        "z80test memptr: the hidden MEMPTR (WZ) register",
+        Z80TEST_SOURCE,
+        z80test_memptr,
+    ),
 ];
 
 #[test]

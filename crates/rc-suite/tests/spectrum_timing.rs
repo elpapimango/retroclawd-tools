@@ -64,7 +64,7 @@ fn delay(ula: &Ula, t: i64) -> i64 {
     [6, 5, 4, 3, 2, 1, 0, 0][(col % 8) as usize]
 }
 
-/// Exactly `t` T-states of filler: NOP (4) and `LD B,0` (7).
+/// Exactly `t` T-states of filler: NOP (4) and `LD D,0` (7) -- D, because the port programs keep their port in BC.
 fn pad(t: i64) -> String {
     assert!(t >= 0, "negative padding");
     let mut sevens = 0;
@@ -72,7 +72,7 @@ fn pad(t: i64) -> String {
         sevens += 1;
         assert!(7 * sevens <= t, "cannot pad {t} T-states");
     }
-    " ld b,0\n".repeat(sevens as usize) + &" nop\n".repeat(((t - 7 * sevens) / 4) as usize)
+    " ld d,0\n".repeat(sevens as usize) + &" nop\n".repeat(((t - 7 * sevens) / 4) as usize)
 }
 
 fn cycles_of(env: &Env, machine: &str, rom: &str, tag: &str, source: &str) -> Result<i64, String> {
@@ -455,8 +455,7 @@ const CASES: &[Case] = &[
         "the floating bus carries bitmap, attribute, bitmap+1, attribute+1 and then idles at 0xFF while the picture is drawn",
         ZXT_SOURCE,
         the_floating_bus_carries_bitmap_attribute_bitmap_attribute_then_ff,
-    )
-    .gap("the floating bus is one T-state later than FLOATBUS's numbers (the late-timing variant) while the contention follows the early-timing numbers: the order and period are right"),
+    ),
     Case::new(
         Area::Io,
         "the floating bus reads 0xFF in the border and the retrace",
@@ -480,15 +479,13 @@ const CASES: &[Case] = &[
         "IN (C): a port with the high byte in 0x40-0x7F is treated as contended memory (C:1,C:3 / C:1 x4)",
         ZXT_SOURCE,
         in_inside_40_7f,
-    )
-    .gap("the high-byte rule of WOS48's I/O table is not implemented: port 0x40FE is delayed as the ULA port (one cycle short at some phases), 0x7FFF is mostly not delayed at all"),
+    ),
     Case::new(
         Area::Io,
         "OUT (C): a port with the high byte in 0x40-0x7F is treated as contended memory",
         ZXT_SOURCE,
         out_inside_40_7f,
-    )
-    .gap("same gap as IN: the high-byte rule of WOS48's I/O table is not implemented"),
+    ),
 ];
 
 #[test]
