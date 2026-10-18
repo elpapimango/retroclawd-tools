@@ -10,6 +10,7 @@ the picture settles. `--realvideo` is always passed: without it save-screen writ
 """
 import argparse
 import os
+import re
 import shutil
 import socket
 import struct
@@ -32,18 +33,23 @@ def bmp_to_png(bmp: bytes, crop=None) -> bytes:
         n = ncol or 256
         palette = [bmp[54 + 4 * i : 54 + 4 * i + 3][::-1] for i in range(n)]  # BGR -> RGB
     stride = (w * bpp // 8 + 3) & ~3
-    rows = []
-    cx, cy, cw, ch = crop or (0, 0, w, h)
-    for y in range(cy, cy + ch):
+    full = []
+    for y in range(h):
         sy = y if top_down else h - 1 - y
         row = bmp[off + sy * stride : off + sy * stride + w * bpp // 8]
         if bpp == 8:
-            px = b"".join(palette[i] for i in row)
+            full.append(b"".join(palette[i] for i in row))
         else:
             step = bpp // 8
-            px = b"".join(bytes((row[i + 2], row[i + 1], row[i])) for i in range(0, w * step, step))
-        px = px[3 * cx : 3 * (cx + cw)]
-        rows.append(b"\0" + px)
+            full.append(b"".join(bytes((row[i + 2], row[i + 1], row[i])) for i in range(0, w * step, step)))
+    # A crop may reach past the screenshot (negative offsets, a larger size): the edge pixels are repeated, which is
+    # the border colour, so a picture can be given the same canvas as another emulator's.
+    cx, cy, cw, ch = crop or (0, 0, w, h)
+    rows = []
+    for y in range(cy, cy + ch):
+        src = full[min(max(y, 0), h - 1)]
+        px = b"".join(src[3 * min(max(x, 0), w - 1) : 3 * min(max(x, 0), w - 1) + 3] for x in range(cx, cx + cw))
+        rows.append(b"\x00" + px)
 
     def chunk(tag: bytes, data: bytes) -> bytes:
         return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
@@ -82,9 +88,9 @@ class Zrcp:
             pass
         return buf.decode(errors="replace")
 
-    def cmd(self, c: str) -> str:
+    def cmd(self, c: str, quiet: float = 0.6) -> str:
         self.s.sendall((c + "\n").encode())
-        return self.read()
+        return self.read(quiet)
 
 
 def main() -> None:
@@ -110,6 +116,12 @@ def main() -> None:
            "--exit-after", str(int(a.seconds + a.after + 30))]
     cmd += ["--realvideo"] + a.extra  # without it save-screen writes an all-black picture
 
+    try:  # an older ZEsarUX still listening would answer in place of the one started below: a golden of the wrong machine
+        socket.create_connection(("127.0.0.1", a.port), timeout=1).close()
+    except OSError:
+        pass
+    else:
+        raise SystemExit(f"a ZEsarUX is already listening on port {a.port}; close it (or pass --port) first")
     proc = subprocess.Popen(cmd, cwd=os.path.dirname(exe), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
         z = Zrcp(a.port)
@@ -118,19 +130,35 @@ def main() -> None:
             z.cmd(f"smartload {os.path.abspath(a.load)}")
         time.sleep(a.seconds)
         if a.keys:
-            # \n = Enter (13), \d = cursor down (10), \u = up (11), \l = left (8), \r = right (9)
-            special = {"n": 13, "d": 10, "u": 11, "l": 8, "r": 9}
-            text, i = [], 0
-            while i < len(a.keys):
-                if a.keys[i] == "\\" and i + 1 < len(a.keys) and a.keys[i + 1] in special:
-                    text.append(special[a.keys[i + 1]])
-                    i += 2
+            # Plain characters are typed with send-keys-ascii (its first argument is the time between keys, in ms), but
+            # that cannot press punctuation that needs Shift on the CPC, or the cursor keys, and treats LF as Enter.
+            # So `{NAME}` presses a special key (ENTER, DOWN, UP, LEFT, RIGHT, PERIOD, COMMA) and `{SHIFT+c}` a character
+            # with Shift held, both through send-keys-event with ZEsarUX's own key numbers (utils.h, util_teclas).
+            named = {"ENTER": 129, "LEFT": 142, "RIGHT": 143, "DOWN": 144, "UP": 145, "PERIOD": 149, "COMMA": 148}
+            shift_l = 133
+            steps = []
+            for part in re.split(r"(\{[^}]*\})", a.keys.replace("\\n", "{ENTER}")):
+                if part.startswith("{"):
+                    name = part[1:-1]
+                    if name.upper().startswith("SHIFT+"):
+                        steps.append([shift_l, ord(name[6:])])
+                    else:
+                        steps.append([named[name.upper()]])
+                elif part:
+                    steps.append(("text", part))
+            for step in steps:
+                if step[0] == "text":
+                    z.cmd(f"send-keys-ascii {a.key_ms} " + " ".join(str(ord(c)) for c in step[1]))
+                    time.sleep(len(step[1]) * a.key_ms * 3 / 1000)
                 else:
-                    text.append(ord(a.keys[i]))
-                    i += 1
-            codes = " ".join(map(str, text))
-            z.cmd(f"send-keys-ascii {a.key_ms} {codes}")  # the first argument is the time between keys, in ms
-            time.sleep(len(text) * a.key_ms * 3 / 1000 + a.after)
+                    # a short read wait, or the answer's 0.6 s quiet period would be the time the key is held
+                    for k in step:
+                        z.cmd(f"send-keys-event {k} 1", 0.03)
+                        time.sleep(a.key_ms / 1000)
+                    for k in step[::-1]:
+                        z.cmd(f"send-keys-event {k} 0", 0.03)
+                        time.sleep(a.key_ms / 1000)
+            time.sleep(a.after)
         with tempfile.TemporaryDirectory() as d:
             bmp = os.path.join(d, "shot.bmp")
             z.cmd(f"save-screen {bmp}")
