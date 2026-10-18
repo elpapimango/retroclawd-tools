@@ -207,3 +207,10 @@ purpose. Everything skips unless `RETROCLAWD_BIN`, `RETROCLAWD_MACHINE_PLUGIN_DI
 * `rcsnap`: `create` is 48K only, there is no register patching of an existing snapshot, ZX81 BASIC is not listed.
 * The Z80 `DD`/`FD` prefix before an instruction that ignores it is disassembled but not assembled back (rcdis emits
   `.byte` for it).
+
+## Acid-suite notes (2026-10-18)
+- All suites pass against a full `tools/build_all.sh` build. Env: `RETROCLAWD_BIN`, `RC_ROMS` (= host `machines`), `RETROCLAWD_MACHINE_PLUGIN_DIRS`.
+- `cpc_acid`: `RC_ACID_PRINT=1` prints `BASELINE|name|finishes|{failing}|passed|last line|frames`; `RC_ACID_ONLY=name`. Segmented runner: 700-frame first segment, then 200-frame segments via `--at N:save_state`/`--load-state`; 40 silent segments = hang. `UNRELIABLE` = programs the author flags (ppi vsync-on).
+- Remaining CPC gaps (in `BASELINE`): cpctest, asicfloat, asicppi (hang), asicrom, asictest, asic_external_ram, dmatest, pritest, FDC programs (nec765 is instant, no overrun), fdc_wp (needs write-protect).
+- `spectrum_timing`: pad filler must use `ld d,0` (never BC; port programs keep it). Delay = contended cycles - uncontended cycles.
+
