@@ -357,6 +357,14 @@ fn parse(stdout: &str, out: &mut Outcome) -> Result<(), String> {
             {
                 out.cycles = c.parse().map_err(|_| format!("bad cycle count in {t:?}"))?;
             }
+        } else if let Some((_, rest)) = t.split_once(" instructions, ")
+            && let Some(c) = rest
+                .split(", ")
+                .next()
+                .and_then(|s| s.strip_suffix(" cycles"))
+        {
+            // a run to HALT: "3583 instructions, 14356 cycles, 0.021s elapsed (~696687 Hz effective)"
+            out.cycles = c.parse().map_err(|_| format!("bad cycle count in {t:?}"))?;
         } else if let Some((name, value)) = t.split_once(" = 0x") {
             if let Ok(v) = u16::from_str_radix(value.trim(), 16) {
                 out.registers.insert(name.trim().to_string(), v);
