@@ -14,6 +14,24 @@ only checks our own plumbing, or repeats what another case already shows, does n
 
 Acid tests fetched so far (copied by the host's `tools/fetch_acid.sh --from <folder>`, never committed): Patrik Rak's z80test on the 48K (`spectrum_z80test`; all variants pass). CPC: the self-checking programs of Kevin Thacker's suite (`cpc_acid_tests`; every program has a recorded state in `BASELINE`, regenerate with `RC_ACID_PRINT=1`; `RC_ACID_ONLY=name` runs one). Our own acid programs: `spectrum_timing` (T-state counts against the WOS48 contention rules), `spectrum_io`, `c64_hardware` (cases name their document in the file header; `.gap(..)` marks what the emulator does not do yet).
 
+## Data-driven scenarios (2026-10-18)
+
+The standard checks of the new-machine playbook (`docs/new-machine-playbook.md` in the application repository) are data, not Rust:
+`rc_suite::scenario` reads a `<machine>.manifest.toml` (machine, files, reference emulator, scenarios S1-S8 as `screen`, `memory`,
+`audio`, `state`, `timing`) and runs the real `retroclawd` headless. `rc-scenarios run <manifest>` runs one, `rc-scenarios hash <file>`
+prints the SHA-256 to pin a golden, `rc-scenarios check <manifest>` validates without an emulator; `tests/manifests.rs` runs every
+`*.manifest.toml` below `RC_MANIFESTS`. Environment: `RETROCLAWD_BIN`, `RETROCLAWD_MACHINE_PLUGIN_DIRS`, `RC_ROMS`, goldens in
+`RC_GOLDENS` (fetched from RomM by hash, never committed), diff images of failing screens in `RC_SCENARIO_OUT`.
+
+Rules the code enforces: every golden is pinned by hash; a tolerance needs a written `reason`; a scenario that cannot be matched is
+`status = "known-gap"` with a `gap` (reason and evidence) and the run fails when a known gap starts passing; unknown keys are errors.
+**A picture from another emulator is compared with `mode = "similarity"`** (both reduced to a 64x48 luminance grid over an optional
+`crop`, mean absolute difference at most `max_mad`): the reference draws its own border, scale and palette, so pixel equality is not
+possible. `mode = "exact"` is for goldens this project made itself. Verified against the ZX81 with the real emulator (pass, wrong
+cycle count, tampered golden, different picture with its diff image, a known gap that closes, a recorded gap). Not yet done:
+a manifest for any current machine, a `trace` kind (S8; the plugin ABI has no instruction trace), memory windows above 64K, and
+`scripts/capture_mame_screen.sh` has never been run (no MAME on the machine it was written on).
+
 ## What this is
 
 `retroclawd-tools`: command-line tools on top of the retroclawd crates. A standalone Cargo workspace (it is **not** a

@@ -9,8 +9,16 @@ publish.workspace = true
 [lib]
 name = "rc_suite"
 
+[[bin]]
+name = "rc-scenarios"
+path = "src/bin/rc-scenarios.rs"
+
 [dependencies]
 png = "0.18"
+serde.workspace = true
+toml.workspace = true
+clap.workspace = true
+sha2 = "0.10"
 rcasm = { path = "../rcasm" }
 cpc-snapshot.workspace = true
 

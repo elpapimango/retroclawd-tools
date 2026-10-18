@@ -19,6 +19,8 @@
 //! [`Case::gap`]. A gap is expected to fail; when it starts passing the run fails and says to drop the marker, so
 //! the list of gaps can only shrink on purpose.
 
+pub mod scenario;
+
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -416,6 +418,21 @@ impl Screen {
             height: info.height as usize,
             rgb,
         })
+    }
+
+    /// A picture from 8-bit RGB rows (`width * height * 3` bytes).
+    pub fn from_rgb(width: usize, height: usize, rgb: Vec<u8>) -> Screen {
+        assert_eq!(
+            rgb.len(),
+            width * height * 3,
+            "RGB data does not fit the size"
+        );
+        Screen { width, height, rgb }
+    }
+
+    pub fn set_pixel(&mut self, x: usize, y: usize, p: [u8; 3]) {
+        let i = (y * self.width + x) * 3;
+        self.rgb[i..i + 3].copy_from_slice(&p);
     }
 
     pub fn pixel(&self, x: usize, y: usize) -> [u8; 3] {
