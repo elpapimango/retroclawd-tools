@@ -93,6 +93,39 @@ class Zrcp:
         return self.read(quiet)
 
 
+def type_keys(z, keys: str, key_ms: int, after: float) -> None:
+    """Types `keys` into the machine; see the notes below for the `{NAME}` and `{SHIFT+c}` forms."""
+    # Plain characters are typed with send-keys-ascii (its first argument is the time between keys, in ms), but
+    # that cannot press punctuation that needs Shift on the CPC, or the cursor keys, and treats LF as Enter.
+    # So `{NAME}` presses a special key (ENTER, DOWN, UP, LEFT, RIGHT, PERIOD, COMMA) and `{SHIFT+c}` a character
+    # with Shift held, both through send-keys-event with ZEsarUX's own key numbers (utils.h, util_teclas).
+    named = {"ENTER": 129, "LEFT": 142, "RIGHT": 143, "DOWN": 144, "UP": 145, "PERIOD": 149, "COMMA": 148}
+    shift_l = 133
+    steps = []
+    for part in re.split(r"(\{[^}]*\})", keys.replace("\\n", "{ENTER}")):
+        if part.startswith("{"):
+            name = part[1:-1]
+            if name.upper().startswith("SHIFT+"):
+                steps.append([shift_l, ord(name[6:])])
+            else:
+                steps.append([named[name.upper()]])
+        elif part:
+            steps.append(("text", part))
+    for step in steps:
+        if step[0] == "text":
+            z.cmd(f"send-keys-ascii {key_ms} " + " ".join(str(ord(c)) for c in step[1]))
+            time.sleep(len(step[1]) * key_ms * 3 / 1000)
+        else:
+            # a short read wait, or the answer's 0.6 s quiet period would be the time the key is held
+            for k in step:
+                z.cmd(f"send-keys-event {k} 1", 0.03)
+                time.sleep(key_ms / 1000)
+            for k in step[::-1]:
+                z.cmd(f"send-keys-event {k} 0", 0.03)
+                time.sleep(key_ms / 1000)
+    time.sleep(after)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("machine")
@@ -130,35 +163,7 @@ def main() -> None:
             z.cmd(f"smartload {os.path.abspath(a.load)}")
         time.sleep(a.seconds)
         if a.keys:
-            # Plain characters are typed with send-keys-ascii (its first argument is the time between keys, in ms), but
-            # that cannot press punctuation that needs Shift on the CPC, or the cursor keys, and treats LF as Enter.
-            # So `{NAME}` presses a special key (ENTER, DOWN, UP, LEFT, RIGHT, PERIOD, COMMA) and `{SHIFT+c}` a character
-            # with Shift held, both through send-keys-event with ZEsarUX's own key numbers (utils.h, util_teclas).
-            named = {"ENTER": 129, "LEFT": 142, "RIGHT": 143, "DOWN": 144, "UP": 145, "PERIOD": 149, "COMMA": 148}
-            shift_l = 133
-            steps = []
-            for part in re.split(r"(\{[^}]*\})", a.keys.replace("\\n", "{ENTER}")):
-                if part.startswith("{"):
-                    name = part[1:-1]
-                    if name.upper().startswith("SHIFT+"):
-                        steps.append([shift_l, ord(name[6:])])
-                    else:
-                        steps.append([named[name.upper()]])
-                elif part:
-                    steps.append(("text", part))
-            for step in steps:
-                if step[0] == "text":
-                    z.cmd(f"send-keys-ascii {a.key_ms} " + " ".join(str(ord(c)) for c in step[1]))
-                    time.sleep(len(step[1]) * a.key_ms * 3 / 1000)
-                else:
-                    # a short read wait, or the answer's 0.6 s quiet period would be the time the key is held
-                    for k in step:
-                        z.cmd(f"send-keys-event {k} 1", 0.03)
-                        time.sleep(a.key_ms / 1000)
-                    for k in step[::-1]:
-                        z.cmd(f"send-keys-event {k} 0", 0.03)
-                        time.sleep(a.key_ms / 1000)
-            time.sleep(a.after)
+            type_keys(z, a.keys, a.key_ms, a.after)
         with tempfile.TemporaryDirectory() as d:
             bmp = os.path.join(d, "shot.bmp")
             z.cmd(f"save-screen {bmp}")

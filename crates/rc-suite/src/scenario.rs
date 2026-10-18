@@ -134,6 +134,10 @@ pub struct AudioExpect {
     /// A tone of this frequency must have at least `min_amplitude` in the window.
     #[serde(default)]
     pub tone_hz: Option<f64>,
+    /// Accept the tone anywhere within this percentage of `tone_hz` (the strongest sine in that band is measured): two
+    /// emulators' clocks and sample clocks differ by a fraction of a percent. Default 0: exactly `tone_hz`.
+    #[serde(default)]
+    pub tone_tolerance_pct: f64,
     #[serde(default)]
     pub min_amplitude: f64,
     /// The window must be silent: the level (mean removed) stays below this.
@@ -552,11 +556,16 @@ fn run_audio(env: &Env, manifest: &Manifest, s: &Scenario) -> Result<(), String>
         }
     }
     if let Some(freq) = want.tone_hz {
-        let amplitude = audio.tone(freq, want.from_s, want.to_s);
+        let (found, amplitude) = if want.tone_tolerance_pct > 0.0 {
+            let d = freq * want.tone_tolerance_pct / 100.0;
+            audio.peak(freq - d, freq + d, want.from_s, want.to_s)
+        } else {
+            (freq, audio.tone(freq, want.from_s, want.to_s))
+        };
         if amplitude < want.min_amplitude {
             return Err(format!(
-                "a {freq} Hz tone has amplitude {amplitude:.4}, at least {} expected",
-                want.min_amplitude
+                "a {freq} Hz tone (within {}%) has amplitude {amplitude:.4} at best (at {found:.2} Hz), at least {} expected",
+                want.tone_tolerance_pct, want.min_amplitude
             ));
         }
     }

@@ -31,6 +31,18 @@ enum Cmd {
     },
     /// Print the SHA-256 of files, for pinning goldens.
     Hash { files: Vec<PathBuf> },
+    /// Measure a `.wav` (16-bit mono PCM): the level and the strongest tone, for writing an `audio` expectation from a reference.
+    Audio {
+        file: PathBuf,
+        #[arg(long, default_value_t = 0.0)]
+        from: f64,
+        #[arg(long, default_value_t = 1.0e9)]
+        to: f64,
+        #[arg(long, default_value_t = 30.0)]
+        lo: f64,
+        #[arg(long, default_value_t = 8000.0)]
+        hi: f64,
+    },
     /// Check that manifests parse and keep the rules.
     Check { manifests: Vec<PathBuf> },
 }
@@ -53,6 +65,22 @@ fn real_main(cli: Cli) -> Result<bool, String> {
                 let bytes = std::fs::read(&f).map_err(|e| format!("{}: {e}", f.display()))?;
                 println!("{}  {}", sha256_hex(&bytes), f.display());
             }
+            Ok(true)
+        }
+        Cmd::Audio { file, from, to, lo, hi } => {
+            let audio = rc_suite::Audio::read(&file)?;
+            let end = to.min(audio.samples.len() as f64 / f64::from(audio.rate));
+            let coarse = audio.dominant(lo, hi.min(f64::from(audio.rate) / 2.0), from, end);
+            let (freq, amp) = audio.peak(coarse * 0.99, coarse * 1.01, from, end);
+            println!(
+                "{}: {} Hz, {:.2} s analysed, rms {:.4}, strongest tone {:.2} Hz at amplitude {:.4}",
+                file.display(),
+                audio.rate,
+                end - from,
+                audio.rms(from, end),
+                freq,
+                amp
+            );
             Ok(true)
         }
         Cmd::Check { manifests } => {

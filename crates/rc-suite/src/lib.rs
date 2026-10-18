@@ -344,6 +344,73 @@ impl Audio {
         }
         2.0 * (re * re + im * im).sqrt() / w.len() as f64
     }
+
+    /// The frequency of the strongest component between `lo_hz` and `hi_hz` over `from_s` to `to_s`, from an FFT of the
+    /// first power-of-two run of samples (about 1.5 Hz resolution at 44.1 kHz); refine it with `peak`.
+    pub fn dominant(&self, lo_hz: f64, hi_hz: f64, from_s: f64, to_s: f64) -> f64 {
+        let w = self.window(from_s, to_s);
+        let mut n = 1usize;
+        while n * 2 <= w.len().min(1 << 15) {
+            n *= 2;
+        }
+        if n < 8 {
+            return lo_hz;
+        }
+        let mean = w[..n].iter().map(|&x| f64::from(x)).sum::<f64>() / n as f64;
+        let mut re: Vec<f64> = w[..n].iter().map(|&x| f64::from(x) - mean).collect();
+        let mut im = vec![0.0; n];
+        let bits = n.trailing_zeros();
+        for i in 0..n {
+            let j = i.reverse_bits() >> (usize::BITS - bits);
+            if j > i {
+                re.swap(i, j);
+            }
+        }
+        let mut len = 2;
+        while len <= n {
+            let ang = -2.0 * std::f64::consts::PI / len as f64;
+            for start in (0..n).step_by(len) {
+                for k in 0..len / 2 {
+                    let (wr, wi) = ((ang * k as f64).cos(), (ang * k as f64).sin());
+                    let (a, b) = (start + k, start + k + len / 2);
+                    let (tr, ti) = (re[b] * wr - im[b] * wi, re[b] * wi + im[b] * wr);
+                    (re[b], im[b]) = (re[a] - tr, im[a] - ti);
+                    (re[a], im[a]) = (re[a] + tr, im[a] + ti);
+                }
+            }
+            len *= 2;
+        }
+        let bin_hz = f64::from(self.rate) / n as f64;
+        let (mut best, mut best_f) = (0.0, lo_hz);
+        for k in 1..n / 2 {
+            let f = k as f64 * bin_hz;
+            if f >= lo_hz && f <= hi_hz {
+                let m = re[k] * re[k] + im[k] * im[k];
+                if m > best {
+                    (best, best_f) = (m, f);
+                }
+            }
+        }
+        best_f
+    }
+
+    /// The strongest sine in `lo_hz..=hi_hz` over `from_s` to `to_s`: `(frequency, amplitude)`. Scans in steps of a quarter of
+    /// the window's own resolution (1 / length), so two emulators whose clocks differ by a fraction of a percent can both be
+    /// measured without knowing the exact pitch.
+    pub fn peak(&self, lo_hz: f64, hi_hz: f64, from_s: f64, to_s: f64) -> (f64, f64) {
+        let len_s = (to_s - from_s).max(0.001);
+        let step = 0.25 / len_s;
+        let mut best = (lo_hz, 0.0);
+        let mut f = lo_hz;
+        while f <= hi_hz {
+            let a = self.tone(f, from_s, to_s);
+            if a > best.1 {
+                best = (f, a);
+            }
+            f += step;
+        }
+        best
+    }
 }
 
 /// Reads `retroclawd --headless`'s text output: the cycle count, `NAME = 0xVALUE` registers and `0xADDR: ..` lines.
@@ -808,5 +875,29 @@ impl Resident<'_> {
         let result = resumed.go();
         let _ = std::fs::remove_file(&patched);
         result
+    }
+}
+
+#[cfg(test)]
+mod audio_tests {
+    use super::Audio;
+
+    fn sine(freq: f64, rate: u32, seconds: f64) -> Audio {
+        let n = (f64::from(rate) * seconds) as usize;
+        let samples = (0..n)
+            .map(|i| (0.5 * (2.0 * std::f64::consts::PI * freq * i as f64 / f64::from(rate)).sin()) as f32)
+            .collect();
+        Audio { rate, samples }
+    }
+
+    #[test]
+    fn peak_finds_a_tone_whose_pitch_is_not_known_exactly() {
+        let audio = sine(520.8, 44100, 2.0);
+        // The exact-bin reading at the nominal 520 Hz misses most of it ...
+        assert!(audio.tone(520.0, 0.5, 1.5) < 0.2);
+        // ... the scan within 1 % finds it, close to its true pitch and amplitude.
+        let (f, a) = audio.peak(515.0, 525.0, 0.5, 1.5);
+        assert!((f - 520.8).abs() < 0.3, "found {f}");
+        assert!((a - 0.5).abs() < 0.05, "amplitude {a}");
     }
 }
