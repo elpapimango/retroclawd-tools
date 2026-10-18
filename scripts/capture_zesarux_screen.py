@@ -6,7 +6,7 @@ hash in the manifest's `golden_sha256`, with the ZEsarUX version and this comman
     capture_zesarux_screen.py MACHINE SECONDS OUT.png [--keys TEXT] [--after SECONDS] [-- extra zesarux args]
 
 ZEsarUX has no deterministic frame stop, so SECONDS is wall time at its own 50 Hz pacing: use a value well after
-the picture settles. `--realvideo` is needed on the ZX81: without it save-screen writes an all-black picture. Needs `zesarux` on PATH. Standard library only.
+the picture settles. `--realvideo` is always passed: without it save-screen writes an all-black picture (ZX81 and Spectrum). Needs `zesarux` on PATH. Standard library only.
 """
 import argparse
 import os
@@ -106,8 +106,10 @@ def main() -> None:
     if not exe:
         raise SystemExit("zesarux is not on PATH")
     cmd = [exe, "--noconfigfile", "--nosplash", "--nowelcomemessage", "--disable-all-first-aid", "--machine", a.machine,
-           "--ao", "null", "--realvideo", "--enable-remoteprotocol", "--remoteprotocol-port", str(a.port),
-           "--exit-after", str(int(a.seconds + a.after + 30))] + a.extra
+           "--ao", "null", "--enable-remoteprotocol", "--remoteprotocol-port", str(a.port),
+           "--exit-after", str(int(a.seconds + a.after + 30))]
+    cmd += ["--realvideo"] + a.extra  # without it save-screen writes an all-black picture
+
     proc = subprocess.Popen(cmd, cwd=os.path.dirname(exe), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
         z = Zrcp(a.port)
@@ -116,8 +118,17 @@ def main() -> None:
             z.cmd(f"smartload {os.path.abspath(a.load)}")
         time.sleep(a.seconds)
         if a.keys:
-            text = a.keys.replace("\\n", "\n")
-            codes = " ".join(str(13 if c == "\n" else ord(c)) for c in text)
+            # \n = Enter (13), \d = cursor down (10), \u = up (11), \l = left (8), \r = right (9)
+            special = {"n": 13, "d": 10, "u": 11, "l": 8, "r": 9}
+            text, i = [], 0
+            while i < len(a.keys):
+                if a.keys[i] == "\\" and i + 1 < len(a.keys) and a.keys[i + 1] in special:
+                    text.append(special[a.keys[i + 1]])
+                    i += 2
+                else:
+                    text.append(ord(a.keys[i]))
+                    i += 1
+            codes = " ".join(map(str, text))
             z.cmd(f"send-keys-ascii {a.key_ms} {codes}")  # the first argument is the time between keys, in ms
             time.sleep(len(text) * a.key_ms * 3 / 1000 + a.after)
         with tempfile.TemporaryDirectory() as d:

@@ -115,6 +115,10 @@ pub struct Compare {
     /// `similarity`: the part of each picture that is compared, `[x0, y0, x1, y1]` as fractions of its size.
     #[serde(default)]
     pub crop: Option<[f64; 4]>,
+    /// `similarity`: stretch each reduced picture to the full 0 to 255 range before comparing, so two emulators that draw
+    /// the same content in different palettes (the Spectrum's white is 0xCD in one, 0xC0 in another) still agree.
+    #[serde(default)]
+    pub normalize: bool,
     /// Why this tolerance is right. Required whenever a tolerance is set.
     #[serde(default)]
     pub reason: String,
@@ -372,6 +376,15 @@ fn luminance_grid(screen: &Screen, crop: Option<[f64; 4]>, w: usize, h: usize) -
     grid
 }
 
+/// Maps the darkest value of `grid` to 0 and the brightest to 255 (a flat grid becomes all 0).
+fn stretch(grid: &mut [f64]) {
+    let lo = grid.iter().copied().fold(f64::MAX, f64::min);
+    let hi = grid.iter().copied().fold(f64::MIN, f64::max);
+    for v in grid {
+        *v = if hi > lo { (*v - lo) * 255.0 / (hi - lo) } else { 0.0 };
+    }
+}
+
 /// Compares our picture with a golden. `Err` says how far apart they are.
 pub fn compare_screens(ours: &Screen, golden: &Screen, compare: &Compare) -> Result<(), String> {
     match compare.mode {
@@ -401,8 +414,12 @@ pub fn compare_screens(ours: &Screen, golden: &Screen, compare: &Compare) -> Res
         Mode::Similarity => {
             const GW: usize = 64;
             const GH: usize = 48;
-            let a = luminance_grid(ours, compare.crop, GW, GH);
-            let b = luminance_grid(golden, compare.crop, GW, GH);
+            let mut a = luminance_grid(ours, compare.crop, GW, GH);
+            let mut b = luminance_grid(golden, compare.crop, GW, GH);
+            if compare.normalize {
+                stretch(&mut a);
+                stretch(&mut b);
+            }
             let mad = a.iter().zip(&b).map(|(p, q)| (p - q).abs()).sum::<f64>() / (GW * GH) as f64;
             if mad > compare.max_mad {
                 return Err(format!(
@@ -695,8 +712,28 @@ mod tests {
             max_pixels,
             max_mad,
             crop: None,
+            normalize: false,
             reason: "test".to_string(),
         }
+    }
+
+    #[test]
+    fn normalize_ignores_a_palette_difference_but_not_a_missing_shape() {
+        // Black text on a 0xCD ground against the same text on a 0xC0 ground: only the palette differs.
+        let draw = |ground: u8, text: bool| {
+            screen(64, 48, |x, _| {
+                if text && x < 8 {
+                    [0, 0, 0]
+                } else {
+                    [ground; 3]
+                }
+            })
+        };
+        let mut c = compare(Mode::Similarity, 0, 2.0);
+        assert!(compare_screens(&draw(0xCD, true), &draw(0xC0, true), &c).is_err());
+        c.normalize = true;
+        assert!(compare_screens(&draw(0xCD, true), &draw(0xC0, true), &c).is_ok());
+        assert!(compare_screens(&draw(0xCD, false), &draw(0xC0, true), &c).is_err());
     }
 
     const MINIMAL: &str = r#"
