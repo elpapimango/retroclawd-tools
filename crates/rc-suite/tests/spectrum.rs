@@ -938,3 +938,149 @@ fn spectrum_diagnostics() {
     eprintln!("{}", report.summary());
     assert!(report.ok(), "{}", report.summary());
 }
+
+// ---- third-party acid test: Patrik Rak's z80test 1.0 (MIT), run on the 48K
+//
+// Each variant is an exhaustive computation over a group of Z80 instructions whose results are compared with values taken from a
+// real 48K Spectrum with a Zilog Z80: 152 tests, a CRC per test, "OK" or "FAILED", and a final "Result:" line. It is fetched by
+// `tools/fetch_acid.sh --from <Acid_Tests_Suite folder>`, never committed. After 22 lines the program asks "scroll?" and waits for
+// a key; a key pressed while a test runs would change what its IN instructions read, so the prompt is answered only while it shows:
+// every round reruns the (deterministic) machine from reset with one more key press and reads the picture at the end.
+
+const Z80TEST_DIR: &str = "sinclair/software/acid/z80test";
+
+/// The 48K ROM's character set (0x3D00, characters 32..127) and the picture's text, read back as lines.
+fn screen_lines(env: &Env, screen: &rc_suite::Screen) -> Result<Vec<String>, String> {
+    let rom = std::fs::read(env.file(ROM_48)?).map_err(|e| e.to_string())?;
+    let glyph = |code: usize| -> [u8; 8] {
+        let at = 0x3D00 + (code - 32) * 8;
+        rom[at..at + 8].try_into().unwrap()
+    };
+    let (ox, oy) = ((screen.width - 256) / 2, (screen.height - 192) / 2);
+    let mut lines = Vec::new();
+    for row in 0..24 {
+        let mut line = String::new();
+        for col in 0..32 {
+            let cell = screen.cell(ox + col * 8, oy + row * 8);
+            let ch = (32usize..127)
+                .find(|&c| glyph(c) == cell)
+                .map(|c| c as u8 as char);
+            line.push(match ch {
+                Some(c) => c,
+                None if cell == [0; 8] => ' ',
+                None => '?',
+            });
+        }
+        lines.push(line.trim_end().to_string());
+    }
+    Ok(lines)
+}
+
+/// Runs one z80test variant to its "Result:" line and returns that line (e.g. "Result: all tests passed.").
+fn z80test_result(env: &Env, variant: &str) -> Result<String, String> {
+    let tap = env.file(&format!("{Z80TEST_DIR}/{variant}.tap"))?;
+    // LOAD "" typed with the spacing the 48K ROM's key scan needs (frames).
+    let mut typing: Vec<(u32, &str, &str)> = Vec::new();
+    let mut at = 150;
+    for (key, down, gap) in [
+        ("KeyJ", true, 8),
+        ("KeyJ", false, 10),
+        ("SymShift", true, 8),
+        ("KeyP", true, 8),
+        ("KeyP", false, 12),
+        ("KeyP", true, 8),
+        ("KeyP", false, 8),
+        ("SymShift", false, 10),
+        ("Enter", true, 8),
+        ("Enter", false, 4),
+    ] {
+        typing.push((at, key, if down { "key_down" } else { "key_up" }));
+        at += gap;
+    }
+    let mut presses: Vec<u32> = Vec::new();
+    let mut horizon = 20_000u32;
+    for _round in 0..80 {
+        let mut run = env
+            .run("zx-spectrum")
+            .rom(&env.file(ROM_48)?)
+            .arg("--no-border")
+            .arg("--tape")
+            .arg(tap.to_string_lossy());
+        for (frame, key, action) in &typing {
+            run = run.arg("--at").arg(format!("{frame}:{action}={key}"));
+        }
+        for p in &presses {
+            run = run.arg("--at").arg(format!("{p}:key_down=KeyY"));
+            run = run.arg("--at").arg(format!("{}:key_up=KeyY", p + 5));
+        }
+        let out = run.frames(horizon).screen().go()?;
+        let lines = screen_lines(env, out.screen()?)?;
+        if let Some(result) = lines.iter().find(|l| l.starts_with("Result:")) {
+            return Ok(result.clone());
+        }
+        if lines.iter().any(|l| l.contains("scroll?")) {
+            // The prompt is showing at the end of this run: answer it there, then give the next screenful time to run.
+            presses.push(horizon);
+            horizon += 3_000;
+        } else {
+            horizon += 4_000; // still running
+        }
+    }
+    Err("z80test never reached its Result line".to_string())
+}
+
+fn z80test_passes(env: &Env, variant: &str) -> Result<(), String> {
+    expect_eq(
+        "z80test result",
+        z80test_result(env, variant)?.as_str(),
+        "Result: all tests passed.",
+    )
+}
+
+fn z80test_full(env: &Env) -> Result<(), String> {
+    z80test_passes(env, "z80full")
+}
+fn z80test_doc(env: &Env) -> Result<(), String> {
+    z80test_passes(env, "z80doc")
+}
+fn z80test_flags(env: &Env) -> Result<(), String> {
+    z80test_passes(env, "z80flags")
+}
+fn z80test_docflags(env: &Env) -> Result<(), String> {
+    z80test_passes(env, "z80docflags")
+}
+fn z80test_ccf(env: &Env) -> Result<(), String> {
+    z80test_passes(env, "z80ccf")
+}
+fn z80test_memptr(env: &Env) -> Result<(), String> {
+    z80test_passes(env, "z80memptr")
+}
+
+const Z80TEST_SOURCE: &str = "Patrik Rak's z80test 1.0: CRCs of exhaustive runs compared with a real 48K Spectrum (Zilog Z80)";
+
+const Z80TEST_CASES: &[Case] = &[
+    Case::new(Area::Cpu, "z80test full: all flags and registers", Z80TEST_SOURCE, z80test_full),
+    Case::new(Area::Cpu, "z80test doc: all registers, documented flags", Z80TEST_SOURCE, z80test_doc),
+    Case::new(Area::Cpu, "z80test flags: all flags, undocumented included", Z80TEST_SOURCE, z80test_flags),
+    Case::new(Area::Cpu, "z80test docflags: documented flags only", Z80TEST_SOURCE, z80test_docflags),
+    Case::new(Area::Cpu, "z80test ccf: SCF/CCF F3/F5 after each instruction", Z80TEST_SOURCE, z80test_ccf),
+    Case::new(Area::Cpu, "z80test memptr: the hidden MEMPTR (WZ) register", Z80TEST_SOURCE, z80test_memptr)
+        .gap("MEMPTR (WZ) is not modelled in the Z80 core: 41 of 152 tests fail (ADD HL,rr, DJNZ, CALL, RET, EX (SP),HL, LD (BC),A ...)"),
+];
+
+#[test]
+fn spectrum_z80test() {
+    let Some(env) = Env::discover() else {
+        eprintln!("skipping: RETROCLAWD_BIN / RC_ROMS not set");
+        return;
+    };
+    if env.file(&format!("{Z80TEST_DIR}/z80full.tap")).is_err() {
+        eprintln!(
+            "skipping: z80test not present (tools/fetch_acid.sh --from <Acid_Tests_Suite folder> copies it)"
+        );
+        return;
+    }
+    let report = run_cases(&env, Z80TEST_CASES);
+    eprintln!("{}", report.summary());
+    assert!(report.ok(), "{}", report.summary());
+}
