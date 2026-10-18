@@ -147,6 +147,9 @@ pub struct Scenario {
     /// Extra arguments for this run (`--tape file.tap`, `--tape-speed 4`).
     #[serde(default)]
     pub args: Vec<String>,
+    /// Option flag -> file below `RC_ROMS` for this scenario only (`snapshot = "sinclair/software/zx81/hello.p"`).
+    #[serde(default)]
+    pub files: BTreeMap<String, String>,
     /// `--at FRAME:ACTION[=FILE]` scripted actions (`"10:key_down=KeyA"`).
     #[serde(default)]
     pub actions: Vec<String>,
@@ -460,7 +463,7 @@ fn base_run<'e>(
     scenario: &Scenario,
 ) -> Result<crate::Run<'e>, String> {
     let mut run = env.run(&manifest.machine);
-    for (flag, rel) in &manifest.files {
+    for (flag, rel) in manifest.files.iter().chain(&scenario.files) {
         run = run
             .arg(format!("--{flag}"))
             .arg(env.file(rel)?.to_string_lossy());
@@ -589,7 +592,7 @@ fn run_state(env: &Env, manifest: &Manifest, s: &Scenario) -> Result<(), String>
             return Ok(());
         }
         let mut resumed = env.run(&manifest.machine);
-        for (flag, rel) in &manifest.files {
+        for (flag, rel) in manifest.files.iter().chain(&s.files) {
             resumed = resumed
                 .arg(format!("--{flag}"))
                 .arg(env.file(rel)?.to_string_lossy());
