@@ -119,6 +119,12 @@ pub struct Compare {
     /// the same content in different palettes (the Spectrum's white is 0xCD in one, 0xC0 in another) still agree.
     #[serde(default)]
     pub normalize: bool,
+    /// `similarity`: scale each reduced picture so its most common brightness (the paper, the ground the content is drawn
+    /// on) becomes 255 and black stays 0, values above 255 clipped. For two emulators that draw the same black-on-paper
+    /// content on a slightly different paper grey, where `normalize` would leave the paper difference in place because
+    /// the picture also holds brighter whites.
+    #[serde(default)]
+    pub anchor_ground: bool,
     /// Why this tolerance is right. Required whenever a tolerance is set.
     #[serde(default)]
     pub reason: String,
@@ -350,13 +356,53 @@ pub fn read_golden(goldens: &Path, rel: &str, pin: &str) -> Result<(PathBuf, Vec
 }
 
 /// The picture reduced to a `w` x `h` grid of brightness (0 to 255), over the `crop` part of it.
-fn luminance_grid(screen: &Screen, crop: Option<[f64; 4]>, w: usize, h: usize) -> Vec<f64> {
+fn luminance_grid(
+    screen: &Screen,
+    crop: Option<[f64; 4]>,
+    w: usize,
+    h: usize,
+    normalize: bool,
+    anchor_ground: bool,
+) -> Vec<f64> {
     let [x0, y0, x1, y1] = crop.unwrap_or([0.0, 0.0, 1.0, 1.0]);
     let px0 = (x0 * screen.width as f64) as usize;
     let px1 = ((x1 * screen.width as f64) as usize).clamp(px0 + 1, screen.width);
     let py0 = (y0 * screen.height as f64) as usize;
     let py1 = ((y1 * screen.height as f64) as usize).clamp(py0 + 1, screen.height);
     let (cw, ch) = (px1 - px0, py1 - py0);
+    let lum = |x: usize, y: usize| {
+        let p = screen.pixel(x, y);
+        0.299 * f64::from(p[0]) + 0.587 * f64::from(p[1]) + 0.114 * f64::from(p[2])
+    };
+    // The brightness mapping is fitted on the pixels, not on the reduced grid: thin strokes never fill a grid cell, so the
+    // grid's darkest cell is not the ink colour, but some pixel always is.
+    let (mut lo, mut hi) = (f64::MAX, f64::MIN);
+    let mut counts = std::collections::HashMap::new();
+    for y in py0..py1 {
+        for x in px0..px1 {
+            let v = lum(x, y);
+            lo = lo.min(v);
+            hi = hi.max(v);
+            *counts.entry(v.round() as i64).or_insert(0usize) += 1;
+        }
+    }
+    let ground = counts
+        .into_iter()
+        .max_by_key(|&(v, n)| (n, v))
+        .map_or(255.0, |(v, _)| v as f64)
+        .max(1.0);
+    let map = |v: f64| {
+        let mut v = v;
+        if normalize {
+            v = if hi > lo { (v - lo) * 255.0 / (hi - lo) } else { 0.0 };
+        }
+        if anchor_ground {
+            // after `normalize` the ground has moved too: refit it the same way
+            let g = if normalize && hi > lo { (ground - lo) * 255.0 / (hi - lo) } else { ground };
+            v = (v * 255.0 / g.max(1.0)).min(255.0);
+        }
+        v
+    };
     let mut grid = vec![0.0; w * h];
     for gy in 0..h {
         let ya = py0 + gy * ch / h;
@@ -368,9 +414,7 @@ fn luminance_grid(screen: &Screen, crop: Option<[f64; 4]>, w: usize, h: usize) -
             let mut n = 0.0;
             for y in ya..yb {
                 for x in xa..xb {
-                    let p = screen.pixel(x, y);
-                    sum +=
-                        0.299 * f64::from(p[0]) + 0.587 * f64::from(p[1]) + 0.114 * f64::from(p[2]);
+                    sum += map(lum(x, y));
                     n += 1.0;
                 }
             }
@@ -378,15 +422,6 @@ fn luminance_grid(screen: &Screen, crop: Option<[f64; 4]>, w: usize, h: usize) -
         }
     }
     grid
-}
-
-/// Maps the darkest value of `grid` to 0 and the brightest to 255 (a flat grid becomes all 0).
-fn stretch(grid: &mut [f64]) {
-    let lo = grid.iter().copied().fold(f64::MAX, f64::min);
-    let hi = grid.iter().copied().fold(f64::MIN, f64::max);
-    for v in grid {
-        *v = if hi > lo { (*v - lo) * 255.0 / (hi - lo) } else { 0.0 };
-    }
 }
 
 /// Compares our picture with a golden. `Err` says how far apart they are.
@@ -418,12 +453,8 @@ pub fn compare_screens(ours: &Screen, golden: &Screen, compare: &Compare) -> Res
         Mode::Similarity => {
             const GW: usize = 64;
             const GH: usize = 48;
-            let mut a = luminance_grid(ours, compare.crop, GW, GH);
-            let mut b = luminance_grid(golden, compare.crop, GW, GH);
-            if compare.normalize {
-                stretch(&mut a);
-                stretch(&mut b);
-            }
+            let a = luminance_grid(ours, compare.crop, GW, GH, compare.normalize, compare.anchor_ground);
+            let b = luminance_grid(golden, compare.crop, GW, GH, compare.normalize, compare.anchor_ground);
             let mad = a.iter().zip(&b).map(|(p, q)| (p - q).abs()).sum::<f64>() / (GW * GH) as f64;
             if mad > compare.max_mad {
                 return Err(format!(
@@ -478,16 +509,24 @@ fn out_dir() -> PathBuf {
         .unwrap_or_else(std::env::temp_dir)
 }
 
+/// The manifest's files with the scenario's own on top: a scenario naming the same option replaces it (a diagnostic ROM
+/// instead of the machine's firmware).
+fn merged_files(manifest: &Manifest, own: &BTreeMap<String, String>) -> BTreeMap<String, String> {
+    let mut all = manifest.files.clone();
+    all.extend(own.iter().map(|(k, v)| (k.clone(), v.clone())));
+    all
+}
+
 fn base_run<'e>(
     env: &'e Env,
     manifest: &Manifest,
     scenario: &Scenario,
 ) -> Result<crate::Run<'e>, String> {
     let mut run = env.run(&manifest.machine);
-    for (flag, rel) in manifest.files.iter().chain(&scenario.files) {
+    for (flag, rel) in merged_files(manifest, &scenario.files) {
         run = run
             .arg(format!("--{flag}"))
-            .arg(env.file(rel)?.to_string_lossy());
+            .arg(env.file(&rel)?.to_string_lossy());
     }
     for a in manifest.args.iter().chain(&scenario.args) {
         run = run.arg(a.clone());
@@ -618,10 +657,10 @@ fn run_state(env: &Env, manifest: &Manifest, s: &Scenario) -> Result<(), String>
             return Ok(());
         }
         let mut resumed = env.run(&manifest.machine);
-        for (flag, rel) in manifest.files.iter().chain(&s.files) {
+        for (flag, rel) in merged_files(manifest, &s.files) {
             resumed = resumed
                 .arg(format!("--{flag}"))
-                .arg(env.file(rel)?.to_string_lossy());
+                .arg(env.file(&rel)?.to_string_lossy());
         }
         for arg in manifest.args.iter().chain(&s.args) {
             resumed = resumed.arg(arg.clone());
@@ -722,8 +761,32 @@ mod tests {
             max_mad,
             crop: None,
             normalize: false,
+            anchor_ground: false,
             reason: "test".to_string(),
         }
+    }
+
+    #[test]
+    fn anchor_ground_ignores_the_paper_grey_even_beside_a_brighter_white() {
+        // Black text and a pure white bar on a 0xCD ground against the same on a 0xC0 ground.
+        let draw = |ground: u8, text: bool| {
+            screen(64, 48, |x, y| {
+                if y < 4 {
+                    [255, 255, 255]
+                } else if text && x < 8 {
+                    [0, 0, 0]
+                } else {
+                    [ground; 3]
+                }
+            })
+        };
+        let mut c = compare(Mode::Similarity, 0, 2.0);
+        c.normalize = true;
+        assert!(compare_screens(&draw(0xCD, true), &draw(0xC0, true), &c).is_err());
+        c.normalize = false;
+        c.anchor_ground = true;
+        assert!(compare_screens(&draw(0xCD, true), &draw(0xC0, true), &c).is_ok());
+        assert!(compare_screens(&draw(0xCD, false), &draw(0xC0, true), &c).is_err());
     }
 
     #[test]
