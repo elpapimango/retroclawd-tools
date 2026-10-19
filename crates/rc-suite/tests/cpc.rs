@@ -1313,13 +1313,14 @@ const DIAG_HEAD_DISK: &str = "amstrad/software/diagnostics/AmstradDiagHead.dsk";
 /// AmstradDiag's sound test (`[T]` in the menu; it is in the repository since 2024 and not in the v1.3 release, so the disk is built
 /// by `tools/build_amstradiag_head.sh`) run through the real firmware: it detects the chip from register 1, plays noise on channel A,
 /// then A and B, then A, B and C, and then the three tones of its chord (A2, C3 and E3: periods `$0238`, `$01DD`, `$017B`) the same
-/// way, each step about two seconds, ending muted. The case finds the first loud sound after the menu (the CPC's key click for the
+/// way, each step 1.75 seconds, ending muted. The case finds the first loud sound after the menu (the CPC's key click for the
 /// typed letters is quieter) and checks every step against what the program sets up: noise that grows as channels are added and has
 /// no tone in it, then each tone present exactly from the step that turns its channel on.
 fn the_diagnostics_sound_test_steps_through_noise_and_tones_on_each_channel(
     env: &Env,
 ) -> Result<(), String> {
-    let wait = "q".repeat(60);
+    // The disk loads DIAG in real time (the FDC turns the disk), so the keys that wait for its menu run longer.
+    let wait = "q".repeat(100);
     let out = env
         .run("cpc6128")
         .rom(&rom(env)?)
@@ -1331,20 +1332,23 @@ fn the_diagnostics_sound_test_steps_through_noise_and_tones_on_each_channel(
         .arg("80")
         .arg("--type")
         .arg(format!("RUN\"DIAG\n{wait}t"))
-        .frames(1900)
+        .frames(2900)
         .audio()
         .go()?;
     let audio = out.audio()?;
-    let seconds: f64 = 1900.0 / 50.0;
+    let seconds: f64 = 2900.0 / 50.0;
     // The first 0.1 s window louder than a key click.
     let t0 = (0..(seconds * 10.0) as usize - 1)
         .map(|i| i as f64 / 10.0)
         .find(|&t| audio.rms(t, t + 0.1) > 0.05)
         .ok_or("no sound at all: the sound test did not start")?;
-    // Noise: A, then A+B, then A+B+C, two seconds each; more channels are louder, and none of it is one of the chord's tones.
+    // Each step is `Silence` with B = 4: 4 x &F000 turns of a 7-NOP loop (DEC BC, LD A,B, OR C, JR NZ; 28 T-states) with
+    // interrupts off, 1.72 s at 4 MHz, plus the printing between steps: 1.75 s measured.
+    const STEP: f64 = 1.75;
+    // Noise: A, then A+B, then A+B+C; more channels are louder, and none of it is one of the chord's tones.
     let noise: Vec<f64> = (0..3)
         .map(|k| {
-            let from = t0 + 0.5 + 2.0 * k as f64;
+            let from = t0 + 0.4 + STEP * k as f64;
             audio.rms(from, from + 1.0)
         })
         .collect();
@@ -1354,7 +1358,7 @@ fn the_diagnostics_sound_test_steps_through_noise_and_tones_on_each_channel(
         ));
     }
     for k in 0..3 {
-        let from = t0 + 0.5 + 2.0 * k as f64;
+        let from = t0 + 0.4 + STEP * k as f64;
         for ch in 0..3 {
             let amplitude = audio.tone(psg_frequency(ch), from, from + 1.0);
             if amplitude > 0.02 {
@@ -1366,9 +1370,10 @@ fn the_diagnostics_sound_test_steps_through_noise_and_tones_on_each_channel(
         }
     }
     // Tones: A, then A+B, then A+B+C; each present exactly from the step that switches its channel on.
-    let sound = t0 + 6.5;
+    // The tones start one step plus the second header's printing after the last noise step.
+    let sound = t0 + 6.25;
     for k in 0..3 {
-        let from = sound + 0.5 + 2.0 * k as f64;
+        let from = sound + 0.4 + STEP * k as f64;
         for ch in 0..3 {
             let amplitude = audio.tone(psg_frequency(ch), from, from + 0.9);
             let on = ch <= k;

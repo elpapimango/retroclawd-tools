@@ -311,17 +311,12 @@ const BASELINE: &[(&str, bool, &[&str])] = &[
     ]),
     ("pritest", true, &[
         "PRI (enable norm during pri int handler)",
-        "PRI can delay normal raster interrupt",
-        "PRI re-trigger (hsync pos)",
         "PRI start (R2)",
-        "PRI trigger bug (hsync pos)",
-        "PRI trigger bug (hsync width)",
         "im2 vector (norm)",
     ]),
     // "ready change, sense interrupt status, ..." has no expected values of its own (its table is only the end mark):
     // it compares with what the previous test left in the buffer.
     ("fdc_gen", true, &[
-        "read id dma mode",
         "read id not ready",
         "ready change, sense interrupt status, ready change, sense interrupt status (drive 0 best)",
     ]),
@@ -331,6 +326,8 @@ const BASELINE: &[(&str, bool, &[&str])] = &[
         "9 SC, Format N=1, ID N=3",
         "9 SC, Format N=2, ID N=2, Write GPL>FFormat GPL",
     ]),
+    // The program marks sector &41 of track 0 deleted while initialising, yet its track-0 tables ("read data", the
+    // overrun cases) expect a normal data mark there; we read the deleted mark it wrote.
     // The bad cylinder, R=EOT=ff, eot and skip tests overwrite HL (their expected-results pointer) before saving it,
     // so they compare with the previous test's buffer.
     ("fdc_read", true, &[
@@ -340,8 +337,6 @@ const BASELINE: &[(&str, bool, &[&str])] = &[
         "read data (bad cylinder/wrong cylinder - deleted data)",
         "read data  (data error)",
         "read data (eot)",
-        "read data (execution phase) (dma)",
-        "read data (msr bit 5) (dma)",
         "read data (no polling status register)",
         "read data (overrun - data error on data)",
         "read data (overrun - data)",
@@ -356,8 +351,6 @@ const BASELINE: &[(&str, bool, &[&str])] = &[
         "read deleted data (bad cylinder/wrong cylinder - deleted data)",
         "read deleted data (data error)",
         "read deleted data (eot)",
-        "read deleted data (execution phase) (dma)",
-        "read deleted data (msr bit 5) (dma)",
         "read deleted data (no polling status  register)",
         "read deletted data (overrun - data error on data)",
         "read deleted data (overrun - data)",
@@ -374,7 +367,6 @@ const BASELINE: &[(&str, bool, &[&str])] = &[
         "recal then seek",
         "seek (ready change)",
         "seek (try read id during seek)",
-        "seek (wait for end without sense int), then read id",
         "seek command repeat (while seeking)",
         "seek drive n and drive n+2 (n->0, n+2 -> 39) (wait first seek)",
         "seek drive n and drive n+2 (n->10, n+2 -> 10)",
@@ -393,11 +385,12 @@ const BASELINE: &[(&str, bool, &[&str])] = &[
     // Needs the disc write-protected by hand mid-run.
     ("fdc_wp", false, &[
     ]),
+    // "write deleted data (dma)" expects an overrun on track 10 while "write data (dma)" (track 0) expects a normal end
+    // from the same DMA set-up; the model ends both normally.
     ("fdc_write", true, &[
         "write data (bad cylinder)",
         "write data (change c=ff?)",
         "write data (data error - remove)",
-        "write data (dma)",
         "write dataa (fm on fm)",
         "write data (fm on mfm)",
         "write data (mfm on fm)",
