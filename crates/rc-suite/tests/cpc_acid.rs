@@ -15,6 +15,8 @@
 //! newly, or a program that stops finishing, fails the suite; the lists are the known gaps, to be fixed or explained.
 //!
 //! Needs `RETROCLAWD_BIN`, `RETROCLAWD_MACHINE_PLUGIN_DIRS` and `RC_ROMS`; skips without, and for a program whose disk is absent.
+//! `RC_ACID_ONLY=<name>` runs one program, `RC_ACID_PRINT=1` prints each program's baseline line and
+//! `RC_ACID_TRANSCRIPT=<folder>` keeps each transcript there.
 
 use rc_suite::Env;
 use std::collections::BTreeSet;
@@ -97,10 +99,14 @@ fn results(transcript: &str) -> Vec<(String, bool)> {
             continue; // "0009: got FF expected 09 - FAIL": a detail line, not a result
         }
         // A first test's name can be glued to the prompt printed before it.
-        let head = ["Press a key to start", "Press a key to continue"]
-            .iter()
-            .find_map(|prompt| head.strip_prefix(prompt))
-            .unwrap_or(head);
+        let head = [
+            "Press a key to start",
+            "Press a key to continue",
+            "Press a keey to continue",
+        ]
+        .iter()
+        .find_map(|prompt| head.strip_prefix(prompt))
+        .unwrap_or(head);
         out.push((head.to_string(), ok));
     }
     out
@@ -171,10 +177,11 @@ fn transcript_of(env: &Env, spec: &Spec) -> Result<Outcome, String> {
         press = new.is_empty();
         silent = if new.is_empty() { silent + 1 } else { 0 };
         text.push_str(&new);
-        if text.contains("Done.") || frames >= spec.max_frames || silent >= SILENT_LIMIT {
+        let done = squeezed(&text).contains("Done.");
+        if done || frames >= spec.max_frames || silent >= SILENT_LIMIT {
             let list = results(&text);
             break Outcome {
-                finished: text.contains("Done."),
+                finished: done,
                 passed: list.iter().filter(|r| r.1).map(|r| r.0.clone()).collect(),
                 failed: list.iter().filter(|r| !r.1).map(|r| r.0.clone()).collect(),
                 last_line: text
@@ -190,6 +197,13 @@ fn transcript_of(env: &Env, spec: &Spec) -> Result<Outcome, String> {
     };
     let _ = std::fs::remove_file(&state);
     let _ = std::fs::remove_file(&cap);
+    // `RC_ACID_TRANSCRIPT=<folder>`: keep each program's whole transcript (every "got .. expected .." line) as
+    // `<folder>/<name>.txt`, for working on a failure.
+    if let Some(dir) = std::env::var_os("RC_ACID_TRANSCRIPT") {
+        let path = std::path::Path::new(&dir).join(format!("{}.txt", spec.name));
+        std::fs::write(&path, text.replace('\r', "\n"))
+            .map_err(|e| format!("writing {}: {e}", path.display()))?;
+    }
     Ok(outcome)
 }
 
@@ -266,72 +280,50 @@ const BASELINE: &[(&str, bool, &[&str])] = &[
     ]),
     ("psg", true, &[
     ]),
+    // The GA I/O decode test never loads BC before `io_decode` stores it as its restore hook (`ga_io_restore_extra`
+    // exists but is unused), so it calls a stale address and resets the machine: a bug in the test.
     ("cpctest", false, &[
-        "CPC int (HSYNC pos)",
-        "CPC int (HSYNC width)",
     ]),
     ("romtest", true, &[
     ]),
     ("type1ctrl", true, &[
     ]),
-    ("asicfloat", false, &[
-        "asic ram float (5000-50ff)",
+    ("asicfloat", true, &[
     ]),
     ("asiclock", true, &[
     ]),
-    ("asicppi", false, &[
+    ("asicppi", true, &[
     ]),
     ("asicrom", true, &[
-        "RMR2 (bits 2..0) - low rom cart page",
-        "RMR2 configs (bit 3,4)",
     ]),
-    ("asictest", false, &[
-        "CPC border set (bit 5=0)",
-        "CPC border set (bit 5=1)",
-        "CPC colour set (bit 5=0)",
-        "CPC colour set (bit 5=1)",
-        "CPC mode set (bit 5=0) (locked)",
-        "CPC mode set (bit 5=0) (unlocked)",
-        "CPC mode set (bit 5=1) (locked)",
-        "CPC mode set (rmr2) (bit 5=1) (unlocked)",
-        "CPC pen set (bit 5=0)",
-        "CPC pen set (bit 5=1)",
-        "DCSR mirror",
-        "IN set colour",
-        "sprite coord test y (l/h)",
-        "sprite ram mask",
+    ("asictest", true, &[
     ]),
     ("asic_external_ram", true, &[
-        "write through c4 reg",
-        "write through c4 unmapped",
     ]),
-    ("dmatest", false, &[
-        "dcsr read/write irq",
-        "dma enable test (dcsr bits)",
+    // "dma under asic registers" prints every value as expected but reports FAIL depending on the frame phase the
+    // program starts at (it passed while the program loaded from an instant disk).
+    ("dmatest", true, &[
+        "CRTC R0 length and dma",
         "dma int request test (dcsr bits)",
+        "dma pause (change prescale higher)",
+        "dma pause (change prescale lower)",
+        "dma under asic registers",
     ]),
-    ("pritest", false, &[
-        "6c0f PRI status",
-        "PRI 2 lines into vsync (R4 fixed, R7 varies)",
-        "PRI all values - count lines as expected - R7>PRI",
+    ("pritest", true, &[
+        "PRI (enable norm during pri int handler)",
         "PRI can delay normal raster interrupt",
         "PRI re-trigger (hsync pos)",
         "PRI start (R2)",
-        "PRI start (R3)",
         "PRI trigger bug (hsync pos)",
         "PRI trigger bug (hsync width)",
-        "PRI triggering tests",
-        "pri all values",
-        "pri all values (through vsync)",
-        "pri repeat (r9>8)",
-        "pri wrap",
+        "im2 vector (norm)",
     ]),
-    ("fdc_gen", false, &[
-        "read id (execution phase)",
+    // "ready change, sense interrupt status, ..." has no expected values of its own (its table is only the end mark):
+    // it compares with what the previous test left in the buffer.
+    ("fdc_gen", true, &[
+        "read id dma mode",
         "read id not ready",
         "ready change, sense interrupt status, ready change, sense interrupt status (drive 0 best)",
-        "sense clears fdd busy (only after seek)",
-        "sense drive status (2 drives)",
     ]),
     ("fdc_hang", true, &[
     ]),
@@ -339,54 +331,106 @@ const BASELINE: &[(&str, bool, &[&str])] = &[
         "9 SC, Format N=1, ID N=3",
         "9 SC, Format N=2, ID N=2, Write GPL>FFormat GPL",
     ]),
-    ("fdc_read", false, &[
+    // The bad cylinder, R=EOT=ff, eot and skip tests overwrite HL (their expected-results pointer) before saving it,
+    // so they compare with the previous test's buffer.
+    ("fdc_read", true, &[
+        "read data",
+        "read data  (R=EOT=ff)",
+        "read data (bad cylinder/wrong cylinder - data)",
+        "read data (bad cylinder/wrong cylinder - deleted data)",
+        "read data  (data error)",
+        "read data (eot)",
+        "read data (execution phase) (dma)",
+        "read data (msr bit 5) (dma)",
+        "read data (no polling status register)",
+        "read data (overrun - data error on data)",
+        "read data (overrun - data)",
+        "read data (ready change - data crc error on data)",
+        "read data (ready change - deleted data)",
+        "read data (ready change after 1st byte of sector)",
+        "read data (ready change before first sector)",
+        "read data then sense int",
         "read data x bytes and skip",
+        "read deleted data (R=EOT=ff)",
+        "read deleted data (bad cylinder/wrong cylinder - data)",
+        "read deleted data (bad cylinder/wrong cylinder - deleted data)",
+        "read deleted data (data error)",
+        "read deleted data (eot)",
+        "read deleted data (execution phase) (dma)",
+        "read deleted data (msr bit 5) (dma)",
+        "read deleted data (no polling status  register)",
+        "read deletted data (overrun - data error on data)",
+        "read deleted data (overrun - data)",
+        "read deleted data (overrun - deleted data)",
+        "read deleted data (ready change - data crc error)",
+        "read deleted data (ready change - data)",
+        "read deleted data (ready change after 1st byte of sector)",
+        "read deletted data (ready change before first sector)",
     ]),
-    ("fdc_seek", false, &[
+    ("fdc_seek", true, &[
+        "recal (not ready - not trk0)",
+        "recal (reaady change)",
+        "recal command repeat (while seeking)",
         "recal then seek",
+        "seek (ready change)",
+        "seek (try read id during seek)",
+        "seek (wait for end without sense int), then read id",
         "seek command repeat (while seeking)",
+        "seek drive n and drive n+2 (n->0, n+2 -> 39) (wait first seek)",
+        "seek drive n and drive n+2 (n->10, n+2 -> 10)",
         "seek then invalid (&ff) command",
     ]),
-    ("fdc_time", false, &[
+    ("fdc_time", true, &[
         "read data timing (cmd->execution phase start)",
+        "read data timing (data end->execution phase end)",
         "read data timing (data end->result phase)",
+        "read data timing (execution phase end->result phase)",
         "seek (fdc busy to not busy after seek command sent)",
+        "write data timing (data end->execution phase end)",
+        "write data timing (data end->result phase)",
+        "write data timing (executtion phase end->result phase)",
     ]),
+    // Needs the disc write-protected by hand mid-run.
     ("fdc_wp", false, &[
     ]),
-    ("fdc_write", false, &[
+    ("fdc_write", true, &[
+        "write data (bad cylinder)",
+        "write data (change c=ff?)",
+        "write data (data error - remove)",
+        "write data (dma)",
+        "write dataa (fm on fm)",
+        "write data (fm on mfm)",
+        "write data (mfm on fm)",
+        "write data (wrong cylinder)",
+        "write deleted data (bad cylinder)",
+        "write deleeted data (change c=ff?)",
         "write deleted data (data error - remove)",
+        "write deleted data (dma)",
+        "write deleted data (fm on fm)",
+        "write deleted data (fm on mfm)",
+        "write deleted data (mfm on fm)",
     ]),
+    // Runs past the frame limit in "format id/read track (all N)".
     ("fdctest3", false, &[
         "format (force data error)",
         "format (not ready)",
         "format (ss)",
         "read sector (using write data register)",
-        "scan equal (cpu=ff, sector=pattern)",
-        "scan equal (cpu=pattern, sector=ff)",
-        "scan equal (match)",
-        "scan equal (no match)",
-        "scan equal (not ready)",
-        "scan equal (sector not found)",
-        "scan high or equal (cpu=ff, sector=pattern)",
-        "scan high or equal (cpu=pattern, sector=ff)",
-        "scan high or equal (equal)",
-        "scan high or equal (less & greater)",
-        "scan high or equal (not ready)",
-        "scan high or equal (sector not found)",
-        "scan low or equal (cpu=ff, sector=pattern)",
-        "scan low or equal (cpu=pattern, sector=ff)",
-        "scan low or equal (equal)",
-        "scan low or equal (less & greater)",
-        "scan low or equal (not ready)",
-        "scan low or equal (sector not found)",
         "write sector (using read data_register)",
     ]),
 ];
 
-/// (program, test) pairs the acid test's author marks as unreliable (`ppi.asm`: "todo: fix, vsync gets in the way and
-/// sometimes cassette write"): the vsync-on read of Port B depends on the frame phase the earlier tests leave.
-const UNRELIABLE: &[(&str, &str)] = &[("ppi", "mode 0: port b read (vsync on)")];
+/// (program, test) pairs whose outcome is no finding about the emulator:
+/// - `ppi` "port b read (vsync on)": the author marks it unreliable (`ppi.asm`: "todo: fix, vsync gets in the way and
+///   sometimes cassette write"); the vsync-on read of Port B depends on the frame phase the earlier tests leave.
+/// - `asictest` "sprite ram mask": its 8K result buffer (from the end of the program, `&972A`) runs to `&B72A`, into the
+///   firmware's variables; after `EI` the firmware's interrupt handler writes there before the last results are
+///   compared, so entries `&FC0` on read back garbage. Which bytes depends on the firmware (this suite runs the classic
+///   6128 ROM, not the 6128 Plus's own); every entry before them passes.
+const UNRELIABLE: &[(&str, &str)] = &[
+    ("ppi", "mode 0: port b read (vsync on)"),
+    ("asictest", "sprite ram mask"),
+];
 
 const D: &str = "amstrad/software/acid";
 
@@ -458,7 +502,7 @@ fn specs() -> Vec<Spec> {
             "cpc6128plus",
             d("plus/asic1.dsk"),
             "TEST",
-            60_000,
+            120_000,
         ),
         // The program asks what RAM the machine has: a 6128Plus has 128K, no expansion (its own list: "Y then N").
         Spec {

@@ -776,7 +776,9 @@ fn cpc() {
 // ---- third-party diagnostics (AmstradDiag)
 
 const DIAG_CART: &str = "amstrad/software/diagnostics/AmstradDiag.cpr";
-const BLUE: [u8; 3] = [0, 0, 136];
+/// The GX4000's blue: hardware colour 4 (blue at half level) is `&006` in the ASIC palette, rendered `0x66` (Kevin
+/// Thacker's `asictest` reads the palette back on a real 6128 Plus; until 2026-10-19 this crate wrote level 8, `0x88`).
+const BLUE: [u8; 3] = [0, 0, 102];
 
 /// llopis/amstrad-diagnostics v1.3 (MIT), run as a GX4000 cartridge (the released `.cpr` has a malformed header, which the
 /// plugin repairs). It sets its colours with classic Gate Array writes -- which a Plus must honour -- tests the lower RAM
@@ -884,8 +886,10 @@ fn filled(screen: &rc_suite::Screen, cx: usize, cy: usize) -> f32 {
 /// those cells light up (two runs, one per parity, so a key wired to a neighbour's matrix position is seen as a typed key's
 /// cell staying dark and another one lighting up).
 fn keyboard_test_lights_exactly(env: &Env, parity: usize) -> Result<(), String> {
-    // `k` opens the keyboard test; its first screen ignores the first keys, so two sacrificial `z` come first, and the
-    // keys follow 160 ms apart (the program polls about once a frame).
+    // `k` opens the keyboard test; its first screen ignores the first keys, so three sacrificial `z` come first, and the
+    // keys follow 160 ms apart (the program polls about once a frame). Two were enough while a host frame was 80000
+    // T-states; since 2026-10-19 it is the CPC's own 79872, the frames keep one phase against the picture, and the third
+    // key then lands at the very end of the ignoring screen.
     let typed: Vec<&(char, usize, usize)> = KEY_CELLS.iter().skip(parity).step_by(2).collect();
     let keys: String = typed.iter().map(|k| k.0).collect();
     let out = env
@@ -896,12 +900,12 @@ fn keyboard_test_lights_exactly(env: &Env, parity: usize) -> Result<(), String> 
         .arg("--type-delay")
         .arg("160")
         .arg("--type")
-        .arg(format!("kzz{keys}"))
-        .frames(300 + 8 * 2 * (keys.len() as u32 + 3) + 60)
+        .arg(format!("kzzz{keys}"))
+        .frames(300 + 8 * 2 * (keys.len() as u32 + 4) + 60)
         .screen()
         .go()?;
     let screen = out.screen()?;
-    // `z` is typed twice up front; it only counts as typed when it is in this run's half.
+    // `z` is typed three times up front; it only counts as typed when it is in this run's half.
     let lit = |&&(_, x, y): &&(char, usize, usize)| filled(screen, x, y) >= 0.55;
     let dark = |&&(_, x, y): &&(char, usize, usize)| filled(screen, x, y) < 0.40;
     let missed: Vec<char> = typed.iter().filter(|k| !lit(k)).map(|k| k.0).collect();

@@ -885,7 +885,10 @@ mod audio_tests {
     fn sine(freq: f64, rate: u32, seconds: f64) -> Audio {
         let n = (f64::from(rate) * seconds) as usize;
         let samples = (0..n)
-            .map(|i| (0.5 * (2.0 * std::f64::consts::PI * freq * i as f64 / f64::from(rate)).sin()) as f32)
+            .map(|i| {
+                (0.5 * (2.0 * std::f64::consts::PI * freq * i as f64 / f64::from(rate)).sin())
+                    as f32
+            })
             .collect();
         Audio { rate, samples }
     }

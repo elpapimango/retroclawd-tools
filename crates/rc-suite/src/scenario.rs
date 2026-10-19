@@ -394,11 +394,19 @@ fn luminance_grid(
     let map = |v: f64| {
         let mut v = v;
         if normalize {
-            v = if hi > lo { (v - lo) * 255.0 / (hi - lo) } else { 0.0 };
+            v = if hi > lo {
+                (v - lo) * 255.0 / (hi - lo)
+            } else {
+                0.0
+            };
         }
         if anchor_ground {
             // after `normalize` the ground has moved too: refit it the same way
-            let g = if normalize && hi > lo { (ground - lo) * 255.0 / (hi - lo) } else { ground };
+            let g = if normalize && hi > lo {
+                (ground - lo) * 255.0 / (hi - lo)
+            } else {
+                ground
+            };
             v = (v * 255.0 / g.max(1.0)).min(255.0);
         }
         v
@@ -453,8 +461,22 @@ pub fn compare_screens(ours: &Screen, golden: &Screen, compare: &Compare) -> Res
         Mode::Similarity => {
             const GW: usize = 64;
             const GH: usize = 48;
-            let a = luminance_grid(ours, compare.crop, GW, GH, compare.normalize, compare.anchor_ground);
-            let b = luminance_grid(golden, compare.crop, GW, GH, compare.normalize, compare.anchor_ground);
+            let a = luminance_grid(
+                ours,
+                compare.crop,
+                GW,
+                GH,
+                compare.normalize,
+                compare.anchor_ground,
+            );
+            let b = luminance_grid(
+                golden,
+                compare.crop,
+                GW,
+                GH,
+                compare.normalize,
+                compare.anchor_ground,
+            );
             let mad = a.iter().zip(&b).map(|(p, q)| (p - q).abs()).sum::<f64>() / (GW * GH) as f64;
             if mad > compare.max_mad {
                 return Err(format!(

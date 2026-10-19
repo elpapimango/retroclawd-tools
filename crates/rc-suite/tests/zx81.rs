@@ -141,14 +141,14 @@ fn slow_mode_counts_50_frames_a_second(env: &Env) -> Result<(), String> {
 fn fast_mode_runs_at_3_25_mhz_with_no_nmis(env: &Env) -> Result<(), String> {
     const FRAMES_RUN: u32 = 10;
     let out = run_program(env, "fast", "ld hl,0\nloop: inc hl\n jr loop\n", FRAMES_RUN)?;
-    // ZXDOCS: the CPU runs at 3.25 MHz and the picture is 50 Hz, so a frame is 65000 T-states. A frame ends at
-    // the first instruction boundary past that, so each one may run over by less than one instruction (JR is
-    // the longest here, 12 T).
+    // ZXDOCS: the CPU runs at 3.25 MHz; a frame is 312 lines of 207 T-states (the ULA's line counter), 64584
+    // T-states (65000 before 2026-10-19, when the line was taken as 208). A frame ends at the first instruction
+    // boundary past that, so each one may run over by less than one instruction (JR is the longest here, 12 T).
     expect_in(
         "cycles in 10 frames",
         out.cycles as i64,
-        i64::from(FRAMES_RUN) * 65_000,
-        i64::from(FRAMES_RUN) * (65_000 + 12),
+        i64::from(FRAMES_RUN) * 64_584,
+        i64::from(FRAMES_RUN) * (64_584 + 12),
     )?;
     // Z80: LD HL,nn = 10 T; INC HL = 6 T; JR taken = 12 T. With the NMI generator off (FAST mode, as at reset)
     // nothing interrupts the loop, so HL counts one per 18 T after the first 10.

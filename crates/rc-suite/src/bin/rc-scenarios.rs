@@ -67,7 +67,13 @@ fn real_main(cli: Cli) -> Result<bool, String> {
             }
             Ok(true)
         }
-        Cmd::Audio { file, from, to, lo, hi } => {
+        Cmd::Audio {
+            file,
+            from,
+            to,
+            lo,
+            hi,
+        } => {
             let audio = rc_suite::Audio::read(&file)?;
             let end = to.min(audio.samples.len() as f64 / f64::from(audio.rate));
             let coarse = audio.dominant(lo, hi.min(f64::from(audio.rate) / 2.0), from, end);
