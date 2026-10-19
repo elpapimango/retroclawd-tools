@@ -27,10 +27,27 @@ Rules the code enforces: every golden is pinned by hash; a tolerance needs a wri
 `status = "known-gap"` with a `gap` (reason and evidence) and the run fails when a known gap starts passing; unknown keys are errors.
 **A picture from another emulator is compared with `mode = "similarity"`** (both reduced to a 64x48 luminance grid over an optional
 `crop`, mean absolute difference at most `max_mad`): the reference draws its own border, scale and palette, so pixel equality is not
-possible. `mode = "exact"` is for goldens this project made itself. Verified against the ZX81 with the real emulator (pass, wrong
-cycle count, tampered golden, different picture with its diff image, a known gap that closes, a recorded gap). Not yet done:
-a manifest for any current machine, a `trace` kind (S8; the plugin ABI has no instruction trace), memory windows above 64K, and
-`scripts/capture_mame_screen.sh` has never been run (no MAME on the machine it was written on).
+possible. `normalize = true` stretches each picture's pixel brightness to the full range (a different palette); `anchor_ground =
+true` makes the most common brightness (the paper) full white (a different paper grey beside a brighter white); both are fitted on
+pixels, not grid cells. Keep the crop inside the screen (a border colour is a third tone neither removes) and away from a blinking
+cursor. `mode = "exact"` is for goldens this project made itself. A scenario's own `files` (option flag -> file below `RC_ROMS`)
+and `actions` (`--at FRAME:ACTION`, e.g. `key_down=Enter`) are added to the manifest's; the same flag replaces the manifest's.
+`audio` scenarios check a pitch: `tone_hz` within `tone_tolerance_pct` (the strongest sine in that band, at least `min_amplitude`) or
+`silent_below_rms`; `rc-scenarios audio FILE.wav [--from --to --lo --hi]` measures a recording to write one.
+
+**State (2026-10-18)**: every machine has a manifest in its family repository (`machines/<family>/<id>.manifest.toml`: zx81, the three
+Spectrums, cpc464/664/6128, c64, c128), each with S1 boot, S2 typed input, S4 audio (a pitch, or silence on the ZX81), S5 state, S6
+timing, and S3 media and S7 hardware test where a route exists; the CPC Plus and GX4000 have none (no reference emulator). The
+references are **ZEsarUX 13.0** (ZX81, Spectrum family, CPC family) and **VICE 3.10** (C64, C128); `scripts/capture_zesarux_screen.py`,
+`capture_zesarux_audio.py` (ZEsarUX over its remote protocol, `--realvideo`, a crop onto retroclawd's canvas; it refuses to start when a
+ZEsarUX is already listening, which once gave a golden of the wrong machine), `capture_vice_screen.py` (a fixed cycle count with
+`-limitcycles`, exit screenshot; VICE only records sound in real time) and `make_zx81_p.py` make the goldens. Each family's
+`scenarios/build.sh` builds the test media with these tools into the git-ignored `software/scenarios/`. Goldens live in a folder of
+your own (`RC_GOLDENS`), never in git. Known gaps found: S6 on the ZX81, CPC, C64 and C128 (each emulator paces at its nominal frame
+rate; the references use the real raster), the C64's fast loader printing no SEARCHING/LOADING, the CPC diagnostics' CRTC/FDC lines
+(reference looks wrong), the C64 dead test's clock; each has a note under the family's `docs/`. Not done: a `trace` kind (S8; the
+plugin ABI has no instruction trace), memory windows above 64K, S2/S4/S7 on machines where the reference cannot be driven (the 128K
+menu, the C128's S3), z80test and the CPC acid disks as manifests (the hand-written suites cover them).
 
 ## What this is
 
