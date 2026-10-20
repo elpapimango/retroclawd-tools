@@ -29,6 +29,8 @@
 //! project made itself (regression). A tolerance without a written `reason` is refused, and a scenario that cannot
 //! be matched is marked `status = "known-gap"` with a `gap` (reason and evidence), never loosened until it passes.
 //! A known gap that starts passing fails the run until the marker is removed, as the hand-written suites do.
+//! A screen/memory known gap may omit an uncaptured golden and its hash. It is
+//! reported as not run, never compared with a placeholder or counted as a pass.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -300,16 +302,29 @@ impl Manifest {
                         s.id
                     ));
                 }
+                (_, Some(gap))
+                    if gap.reason.trim().is_empty() || gap.evidence.trim().is_empty() =>
+                {
+                    return Err(format!(
+                        "scenario {}: a known gap needs a nonempty reason and evidence",
+                        s.id
+                    ));
+                }
                 _ => {}
             }
+            let uncaptured = s.status == Status::KnownGap && s.golden.is_none();
             match s.kind {
-                Kind::Screen if s.golden.is_none() || s.compare.is_none() => {
+                Kind::Screen if !uncaptured && (s.golden.is_none() || s.compare.is_none()) => {
                     return Err(format!(
                         "scenario {}: a screen needs `golden` and `compare`",
                         s.id
                     ));
                 }
-                Kind::Memory if s.golden.is_none() || s.start.is_none() || s.len.is_none() => {
+                Kind::Memory
+                    if (!uncaptured && s.golden.is_none())
+                        || s.start.is_none()
+                        || s.len.is_none() =>
+                {
                     return Err(format!(
                         "scenario {}: memory needs `golden`, `start` and `len`",
                         s.id
@@ -732,6 +747,12 @@ pub fn run_scenario(
     manifest: &Manifest,
     s: &Scenario,
 ) -> Result<(), String> {
+    if matches!(s.kind, Kind::Screen | Kind::Memory) && s.golden.is_none() {
+        return Err(
+            "not run: reference golden not captured; capture and pin it before comparison"
+                .to_string(),
+        );
+    }
     match s.kind {
         Kind::Screen => run_screen(env, goldens, manifest, s),
         Kind::Memory => run_memory(env, goldens, manifest, s),
@@ -852,6 +873,44 @@ cycles_per_frame = 65000
         assert_eq!(m.machine, "zx81");
         assert_eq!(m.scenarios[0].status, Status::Pass);
         assert_eq!(m.scenarios[0].cycles_tolerance, 0);
+    }
+
+    #[test]
+    fn an_uncaptured_golden_is_an_explicit_gap_not_a_fabricated_hash_or_pass() {
+        for kind in ["screen", "memory"] {
+            let source = format!(
+                r#"
+machine = "vic20"
+[[scenario]]
+id = "S1"
+kind = "{kind}"
+frames = 180
+start = 0
+len = 1
+status = "known-gap"
+gap = {{ reason = "Reference capture unavailable", evidence = "docs/vic20-gaps.md" }}
+"#
+            );
+            let mut manifest = Manifest::parse(&source).unwrap();
+            let env = Env {
+                bin: PathBuf::from("must-not-run"),
+                roms: PathBuf::from("missing-roms"),
+            };
+            let report = run_manifest(&env, Path::new("missing-goldens"), &manifest);
+            assert!(report.passed.is_empty());
+            assert!(report.failed.is_empty());
+            assert_eq!(report.gaps.len(), 1);
+            assert!(
+                report.gaps[0]
+                    .2
+                    .contains("not run: reference golden not captured")
+            );
+            manifest.scenarios[0].status = Status::Pass;
+            manifest.scenarios[0].gap = None;
+            assert!(manifest.validate().is_err());
+            assert!(Manifest::parse(&source.replace("Reference capture unavailable", "")).is_err());
+            assert!(Manifest::parse(&source.replace("docs/vic20-gaps.md", "")).is_err());
+        }
     }
 
     #[test]

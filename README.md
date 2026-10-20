@@ -99,6 +99,19 @@ need the ROM images and a built emulator, so they run only when told where they 
 
 See `CLAUDE.md` for the layout and conventions, `CREDITS.md` for the references.
 
+## Machine scenarios
+
+`rc-scenarios check <machine>.manifest.toml` validates a scenario manifest without
+firmware. `rc-scenarios run <manifest>` runs it with `RETROCLAWD_BIN`, the machine
+plugin directory, `RC_ROMS` and `RC_GOLDENS` configured (see `CLAUDE.md`).
+
+Every captured golden requires its real SHA-256. Before a reference capture is
+available, a `screen` or `memory` scenario may use `status = "known-gap"` with a
+nonempty `gap.reason` and `gap.evidence`, omitting the golden and hash together.
+The report explicitly says the comparison was not run; it is never counted as
+passed. Memory ranges remain required. Adding a golden restores the normal
+comparison rules, including failure when a known gap starts passing.
+
 ## License
 
 Free software under the **GNU General Public License v3.0 or later** (see `LICENSE`). No ROM image or commercial

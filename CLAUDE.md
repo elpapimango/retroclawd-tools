@@ -25,6 +25,10 @@ prints the SHA-256 to pin a golden, `rc-scenarios check <manifest>` validates wi
 
 Rules the code enforces: every golden is pinned by hash; a tolerance needs a written `reason`; a scenario that cannot be matched is
 `status = "known-gap"` with a `gap` (reason and evidence) and the run fails when a known gap starts passing; unknown keys are errors.
+A screen or memory known gap with no captured golden may omit both `golden` and `golden_sha256` (and `compare` for a screen).
+Its reason and evidence must be nonempty. The runner reports `not run: reference golden not captured` without starting the emulator;
+it never substitutes a hash, invents a comparison, or counts that scenario as passed. Memory ranges remain required.
+Once a golden is supplied, the ordinary pin, comparison and unexpected-pass rules apply unchanged.
 **A picture from another emulator is compared with `mode = "similarity"`** (both reduced to a 64x48 luminance grid over an optional
 `crop`, mean absolute difference at most `max_mad`): the reference draws its own border, scale and palette, so pixel equality is not
 possible. `normalize = true` stretches each picture's pixel brightness to the full range (a different palette); `anchor_ground =
@@ -250,4 +254,3 @@ purpose. Everything skips unless `RETROCLAWD_BIN`, `RETROCLAWD_MACHINE_PLUGIN_DI
 - `cpc_acid`: `RC_ACID_PRINT=1` prints `BASELINE|name|finishes|{failing}|passed|last line|frames`; `RC_ACID_ONLY=name`. Segmented runner: 700-frame first segment, then 200-frame segments via `--at N:save_state`/`--load-state`; 40 silent segments = hang. `UNRELIABLE` = programs the author flags (ppi vsync-on).
 - Remaining CPC gaps (in `BASELINE`): cpctest, asicfloat, asicppi (hang), asicrom, asictest, asic_external_ram, dmatest, pritest, FDC programs (nec765 is instant, no overrun), fdc_wp (needs write-protect).
 - `spectrum_timing`: pad filler must use `ld d,0` (never BC; port programs keep it). Delay = contended cycles - uncontended cycles.
-
