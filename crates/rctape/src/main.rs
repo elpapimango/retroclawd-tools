@@ -14,7 +14,8 @@ use std::process::ExitCode;
     about = "Look inside, cut, merge, split, clean up and convert tape images",
     long_about = "Look inside, cut, merge, split, clean up and convert tape images.\n\n\
         ZX Spectrum .tap and .tzx are handled block by block, so a file written back is what was read. \
-        Commodore .t64 can be listed and extracted, a raw Commodore .tap can be described.\n\n\
+        Commodore .t64 can be listed and extracted, a raw Commodore .tap can be described. \
+        C16/Plus4 version-2 .tap can also be structurally validated and normalized to another .tap.\n\n\
         Block numbers start at 1, as `list` prints them: `3`, `2-5`, `4-`, `-3`, `1,4-6` or `all`.\n\n\
         rm, cleanup and add change TAPE in place (written atomically); use -o to write a copy instead. \
         Nothing else overwrites an existing file without --force."
@@ -38,7 +39,7 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
-    /// Check every block (checksums of ROM blocks, headers without data). Exit status 1 on problems.
+    /// Check blocks and ROM checksums, or C16 TAP structure (not decoded files). Exit status 1 on block problems.
     Validate {
         tape: PathBuf,
         #[arg(long)]
@@ -166,7 +167,7 @@ enum Command {
         #[arg(long)]
         force: bool,
     },
-    /// Convert between .tap and .tzx (by the output's extension).
+    /// Convert Spectrum .tap/.tzx or normalize a C16 .tap to a new .tap.
     Convert {
         input: PathBuf,
         output: PathBuf,
@@ -199,9 +200,13 @@ fn read(path: &Path) -> Result<Image, String> {
 
 /// A tape that has blocks (.tap or .tzx); the Commodore kinds are refused with a hint.
 fn read_blocks(path: &Path, what: &str) -> Result<(Tape, bool), String> {
-    match read(path)? {
+    into_blocks(read(path)?, path, what)
+}
+
+fn into_blocks(image: Image, path: &Path, what: &str) -> Result<(Tape, bool), String> {
+    match image {
         Image::Spectrum { tape, from_tap } => Ok((tape, from_tap)),
-        Image::C64Tap(..) => Err(format!(
+        Image::C64Tap(..) | Image::C16Tap(_) => Err(format!(
             "{}: a Commodore .tap is a raw pulse recording, there are no blocks to {what}",
             path.display()
         )),
@@ -209,6 +214,37 @@ fn read_blocks(path: &Path, what: &str) -> Result<(Tape, bool), String> {
             "{}: a .t64 is a directory of programs, there are no blocks to {what} (try `extract`)",
             path.display()
         )),
+    }
+}
+
+fn describe_c16(tape: &c64_tape::ted::TedTape, json: bool) {
+    let halfwaves = tape.halfwaves();
+    let cycles: u64 = halfwaves.iter().map(|&n| u64::from(n)).sum();
+    let clock = tape.video().clock_hz();
+    let seconds = cycles as f64 / f64::from(clock);
+    let shortest = halfwaves.iter().copied().min().unwrap_or(0);
+    let longest = halfwaves.iter().copied().max().unwrap_or(0);
+    if json {
+        rc_common::out(
+            &Json::obj([
+                ("format", Json::str("C16/Plus4 .tap version 2")),
+                ("video", Json::str(tape.video().name())),
+                ("platform", Json::Num(2)),
+                ("clock_hz", Json::Num(i64::from(clock))),
+                ("halfwaves", Json::Num(halfwaves.len() as i64)),
+                ("cycles", Json::Num(cycles as i64)),
+                ("seconds", Json::Num(seconds.round() as i64)),
+                ("shortest_cycles", Json::Num(i64::from(shortest))),
+                ("longest_cycles", Json::Num(i64::from(longest))),
+            ])
+            .pretty(),
+        );
+    } else {
+        rc_common::out(&format!(
+            "format:    C16/Plus4 .tap version 2\nvideo:     {}\nclock:     {clock} Hz (TED timer)\nhalfwaves: {}\nplays for: {seconds:.1} s\nhalfwave range: {shortest} to {longest} cycles\n",
+            tape.video().name(),
+            halfwaves.len()
+        ));
     }
 }
 
@@ -324,6 +360,12 @@ fn run() -> Result<ExitCode, String> {
                 );
                 rc_common::out(&format!("{} pulses, {:.1} s\n", i.pulses, i.seconds));
             }
+            Image::C16Tap(tape) => {
+                rc_common::err(
+                    "rctape: a C16 .tap is a raw pulse recording; decoded file listing is not supported\n",
+                );
+                describe_c16(&tape, json);
+            }
         },
         Command::Info { tape, json } => {
             let size = std::fs::metadata(&tape).map(|m| m.len()).unwrap_or(0);
@@ -398,10 +440,25 @@ fn run() -> Result<ExitCode, String> {
                         ));
                     }
                 }
+                Image::C16Tap(tape) => describe_c16(&tape, json),
             }
         }
         Command::Validate { tape, json } => {
-            let (t, _) = read_blocks(&tape, "validate")?;
+            let (t, _) = match read(&tape)? {
+                Image::C16Tap(_) => {
+                    let checks = "header, size and halfwave encoding only; decoded file checksums are not checked";
+                    if json {
+                        rc_common::out(
+                            &Json::obj([("ok", Json::Bool(true)), ("checks", Json::str(checks))])
+                                .pretty(),
+                        );
+                    } else {
+                        rc_common::out(&format!("C16 TAP validated: {checks}\n"));
+                    }
+                    return Ok(ExitCode::SUCCESS);
+                }
+                image => into_blocks(image, &tape, "validate")?,
+            };
             let mut problems: Vec<String> = Vec::new();
             // The header block waiting for its data block: (block number, header).
             let mut waiting: Option<(usize, spectrum::Header)> = None;
@@ -497,7 +554,7 @@ fn run() -> Result<ExitCode, String> {
                         })
                         .collect()
                 }
-                Image::C64Tap(..) => {
+                Image::C64Tap(..) | Image::C16Tap(_) => {
                     return Err(format!(
                         "{}: a Commodore .tap holds pulses, not files",
                         tape.display()
@@ -758,8 +815,21 @@ fn run() -> Result<ExitCode, String> {
             lossy,
             force,
         } => {
-            let (t, _) = read_blocks(&input, "convert")?;
-            write_tape(&output, &t, lossy, force)?;
+            match read(&input)? {
+                Image::C16Tap(tape) => {
+                    if !is_tap(&output) {
+                        return Err("C16 TAP normalization requires a .tap output".to_string());
+                    }
+                    let bytes = tape
+                        .to_bytes()
+                        .map_err(|e| format!("C16/Plus4 .tap: {e}"))?;
+                    write_file(&output, &bytes, force)?;
+                }
+                image => {
+                    let (t, _) = into_blocks(image, &input, "convert")?;
+                    write_tape(&output, &t, lossy, force)?;
+                }
+            }
             rc_common::err(&format!(
                 "rctape: {} -> {}\n",
                 input.display(),

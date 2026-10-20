@@ -29,9 +29,29 @@ else overwrites an existing file without `--force`. Block numbers start at 1, as
 | ZX Spectrum `.tap` | read as standard-speed blocks (pause 1000 ms); written back when the tape holds nothing else |
 | Commodore `.t64` | `list`, `info`, `extract` (each program becomes a `.prg` with its load address) |
 | Commodore `.tap` | `info` only: version, video standard, pulse count, playing time, pulse range. The recording is a stream of pulses, not blocks; decoding the bits needs the KERNAL's or a turbo loader's timing, and is not done |
+| C16/Plus4 `.tap` version 2 | `info` (also `list`) describes half-waves; `validate` checks structure; `convert INPUT OUTPUT.tap` writes a canonical version-2 copy without changing exact half-wave duration/order |
 
-The kind is recognised from the content (`ZXTape!`, `C64-TAPE-RAW`), and a `.tap` that is neither is read as a
+The kind is recognised from the content (`ZXTape!`, `C64-TAPE-RAW`, `C16-TAPE-RAW`), and a `.tap` that is none of these is read as a
 Spectrum `.tap`.
+
+### C16/Plus4 raw half-waves
+
+Version-2 durations use the slow TED timer clock, 886724 Hz PAL or 894886 Hz
+NTSC, not the CPU's switchable clock. `info --json` reports that clock, exact
+total cycles, half-wave count/range and rounded seconds. The shared
+`c64-tape::ted` parser owns header and pulse decoding; this tool does not
+duplicate the format.
+
+Validation checks the signature, version 2, platform 2, PAL/NTSC, zero reserved
+byte, exact declared payload size, complete escapes and positive 24-bit
+durations. Payloads above 32 MiB are refused. It does **not** decode program
+blocks, check their checksums or prove a tape loads on hardware. Legacy
+full-wave C16 captures and other header variants are not supported by this API.
+
+Normalization requires an explicit `.tap` output and refuses an existing
+output unless `--force` is given. It can change byte encoding, never timing.
+There is no automatic writeback. Block editing, file extraction, TZX output
+and C64/C16 waveform conversion are refused rather than guessed.
 
 ## Spectrum tapes
 
@@ -72,6 +92,12 @@ the playing time against the emulator's own tape player (`zx-tape`). `tests/emul
 (through a `.tzx` and back) and has the Spectrum's ROM loader (`LD-BYTES`) load them in the emulator; it runs when
 `RETROCLAWD_BIN`, `RETROCLAWD_MACHINE_PLUGIN_DIRS` and `RC_ROMS` are set (see `CLAUDE.md`) and takes about 40 s,
 because the tape plays in real time.
+
+The C16 CLI regression uses synthetic half-waves to check content detection,
+both timer clocks, exact-cycle reporting, structural validation, canonical
+output, overwrite refusal and rejected block edits without source mutation.
+The shared parser tests malformed/truncated input and duration round trips.
+No C16/Plus4 reference emulator, real tape or firmware-backed load was run.
 
 ## Not done
 

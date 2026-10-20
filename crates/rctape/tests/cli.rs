@@ -273,6 +273,37 @@ fn a_commodore_tap_is_described() {
     assert!(info.contains("384 to 688"), "{info}");
     assert!(fails(&["extract", &file]).contains("pulses"));
 }
+
+#[test]
+fn c16_halfwave_tapes_use_ted_clocks_and_never_become_spectrum_blocks() {
+    let t = Temp::new("c16tap");
+    let mut tap = b"C16-TAPE-RAW".to_vec();
+    tap.extend_from_slice(&[2, 2, 0, 0, 6, 0, 0, 0]);
+    tap.extend_from_slice(&[1, 0, 1, 2, 3, 255]);
+    let file = t.write("c16.tap", &tap);
+    let info = ok(&["info", &file, "--json"]);
+    assert!(
+        info.contains("C16/Plus4") && info.contains("\"halfwaves\": 3"),
+        "{info}"
+    );
+    assert!(info.contains("\"clock_hz\": 886724"), "{info}");
+    assert!(info.contains("\"cycles\": 199169"), "{info}");
+    assert!(ok(&["validate", &file]).contains("halfwave encoding"));
+    assert!(fails(&["extract", &file]).contains("pulses"));
+    assert!(fails(&["rm", &file, "1"]).contains("raw pulse"));
+    assert_eq!(t.read("c16.tap"), tap);
+    let copy = t.path("copy.tap");
+    ok(&["convert", &file, &copy]);
+    assert_eq!(t.read("copy.tap"), tap);
+    assert!(fails(&["convert", &file, &copy]).contains("exists"));
+    tap[14] = 1;
+    let ntsc = t.write("ntsc.tap", &tap);
+    assert!(ok(&["info", &ntsc, "--json"]).contains("\"clock_hz\": 894886"));
+    tap[16] += 1;
+    let malformed = t.write("bad.tap", &tap);
+    assert!(fails(&["validate", &malformed]).contains("size"));
+}
+
 /// Merged (every check kept): `a_headerless_data_block_and_clear_errors`, `a_t64_lists_and_extracts_prg_files`, `a_commodore_tap_is_described`.
 #[test]
 fn tape_edge_cases() {

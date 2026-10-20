@@ -1,6 +1,8 @@
 //! Tape images as lists of blocks: look inside, cut, merge, split, clean up and convert. ZX Spectrum `.tap`
 //! and `.tzx` are handled block by block (a file written back is byte-for-byte what was read); Commodore `.tap`
 //! and `.t64` can be inspected and, for `.t64`, extracted (see [`c64`]).
+//! C16/Plus4 version-2 `.tap` half-waves use the shared format API, not
+//! Spectrum blocks or C64 playback timing.
 
 pub mod c64;
 pub mod spectrum;
@@ -18,10 +20,11 @@ pub enum Image {
         from_tap: bool,
     },
     C64Tap(c64_tape::Tape, Vec<u8>),
+    C16Tap(c64_tape::ted::TedTape),
     T64(c64_tape::T64),
 }
 
-/// Opens a tape image, deciding the kind from the bytes (the `ZXTape!` signature, `C64-TAPE-RAW`, `C64`
+/// Opens a tape image, deciding the kind from the bytes (the `ZXTape!` signature, `C64-TAPE-RAW`, `C16-TAPE-RAW`, `C64`
 /// in a `.t64` header) and falling back to the extension for a `.tap` of Spectrum blocks.
 pub fn open(name: &str, bytes: &[u8]) -> Result<Image, String> {
     let lower = name.to_ascii_lowercase();
@@ -34,6 +37,11 @@ pub fn open(name: &str, bytes: &[u8]) -> Result<Image, String> {
     if bytes.starts_with(b"C64-TAPE-RAW") {
         let tape = c64_tape::parse_tap(bytes).map_err(|e| format!("C64 .tap: {e}"))?;
         return Ok(Image::C64Tap(tape, bytes.to_vec()));
+    }
+    if bytes.starts_with(b"C16-TAPE-RAW") {
+        let tape =
+            c64_tape::ted::TedTape::parse(bytes).map_err(|e| format!("C16/Plus4 .tap: {e}"))?;
+        return Ok(Image::C16Tap(tape));
     }
     if lower.ends_with(".t64") || bytes.starts_with(b"C64") {
         let t = c64_tape::parse_t64(bytes).map_err(|e| format!(".t64: {e}"))?;
