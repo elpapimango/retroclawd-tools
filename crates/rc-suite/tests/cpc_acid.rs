@@ -88,10 +88,14 @@ fn results(transcript: &str) -> Vec<(String, bool)> {
     let mut out = Vec::new();
     for line in transcript.replace('\r', "\n").lines() {
         let line = line.trim_end();
-        let Some((head, ok)) = line
-            .strip_suffix("-PASS")
-            .map(|h| (h, true))
-            .or_else(|| line.strip_suffix("-FAIL").map(|h| (h, false)))
+        // The verdict can have a doubled letter too ("FAAIL", see `squeezed`).
+        let Some((head, ok)) =
+            line.rsplit_once('-')
+                .and_then(|(head, verdict)| match squeezed(verdict).as_str() {
+                    "PAS" => Some((head, true)),
+                    "FAIL" => Some((head, false)),
+                    _ => None,
+                })
         else {
             continue;
         };
@@ -300,22 +304,25 @@ const BASELINE: &[(&str, bool, &[&str])] = &[
     ]),
     ("asic_external_ram", true, &[
     ]),
-    // "dma under asic registers" prints every value as expected but reports FAIL depending on the frame phase the
-    // program starts at (it passed while the program loaded from an instant disk).
+    // "CRTC R0 length and dma": with R0 = 0 the hardware runs the DMA once in four frames; making an HSYNC that
+    // restarts on its last character edge-less matched R0 = 0's state but broke R0 = 2, 4 and 14, so the mechanism is open.
+    // "dma int request test": channel 2's expected 0 is the author's own puzzle ("gx4000 shows 0 here!?");
+    // channels 0 and 1 pass.
     ("dmatest", true, &[
         "CRTC R0 length and dma",
         "dma int request test (dcsr bits)",
-        "dma pause (change prescale higher)",
-        "dma pause (change prescale lower)",
-        "dma under asic registers",
     ]),
+    // "PRI start (R2)": three HSYNC positions where a VSYNC sample lands a few microseconds off; "enable norm
+    // during pri int handler" reads an interrupt count left by the tests before it; "im2 vector (norm)" expects one
+    // classic interrupt per frame in IM2 on a Plus, cause unknown.
     ("pritest", true, &[
         "PRI (enable norm during pri int handler)",
         "PRI start (R2)",
         "im2 vector (norm)",
     ]),
     // "ready change, sense interrupt status, ..." has no expected values of its own (its table is only the end mark):
-    // it compares with what the previous test left in the buffer.
+    // it compares with what the previous test left in the buffer. "read id not ready" expects a drive that stays
+    // ready a while after its motor stops (a spin-down the model does not have) and model-specific leftover CHRN.
     ("fdc_gen", true, &[
         "read id not ready",
         "ready change, sense interrupt status, ready change, sense interrupt status (drive 0 best)",
@@ -324,54 +331,59 @@ const BASELINE: &[(&str, bool, &[&str])] = &[
     ]),
     ("fdc_lowlevel", true, &[
         "9 SC, Format N=1, ID N=3",
-        "9 SC, Format N=2, ID N=2, Write GPL>FFormat GPL",
+        "9 SC, Format N=2, ID N=2, Write GPL>Forrmat GPL",
     ]),
     // The program marks sector &41 of track 0 deleted while initialising, yet its track-0 tables ("read data", the
-    // overrun cases) expect a normal data mark there; we read the deleted mark it wrote.
-    // The bad cylinder, R=EOT=ff, eot and skip tests overwrite HL (their expected-results pointer) before saving it,
-    // so they compare with the previous test's buffer.
+    // overrun cases) expect a normal data mark there; we read the deleted mark it wrote. The bad cylinder, R=EOT=ff,
+    // eot and skip tests overwrite HL (their expected-results pointer) before saving it, so they compare with the
+    // previous test's buffer. The ready-change and data-error cases need drive behaviour (spin-down, a sector read
+    // past its ID's size) the program's tables do not pin down.
     ("fdc_read", true, &[
         "read data",
-        "read data  (R=EOT=ff)",
+        "read data (R=EOT=ff)",
         "read data (bad cylinder/wrong cylinder - data)",
         "read data (bad cylinder/wrong cylinder - deleted data)",
-        "read data  (data error)",
+        "read data (data error)",
         "read data (eot)",
         "read data (no polling status register)",
-        "read data (overrun - data error on data)",
-        "read data (overrun - data)",
-        "read data (ready change - data crc error on data)",
+        "read data  (overrun - data)",
+        "read data  (overrun - data error on data)",
+        "read data  (ready change - data crc error on data)",
         "read data (ready change - deleted data)",
         "read data (ready change after 1st byte of sector)",
         "read data (ready change before first sector)",
         "read data then sense int",
         "read data x bytes and skip",
         "read deleted data (R=EOT=ff)",
-        "read deleted data (bad cylinder/wrong cylinder - data)",
+        "read deletted data (bad cylinder/wrong cylinder - data)",
         "read deleted data (bad cylinder/wrong cylinder - deleted data)",
         "read deleted data (data error)",
         "read deleted data (eot)",
-        "read deleted data (no polling status  register)",
+        "read deleted data (no polling status reegister)",
         "read deletted data (overrun - data error on data)",
         "read deleted data (overrun - data)",
         "read deleted data (overrun - deleted data)",
         "read deleted data (ready change - data crc error)",
         "read deleted data (ready change - data)",
         "read deleted data (ready change after 1st byte of sector)",
-        "read deletted data (ready change before first sector)",
+        "read deleted data (ready change before first sector)",
     ]),
+    // Overlapped seeks on units n and n+2 (one drive): stepping both off one shared step clock fixed the D765A's
+    // 20->5 case but broke the others, so the drive-sharing rule is open; a Seek re-sent while seeking leaves the head
+    // behind its PCN on hardware (lost steps); the recalibrate/ready-change cases need spin-down.
     ("fdc_seek", true, &[
         "recal (not ready - not trk0)",
-        "recal (reaady change)",
+        "recal (ready change)",
         "recal command repeat (while seeking)",
         "recal then seek",
         "seek (ready change)",
-        "seek (try read id during seek)",
         "seek command repeat (while seeking)",
         "seek drive n and drive n+2 (n->0, n+2 -> 39) (wait first seek)",
-        "seek drive n and drive n+2 (n->10, n+2 -> 10)",
-        "seek then invalid (&ff) command",
+        "seek drivee n and drive n+2 (n->10, n+2 -> 10)",
     ]),
+    // Timing to about 10 us (11-us polling loops): EXM rises about 2.3 ms after a Read Data command and stays up
+    // while the chip searches (we show CB only), and the result phase follows the data by tens of milliseconds;
+    // the figures do not settle head-load/unload timing (Specify asks for 4 ms), so they are not tuned to.
     ("fdc_time", true, &[
         "read data timing (cmd->execution phase start)",
         "read data timing (data end->execution phase end)",
@@ -380,7 +392,7 @@ const BASELINE: &[(&str, bool, &[&str])] = &[
         "seek (fdc busy to not busy after seek command sent)",
         "write data timing (data end->execution phase end)",
         "write data timing (data end->result phase)",
-        "write data timing (executtion phase end->result phase)",
+        "write data timing (execution phase end->result phase)",
     ]),
     // Needs the disc write-protected by hand mid-run.
     ("fdc_wp", false, &[
@@ -393,17 +405,18 @@ const BASELINE: &[(&str, bool, &[&str])] = &[
         "write data (data error - remove)",
         "write dataa (fm on fm)",
         "write data (fm on mfm)",
-        "write data (mfm on fm)",
+        "write dataa (mfm on fm)",
         "write data (wrong cylinder)",
         "write deleted data (bad cylinder)",
         "write deleeted data (change c=ff?)",
         "write deleted data (data error - remove)",
-        "write deleted data (dma)",
+        "write deleeted data (dma)",
         "write deleted data (fm on fm)",
         "write deleted data (fm on mfm)",
         "write deleted data (mfm on fm)",
     ]),
-    // Runs past the frame limit in "format id/read track (all N)".
+    // "format id/read track (all N)" has no recorded results (every byte expected 0); "read track (MFM)" then
+    // copies 8192 bytes to result_buffer+18 at the program's end, past &FFFF, and the machine resets: a test bug.
     ("fdctest3", false, &[
         "format (force data error)",
         "format (not ready)",
@@ -423,6 +436,10 @@ const BASELINE: &[(&str, bool, &[&str])] = &[
 const UNRELIABLE: &[(&str, &str)] = &[
     ("ppi", "mode 0: port b read (vsync on)"),
     ("asictest", "sprite ram mask"),
+    // Both print every value as expected and still report FAIL in some runs, depending on the frame phase the program
+    // starts at; "dma ay write all" also writes its channel 2 program at &2000, which is the program's result buffer.
+    ("dmatest", "dma under asic registers"),
+    ("dmatest", "dma ay write all"),
 ];
 
 const D: &str = "amstrad/software/acid";
@@ -533,7 +550,12 @@ fn specs() -> Vec<Spec> {
         fdc("fdc_time", d("disc/fdc_time/cpc_fdctest.dsk")),
         fdc("fdc_wp", d("disc/fdc_wp/cpc_fdctest.dsk")),
         fdc("fdc_write", d("disc/fdc_write/cpc_fdctest.dsk")),
-        fdc("fdctest3", d("disc/fdctest3/cpc_fdctest.dsk")),
+        // "format id/read track (all N)" and "read track (all N)" format and read a track for each N at the disk's own
+        // speed, about 3 s a value, 255 values each.
+        Spec {
+            max_frames: 400_000,
+            ..fdc("fdctest3", d("disc/fdctest3/cpc_fdctest.dsk"))
+        },
     ]
 }
 

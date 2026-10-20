@@ -45,8 +45,9 @@ ZEsarUX is already listening, which once gave a golden of the wrong machine), `c
 `scenarios/build.sh` builds the test media with these tools into the git-ignored `software/scenarios/`. Goldens live in a folder of
 your own (`RC_GOLDENS`), never in git. Known gaps found: S6 on the ZX81, CPC, C64 and C128 (each emulator paces at its nominal frame
 rate; the references use the real raster), the C64's fast loader printing no SEARCHING/LOADING, the CPC diagnostics' CRTC/FDC lines
-(reference looks wrong), the C64 dead test's clock; each has a note under the family's `docs/`. All but the CPC diagnostics' lines
-are closed (2026-10-19). Not done: a `trace` kind (S8; the
+(reference looks wrong), the C64 dead test's clock; each has a note under the family's `docs/`. All are closed (2026-10-19); the CPC
+diagnostics' lines are compared with Caprice32 (`scripts/capture_caprice_screen.py`, `golden_crop` when the reference frames
+the screen differently). Not done: a `trace` kind (S8; the
 plugin ABI has no instruction trace), memory windows above 64K, S2/S4/S7 on machines where the reference cannot be driven (the 128K
 menu, the C128's S3), z80test and the CPC acid disks as manifests (the hand-written suites cover them).
 

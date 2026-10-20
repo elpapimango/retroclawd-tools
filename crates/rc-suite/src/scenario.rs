@@ -115,6 +115,10 @@ pub struct Compare {
     /// `similarity`: the part of each picture that is compared, `[x0, y0, x1, y1]` as fractions of its size.
     #[serde(default)]
     pub crop: Option<[f64; 4]>,
+    /// `similarity`: the golden's own crop, when the reference frames the screen differently from us (Caprice32's
+    /// 768x540 picture sits 6 lines higher than our 768x576 one); `crop` then applies to our picture only.
+    #[serde(default)]
+    pub golden_crop: Option<[f64; 4]>,
     /// `similarity`: stretch each reduced picture to the full 0 to 255 range before comparing, so two emulators that draw
     /// the same content in different palettes (the Spectrum's white is 0xCD in one, 0xC0 in another) still agree.
     #[serde(default)]
@@ -270,15 +274,17 @@ impl Manifest {
                         s.id
                     ));
                 }
-                if let Some(crop) = c.crop
-                    && !(crop[0] < crop[2]
-                        && crop[1] < crop[3]
-                        && crop.iter().all(|v| (0.0..=1.0).contains(v)))
-                {
-                    return Err(format!(
-                        "scenario {}: `crop` must be [x0,y0,x1,y1] within 0..1",
-                        s.id
-                    ));
+                for (name, crop) in [("crop", c.crop), ("golden_crop", c.golden_crop)] {
+                    if let Some(crop) = crop
+                        && !(crop[0] < crop[2]
+                            && crop[1] < crop[3]
+                            && crop.iter().all(|v| (0.0..=1.0).contains(v)))
+                    {
+                        return Err(format!(
+                            "scenario {}: `{name}` must be [x0,y0,x1,y1] within 0..1",
+                            s.id
+                        ));
+                    }
                 }
             }
             match (s.status, &s.gap) {
@@ -471,7 +477,7 @@ pub fn compare_screens(ours: &Screen, golden: &Screen, compare: &Compare) -> Res
             );
             let b = luminance_grid(
                 golden,
-                compare.crop,
+                compare.golden_crop.or(compare.crop),
                 GW,
                 GH,
                 compare.normalize,
@@ -782,6 +788,7 @@ mod tests {
             max_pixels,
             max_mad,
             crop: None,
+            golden_crop: None,
             normalize: false,
             anchor_ground: false,
             reason: "test".to_string(),
