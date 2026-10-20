@@ -16,6 +16,7 @@ use std::process::ExitCode;
         ZX Spectrum .tap and .tzx are handled block by block, so a file written back is what was read. \
         Commodore .t64 can be listed and extracted, a raw Commodore .tap can be described. \
         C16/Plus4 version-2 .tap can also be structurally validated and normalized to another .tap.\n\n\
+        VIC-20 version-0/1 .tap can be inspected, structurally validated and normalized; from-prg creates a KERNAL recording.\n\n\
         Block numbers start at 1, as `list` prints them: `3`, `2-5`, `4-`, `-3`, `1,4-6` or `all`.\n\n\
         rm, cleanup and add change TAPE in place (written atomically); use -o to write a copy instead. \
         Nothing else overwrites an existing file without --force."
@@ -27,6 +28,18 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Encode a VIC-20 PRG as a real KERNAL cassette recording (TAP v1, platform 1).
+    FromPrg {
+        input: PathBuf,
+        output: PathBuf,
+        #[arg(long, default_value = "pal", value_parser = ["pal", "ntsc"])]
+        region: String,
+        /// PETSCII file name (ASCII, at most 16 characters; default: upper-case file stem).
+        #[arg(long)]
+        name: Option<String>,
+        #[arg(long)]
+        force: bool,
+    },
     /// Show the blocks.
     List {
         tape: PathBuf,
@@ -39,7 +52,7 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
-    /// Check blocks and ROM checksums, or C16 TAP structure (not decoded files). Exit status 1 on block problems.
+    /// Check Spectrum blocks/checksums, or VIC-20/C16 TAP structure (not decoded files). Exit status 1 on block problems.
     Validate {
         tape: PathBuf,
         #[arg(long)]
@@ -167,7 +180,7 @@ enum Command {
         #[arg(long)]
         force: bool,
     },
-    /// Convert Spectrum .tap/.tzx or normalize a C16 .tap to a new .tap.
+    /// Convert Spectrum .tap/.tzx or normalize VIC-20/C16 .tap to a new .tap.
     Convert {
         input: PathBuf,
         output: PathBuf,
@@ -206,7 +219,7 @@ fn read_blocks(path: &Path, what: &str) -> Result<(Tape, bool), String> {
 fn into_blocks(image: Image, path: &Path, what: &str) -> Result<(Tape, bool), String> {
     match image {
         Image::Spectrum { tape, from_tap } => Ok((tape, from_tap)),
-        Image::C64Tap(..) | Image::C16Tap(_) => Err(format!(
+        Image::C64Tap(..) | Image::Vic20Tap(..) | Image::C16Tap(_) => Err(format!(
             "{}: a Commodore .tap is a raw pulse recording, there are no blocks to {what}",
             path.display()
         )),
@@ -214,6 +227,33 @@ fn into_blocks(image: Image, path: &Path, what: &str) -> Result<(Tape, bool), St
             "{}: a .t64 is a directory of programs, there are no blocks to {what} (try `extract`)",
             path.display()
         )),
+    }
+}
+
+fn describe_vic20(video: c64_tape::vic20::VideoStandard, tape: &c64_tape::Tape, json: bool) {
+    let cycles: u64 = tape.pulses().iter().map(|&n| u64::from(n)).sum();
+    let seconds = cycles as f64 / f64::from(video.clock_hz());
+    let region = match video {
+        c64_tape::vic20::VideoStandard::Pal => "PAL",
+        c64_tape::vic20::VideoStandard::Ntsc => "NTSC",
+    };
+    if json {
+        rc_common::out(
+            &Json::obj([
+                ("format", Json::str("VIC-20 .tap")),
+                ("region", Json::str(region)),
+                ("pulses", Json::Num(tape.pulse_count() as i64)),
+                ("cycles", Json::Num(cycles as i64)),
+                ("clock_hz", Json::Num(i64::from(video.clock_hz()))),
+                ("seconds", Json::Num(seconds.round() as i64)),
+            ])
+            .pretty(),
+        );
+    } else {
+        rc_common::out(&format!(
+            "VIC-20 .tap {region}: {} pulses, {seconds:.3} s\n",
+            tape.pulse_count()
+        ));
     }
 }
 
@@ -360,6 +400,10 @@ fn run() -> Result<ExitCode, String> {
                 );
                 rc_common::out(&format!("{} pulses, {:.1} s\n", i.pulses, i.seconds));
             }
+            Image::Vic20Tap(video, tape) => {
+                rc_common::err("rctape: a VIC-20 .tap holds raw pulses, not decoded file blocks\n");
+                describe_vic20(video, &tape, json);
+            }
             Image::C16Tap(tape) => {
                 rc_common::err(
                     "rctape: a C16 .tap is a raw pulse recording; decoded file listing is not supported\n",
@@ -441,10 +485,23 @@ fn run() -> Result<ExitCode, String> {
                     }
                 }
                 Image::C16Tap(tape) => describe_c16(&tape, json),
+                Image::Vic20Tap(video, tape) => describe_vic20(video, &tape, json),
             }
         }
         Command::Validate { tape, json } => {
             let (t, _) = match read(&tape)? {
+                Image::Vic20Tap(..) => {
+                    let checks = "header, size and full-pulse encoding only; decoded file checksums are not checked";
+                    if json {
+                        rc_common::out(
+                            &Json::obj([("ok", Json::Bool(true)), ("checks", Json::str(checks))])
+                                .pretty(),
+                        );
+                    } else {
+                        rc_common::out(&format!("VIC-20 TAP validated: {checks}\n"));
+                    }
+                    return Ok(ExitCode::SUCCESS);
+                }
                 Image::C16Tap(_) => {
                     let checks = "header, size and halfwave encoding only; decoded file checksums are not checked";
                     if json {
@@ -554,7 +611,7 @@ fn run() -> Result<ExitCode, String> {
                         })
                         .collect()
                 }
-                Image::C64Tap(..) | Image::C16Tap(_) => {
+                Image::C64Tap(..) | Image::Vic20Tap(..) | Image::C16Tap(_) => {
                     return Err(format!(
                         "{}: a Commodore .tap holds pulses, not files",
                         tape.display()
@@ -816,6 +873,14 @@ fn run() -> Result<ExitCode, String> {
             force,
         } => {
             match read(&input)? {
+                Image::Vic20Tap(video, tape) => {
+                    if !is_tap(&output) {
+                        return Err("VIC-20 TAP normalization requires a .tap output".to_string());
+                    }
+                    let bytes = c64_tape::vic20::write(video, &tape)
+                        .map_err(|e| format!("VIC-20 .tap: {e}"))?;
+                    write_file(&output, &bytes, force)?;
+                }
                 Image::C16Tap(tape) => {
                     if !is_tap(&output) {
                         return Err("C16 TAP normalization requires a .tap output".to_string());
@@ -835,6 +900,50 @@ fn run() -> Result<ExitCode, String> {
                 input.display(),
                 output.display()
             ));
+        }
+        Command::FromPrg {
+            input,
+            output,
+            region,
+            name,
+            force,
+        } => {
+            if !is_tap(&output) {
+                return Err("VIC-20 PRG encoding requires a .tap output".to_string());
+            }
+            let bytes = std::fs::read(&input)
+                .map_err(|e| format!("cannot read {}: {e}", input.display()))?;
+            if !(3..=65_538).contains(&bytes.len()) {
+                return Err(
+                    "a PRG requires a two-byte load address and 1..=65536 data bytes".to_string(),
+                );
+            }
+            let start = u16::from_le_bytes([bytes[0], bytes[1]]);
+            if usize::from(start) + bytes.len() - 2 > 65_535 {
+                return Err("PRG end address does not fit in the KERNAL tape header".to_string());
+            }
+            let name = name
+                .unwrap_or_else(|| {
+                    input
+                        .file_stem()
+                        .map(|s| s.to_string_lossy().into_owned())
+                        .unwrap_or_default()
+                })
+                .to_ascii_uppercase();
+            if name.is_empty()
+                || name.len() > 16
+                || !name.bytes().all(|b| (0x20..=0x5f).contains(&b))
+            {
+                return Err("VIC-20 tape name must contain 1..=16 ASCII/PETSCII characters from space through underscore".to_string());
+            }
+            let video = if region == "ntsc" {
+                c64_tape::vic20::VideoStandard::Ntsc
+            } else {
+                c64_tape::vic20::VideoStandard::Pal
+            };
+            let tape = c64_tape::vic20::encode_program(video, name.as_bytes(), start, &bytes[2..])
+                .map_err(|e| format!("cannot encode VIC-20 tape: {e}"))?;
+            write_file(&output, &tape, force)?;
         }
     }
     Ok(ExitCode::SUCCESS)

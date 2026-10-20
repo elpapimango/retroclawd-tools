@@ -59,6 +59,53 @@ fn bytes(len: usize, seed: u8) -> Vec<u8> {
         .collect()
 }
 
+#[test]
+fn vic20_prg_tape_preserves_region_and_pulses_and_checks_input() {
+    let t = Temp::new("vic20-prg");
+    let prg = t.write(
+        "pattern.prg",
+        &[0x00, 0x10, 0xa9, 0x55, 0x8d, 0x00, 0x1e, 0x60],
+    );
+    for (region, video) in [
+        ("pal", c64_tape::vic20::VideoStandard::Pal),
+        ("ntsc", c64_tape::vic20::VideoStandard::Ntsc),
+    ] {
+        let output = t.path(&format!("{region}.tap"));
+        ok(&[
+            "from-prg", &prg, &output, "--region", region, "--name", "pattern",
+        ]);
+        let encoded = std::fs::read(&output).unwrap();
+        let (actual, tape) = c64_tape::vic20::parse(&encoded).unwrap();
+        assert_eq!(actual, video);
+        let canonical = c64_tape::Tape::from_pulses(
+            tape.pulses()
+                .iter()
+                .map(|&n| {
+                    ((u64::from(n) * 985_248 + u64::from(video.clock_hz()) / 2)
+                        / u64::from(video.clock_hz())) as u32
+                })
+                .collect(),
+        );
+        let files = c64_tape::rom_format::decode_files(&canonical);
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].start, 0x1000);
+        assert_eq!(files[0].trimmed_name(), b"PATTERN");
+        assert_eq!(files[0].data, [0xa9, 0x55, 0x8d, 0x00, 0x1e, 0x60]);
+        assert!(ok(&["info", &output]).contains("VIC-20"));
+        assert!(ok(&["list", &output]).contains("VIC-20"));
+        assert!(ok(&["validate", &output, "--json"]).contains("checksums are not checked"));
+        let copy = t.path(&format!("{region}-copy.tap"));
+        ok(&["convert", &output, &copy]);
+        assert_eq!(std::fs::read(copy).unwrap(), encoded);
+        assert!(fails(&["from-prg", &prg, &output]).contains("exists"));
+    }
+    let empty = t.write("empty.prg", &[0x00, 0x10]);
+    assert!(fails(&["from-prg", &empty, &t.path("bad.tap")]).contains("data bytes"));
+    let wraps = t.write("wraps.prg", &[0xff, 0xff, 0x60]);
+    assert!(fails(&["from-prg", &wraps, &t.path("bad.tap")]).contains("end address"));
+    assert!(!std::path::Path::new(&t.path("bad.tap")).exists());
+}
+
 /// A tape with two programs, made the way a user would.
 fn two_programs(t: &Temp) -> String {
     let a = t.write("alpha.bin", &bytes(300, 1));

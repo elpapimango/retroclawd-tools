@@ -76,12 +76,12 @@ dependencies = [
 [[package]]
 name = "c64-cartridge"
 version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-commodore?rev=c943aebe0045d11180155dfceb65f9162c301fda#c943aebe0045d11180155dfceb65f9162c301fda"
+source = "git+https://github.com/elpapimango/retroclawd-commodore?rev=8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7#8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7"
 
 [[package]]
 name = "c64-tape"
 version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-commodore?rev=c943aebe0045d11180155dfceb65f9162c301fda#c943aebe0045d11180155dfceb65f9162c301fda"
+source = "git+https://github.com/elpapimango/retroclawd-commodore?rev=8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7#8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7"
 dependencies = [
  "serde",
 ]
@@ -89,7 +89,7 @@ dependencies = [
 [[package]]
 name = "cbm-dos"
 version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-commodore?rev=c943aebe0045d11180155dfceb65f9162c301fda#c943aebe0045d11180155dfceb65f9162c301fda"
+source = "git+https://github.com/elpapimango/retroclawd-commodore?rev=8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7#8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7"
 
 [[package]]
 name = "cfg-if"
@@ -187,7 +187,7 @@ dependencies = [
 [[package]]
 name = "d64"
 version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-commodore?rev=c943aebe0045d11180155dfceb65f9162c301fda#c943aebe0045d11180155dfceb65f9162c301fda"
+source = "git+https://github.com/elpapimango/retroclawd-commodore?rev=8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7#8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7"
 dependencies = [
  "cbm-dos",
 ]
@@ -195,7 +195,7 @@ dependencies = [
 [[package]]
 name = "d71"
 version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-commodore?rev=c943aebe0045d11180155dfceb65f9162c301fda#c943aebe0045d11180155dfceb65f9162c301fda"
+source = "git+https://github.com/elpapimango/retroclawd-commodore?rev=8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7#8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7"
 dependencies = [
  "cbm-dos",
 ]
@@ -203,7 +203,7 @@ dependencies = [
 [[package]]
 name = "d81"
 version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-commodore?rev=c943aebe0045d11180155dfceb65f9162c301fda#c943aebe0045d11180155dfceb65f9162c301fda"
+source = "git+https://github.com/elpapimango/retroclawd-commodore?rev=8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7#8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7"
 dependencies = [
  "cbm-dos",
 ]
@@ -252,7 +252,7 @@ dependencies = [
 [[package]]
 name = "g64"
 version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-commodore?rev=c943aebe0045d11180155dfceb65f9162c301fda#c943aebe0045d11180155dfceb65f9162c301fda"
+source = "git+https://github.com/elpapimango/retroclawd-commodore?rev=8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7#8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7"
 dependencies = [
  "d64",
 ]

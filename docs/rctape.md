@@ -15,6 +15,7 @@ rctape cleanup   TAPE [--strip-info] [--fix-checksums] [--pause MS] [--merge-pau
 rctape add       TAPE FILES... [--type code|basic|data] [--name N] [--load A] [--line N] [--pause MS]
                       [-o OUT] [--force]
 rctape convert   INPUT OUTPUT [--lossy] [--force]
+rctape from-prg  INPUT.prg OUTPUT.tap [--region pal|ntsc] [--name NAME] [--force]
 ```
 
 `rm`, `cleanup` and `add` change TAPE in place (the file is replaced atomically); `-o` writes a copy instead. Nothing
@@ -29,10 +30,45 @@ else overwrites an existing file without `--force`. Block numbers start at 1, as
 | ZX Spectrum `.tap` | read as standard-speed blocks (pause 1000 ms); written back when the tape holds nothing else |
 | Commodore `.t64` | `list`, `info`, `extract` (each program becomes a `.prg` with its load address) |
 | Commodore `.tap` | `info` only: version, video standard, pulse count, playing time, pulse range. The recording is a stream of pulses, not blocks; decoding the bits needs the KERNAL's or a turbo loader's timing, and is not done |
+| VIC-20 `.tap` v0/v1, platform 1 | `info`/`list` describe regional full pulses; `validate` checks structure; `convert` normalizes exact durations; `from-prg` creates a KERNAL cassette |
 | C16/Plus4 `.tap` version 2 | `info` (also `list`) describes half-waves; `validate` checks structure; `convert INPUT OUTPUT.tap` writes a canonical version-2 copy without changing exact half-wave duration/order |
 
 The kind is recognised from the content (`ZXTape!`, `C64-TAPE-RAW`, `C16-TAPE-RAW`), and a `.tap` that is none of these is read as a
 Spectrum `.tap`.
+
+### VIC-20 KERNAL recordings
+
+`from-prg` reads the PRG's two-byte little-endian load address and encodes
+the remaining bytes with the existing Commodore KERNAL header, duplicate
+blocks, parity and checksums. It writes TAP v1, platform 1. Region defaults
+to PAL; `--region ntsc` selects the NTSC timer clock. Pulse durations preserve
+the standard protocol's real time at 1108405 Hz PAL or 1022727 Hz NTSC.
+The name defaults to the upper-case file stem and must contain 1-16
+ASCII/PETSCII characters from space through underscore.
+Empty programs and end addresses above 65535 are rejected. Output must
+have `.tap` extension and needs `--force` to replace an existing file.
+
+```
+rctape from-prg vic20-tape.prg pattern-pal.tap --region pal --name PATTERN
+rctape from-prg vic20-tape.prg pattern-ntsc.tap --region ntsc --name PATTERN
+rctape validate pattern-pal.tap
+```
+
+The shared `c64-tape::vic20` API owns parsing and exact-duration writing.
+It checks TAP v0/v1, platform 1, PAL/NTSC, reserved byte, declared size,
+complete escapes and positive durations, with a 32 MiB payload bound.
+`info --json` includes exact cycles/clock and rounded seconds.
+Validation is **structural only**: it does not decode recorded files or check
+their checksums. Normalization preserves pulse duration/order and region;
+it does not convert C64 timing, another VIC region, or TED half-waves.
+Block editing and extraction remain unsupported for these raw recordings.
+
+The Family's real-ROM acceptance used tools-generated PAL/NTSC tapes in both
+retroclawd execution modes and installed VICE 3.9 with fast tape traps disabled.
+LOAD returned all 55 fixture bytes, and typed SYS executed the expected
+pattern. Cassette image goldens match in all four combinations.
+This proves the generated KERNAL fixture, not all commercial/custom loaders.
+Use tape speed 1 with the stock ROM; pulse compression is not transparent acceleration.
 
 ### C16/Plus4 raw half-waves
 

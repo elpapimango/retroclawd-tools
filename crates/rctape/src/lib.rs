@@ -20,6 +20,7 @@ pub enum Image {
         from_tap: bool,
     },
     C64Tap(c64_tape::Tape, Vec<u8>),
+    Vic20Tap(c64_tape::vic20::VideoStandard, c64_tape::Tape),
     C16Tap(c64_tape::ted::TedTape),
     T64(c64_tape::T64),
 }
@@ -35,6 +36,11 @@ pub fn open(name: &str, bytes: &[u8]) -> Result<Image, String> {
         });
     }
     if bytes.starts_with(b"C64-TAPE-RAW") {
+        if bytes.get(13) == Some(&1) {
+            let (video, tape) =
+                c64_tape::vic20::parse(bytes).map_err(|e| format!("VIC-20 .tap: {e}"))?;
+            return Ok(Image::Vic20Tap(video, tape));
+        }
         let tape = c64_tape::parse_tap(bytes).map_err(|e| format!("C64 .tap: {e}"))?;
         return Ok(Image::C64Tap(tape, bytes.to_vec()));
     }

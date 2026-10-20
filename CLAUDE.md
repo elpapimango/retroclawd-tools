@@ -242,8 +242,13 @@ purpose. Everything skips unless `RETROCLAWD_BIN`, `RETROCLAWD_MACHINE_PLUGIN_DI
 * `rcdis` reads raw and `.prg` input only; extracting from a disk or tape image (`rcdis game.d64:NAME`) is still to do.
 * `rcdisk`: no `.g64` output, no REL/partition copying, CP/M writing only for the standard 1 KB layout and side 0, no
   BASIC tokenizer for AMSDOS `.bas` files, no zip/URL inputs.
-* `rctape`: no Commodore `.tap` file decoding (C64 facts; C16/Plus4 v2 structural validation and exact-halfwave normalization), no `.wav`/`.csw`/`.pzx`/`.voc`, `add --type basic` needs an
+* `rctape`: no Commodore `.tap` file decoding (C64 facts; VIC-20 v0/v1 and C16/Plus4 v2 structural validation/normalization), no `.wav`/`.csw`/`.pzx`/`.voc`, `add --type basic` needs an
   already tokenised program, loops and jumps are kept but not followed.
+  `from-prg` creates platform-1 PAL/NTSC VIC-20 KERNAL tapes using the Family's
+  existing Commodore encoder and strict `c64-tape::vic20` format API.
+  Both real regional KERNALs loaded the generated fixture in retroclawd's two
+  execution modes and installed VICE 3.9 with fast tape traps disabled.
+  Only speed 1 was firmware-verified; `--tape-speed` scales pulses, not CPU time.
 * `rcld`: no CPC tape / ZX81 / `.cpr` output, no 128K snapshots, sources are assembled as one program (no separate modules).
 * `rcsnap`: `create` is 48K only, there is no register patching of an existing snapshot, ZX81 BASIC is not listed.
 * The Z80 `DD`/`FD` prefix before an instruction that ignores it is disassembled but not assembled back (rcdis emits
