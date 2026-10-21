@@ -16,6 +16,13 @@ tools. The tools build **on their own**; the emulator application does not build
 
 ## Build
 
+Reference capture: `scripts/capture_atari800_screen.py` drives Atari800 7.2.1
+Win64 through its monitor and native screenshot key, using explicit Atari 800
+OS/BASIC replacements and no ROM patches. It supports cold boot and a tools-built
+raw Program, with optional memory goldens. It does not yet drive printable
+reference keyboard input or record reference audio. Windows/standard-library only;
+run `python scripts/capture_atari800_screen.py --help` for arguments.
+
 ```
 cargo build --release --workspace      # target/release/rcasm, target/release/rcdis
 cargo test --workspace
