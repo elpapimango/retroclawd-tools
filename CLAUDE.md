@@ -24,7 +24,8 @@ prints the SHA-256 to pin a golden, `rc-scenarios check <manifest>` validates wi
 `RC_GOLDENS` (fetched from RomM by hash, never committed), diff images of failing screens in `RC_SCENARIO_OUT`.
 
 Rules the code enforces: every golden is pinned by hash; a tolerance needs a written `reason`; a scenario that cannot be matched is
-`status = "known-gap"` with a `gap` (reason and evidence) and the run fails when a known gap starts passing; unknown keys are errors.
+`status = "known-gap"` with a `gap` (reason and evidence) and the run fails when a known gap starts passing; unknown keys are errors. A scenario whose `--firmware auto` finds no firmware (no cache, RomM or network; retroclawd's "no firmware with a
+matching SHA-1" line) is reported as `SKIP` with that line and does not fail the run.
 **A picture from another emulator is compared with `mode = "similarity"`** (both reduced to a 64x48 luminance grid over an optional
 `crop`, mean absolute difference at most `max_mad`): the reference draws its own border, scale and palette, so pixel equality is not
 possible. `normalize = true` stretches each picture's pixel brightness to the full range (a different palette); `anchor_ground =
