@@ -217,6 +217,10 @@ pub struct ScenarioReport {
 /// (`apps/retroclawd/src/firmware.rs` in the application): nothing to test against, so the scenario is skipped.
 const FIRMWARE_UNAVAILABLE: &str = "--firmware auto: no firmware with a matching SHA-1";
 
+/// Part of the detail retroclawd adds when a file was found but its hash is not the one wanted (a changed download, a
+/// bad RomM file): that is a failure, never a skip.
+const FIRMWARE_WRONG_HASH: &str = "has SHA-1";
+
 impl ScenarioReport {
     pub fn ok(&self) -> bool {
         self.failed.is_empty() && self.closed.is_empty()
@@ -754,6 +758,7 @@ pub fn run_scenario(
 /// Sorts a scenario's result with its declared status into the report.
 pub fn record(report: &mut ScenarioReport, s: &Scenario, result: Result<(), String>) {
     if let Err(e) = &result
+        && !e.contains(FIRMWARE_WRONG_HASH)
         && let Some(line) = e.lines().find(|l| l.contains(FIRMWARE_UNAVAILABLE))
     {
         report.skipped.push((
@@ -1027,5 +1032,17 @@ cycles_per_frame = 65000
             summary.contains("no firmware with a matching SHA-1 for: rom"),
             "the host's own line is kept: {summary}"
         );
+    }
+
+    #[test]
+    fn firmware_with_the_wrong_hash_fails_the_scenario() {
+        let m = Manifest::parse(MINIMAL).unwrap();
+        let err = "retroclawd atari-st --headless --firmware auto failed: 
+                   --firmware auto: no firmware with a matching SHA-1 for: rom (wanted: EmuTOS 1.4 192K)                    [EmuTOS 1.4 192K: https://example/e.zip has SHA-1 0000 but firmware.toml pins 904e]";
+        let mut report = ScenarioReport::default();
+        record(&mut report, &m.scenarios[0], Err(err.to_string()));
+        assert!(report.skipped.is_empty(), "{}", report.summary());
+        assert_eq!(report.failed.len(), 1);
+        assert!(!report.ok());
     }
 }
