@@ -465,9 +465,10 @@ impl Screen {
     pub fn read(path: &Path) -> Result<Screen, String> {
         let file = std::fs::File::open(path)
             .map_err(|e| format!("no screen file {}: {e}", path.display()))?;
-        let mut reader = png::Decoder::new(std::io::BufReader::new(file))
-            .read_info()
-            .map_err(|e| e.to_string())?;
+        let mut decoder = png::Decoder::new(std::io::BufReader::new(file));
+        // Palette (indexed) and low-bit-depth pictures become 8-bit RGB(A): Hatari writes indexed PNGs.
+        decoder.set_transformations(png::Transformations::EXPAND);
+        let mut reader = decoder.read_info().map_err(|e| e.to_string())?;
         let mut buf = vec![0; reader.output_buffer_size().ok_or("screen too large")?];
         let info = reader.next_frame(&mut buf).map_err(|e| e.to_string())?;
         let channels = info.color_type.samples();
@@ -902,5 +903,31 @@ mod audio_tests {
         let (f, a) = audio.peak(515.0, 525.0, 0.5, 1.5);
         assert!((f - 520.8).abs() < 0.3, "found {f}");
         assert!((a - 0.5).abs() < 0.05, "amplitude {a}");
+    }
+}
+
+#[cfg(test)]
+mod screen_tests {
+    use super::Screen;
+
+    /// Hatari writes indexed-colour PNGs (colour type 3): they read back as their palette's colours, not as grey
+    /// levels of the indices.
+    #[test]
+    fn an_indexed_png_reads_as_its_palette_colours() {
+        let path =
+            std::env::temp_dir().join(format!("rc-suite-indexed-{}.png", std::process::id()));
+        {
+            let file = std::fs::File::create(&path).unwrap();
+            let mut enc = png::Encoder::new(std::io::BufWriter::new(file), 2, 1);
+            enc.set_color(png::ColorType::Indexed);
+            enc.set_depth(png::BitDepth::Eight);
+            enc.set_palette(vec![0x00, 0x8F, 0x00, 0xFF, 0xFF, 0xFF]);
+            let mut w = enc.write_header().unwrap();
+            w.write_image_data(&[0, 1]).unwrap();
+        }
+        let s = Screen::read(&path).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        assert_eq!(s.pixel(0, 0), [0x00, 0x8F, 0x00]);
+        assert_eq!(s.pixel(1, 0), [0xFF, 0xFF, 0xFF]);
     }
 }
