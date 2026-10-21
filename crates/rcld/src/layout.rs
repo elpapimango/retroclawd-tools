@@ -36,6 +36,7 @@ pub enum Value {
 #[serde(rename_all = "lowercase")]
 pub enum Machine {
     C64,
+    Atari,
     Spectrum,
     Cpc,
     /// No machine: raw images only, and the CPU has to be named.
@@ -46,6 +47,7 @@ impl Machine {
     pub fn name(self) -> &'static str {
         match self {
             Machine::C64 => "c64",
+            Machine::Atari => "atari",
             Machine::Spectrum => "spectrum",
             Machine::Cpc => "cpc",
             Machine::Generic => "generic",

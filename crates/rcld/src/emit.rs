@@ -200,6 +200,27 @@ fn bin(c: &mut Ctx) -> Result<Made, String> {
     Ok(Made { bytes, pieces })
 }
 
+fn atari_xex(c: &mut Ctx) -> Result<Made, String> {
+    let mut pieces = c.user.clone();
+    if let Some((entry, _)) = c.entry {
+        pieces.push(Piece {
+            name: "RUNAD".into(),
+            start: 0x02e0,
+            bytes: entry.to_le_bytes().to_vec(),
+        });
+    }
+    let pieces = c.checked(pieces)?;
+    let segments = pieces
+        .iter()
+        .map(|p| atari_media::Segment {
+            start: p.start,
+            bytes: p.bytes.clone(),
+        })
+        .collect();
+    let bytes = crate::atari::create(segments)?;
+    Ok(Made { bytes, pieces })
+}
+
 fn spectrum_snapshot(c: &mut Ctx, format: Format) -> Result<Made, String> {
     let pieces = c.checked(c.user.clone())?;
     no_rom(&pieces)?;
@@ -382,6 +403,7 @@ fn cpm_disk(c: &mut Ctx, format: &str, header: &str) -> Result<Made, String> {
 fn can_make(machine: Machine) -> &'static str {
     match machine {
         Machine::C64 => ".prg .d64 .d81 .crt .bin",
+        Machine::Atari => ".xex .bin",
         Machine::Spectrum => ".tap .tzx .sna .z80 .szx .dsk (+3) .bin",
         Machine::Cpc => ".dsk .bin",
         Machine::Generic => ".bin",
@@ -417,6 +439,7 @@ pub fn emit(
     };
     let made = match (layout.machine, ext.as_str()) {
         (_, "bin") => bin(&mut c),
+        (Machine::Atari, "xex") => atari_xex(&mut c),
         (Machine::C64, "prg") => c64_prg(&mut c),
         (Machine::C64, "d64") => c64_disk(&mut c, "d64"),
         (Machine::C64, "d81") => c64_disk(&mut c, "d81"),

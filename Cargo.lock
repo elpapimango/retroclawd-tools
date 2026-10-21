@@ -59,6 +59,11 @@ dependencies = [
 ]
 
 [[package]]
+name = "atari-media"
+version = "0.1.0"
+source = "git+https://github.com/elpapimango/retroclawd-atari?rev=a4e66847d54890b9e79b3362c8074e40da9cee27#a4e66847d54890b9e79b3362c8074e40da9cee27"
+
+[[package]]
 name = "bitflags"
 version = "2.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -426,6 +431,7 @@ dependencies = [
 name = "rcdisk"
 version = "0.1.0"
 dependencies = [
+ "atari-media",
  "cbm-dos",
  "clap",
  "d64",
@@ -441,6 +447,7 @@ dependencies = [
 name = "rcld"
 version = "0.1.0"
 dependencies = [
+ "atari-media",
  "c64-cartridge",
  "clap",
  "rc-common",

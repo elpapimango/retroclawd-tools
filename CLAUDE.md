@@ -66,6 +66,17 @@ own instead of being a fifth submodule.
 
 ## Layout
 
+Atari media: `rcdisk::atari` uses the published `atari-media` Family Format
+for canonical ATR geometry/info and raw one-based sector insertion/extraction.
+`rcdisk create out.atr --sectors 720 --sector-size 128` makes zero-filled
+unformatted media; `add IMAGE FILE --sector N` and
+`extract IMAGE --sector N --count N -o FILE` transfer whole sectors.
+No Atari DOS filesystem is claimed. `rcld` accepts `machine = "atari"`
+for 6502 `.xex` builds, keeping disjoint pieces as segments and adding RUNAD
+only for explicit `entry`. `rcld inspect FILE.xex` lists ordered ranges.
+The root workspace dependency pins `retroclawd-atari`; no local path override
+is needed. No Atari Machine, SIO, POKEY or Host behavior belongs to these tools.
+
 ```
 crates/rc-common/   Diag (file:line messages), number parsing, write_file (never overwrites without --force)
 crates/rcasm/       lib + bin: expr.rs (expressions), text.rs, cpu.rs (6502 and Z80 encoders), asm.rs (passes,

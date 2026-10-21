@@ -5,6 +5,7 @@
 //! the machine and the output are. [`build`] checks that nothing overlaps or leaves its region and then writes
 //! the image the output's extension asks for: a `.prg`, a disk, a cartridge, a tape or a snapshot.
 
+pub mod atari;
 pub mod basic;
 pub mod emit;
 pub mod layout;
@@ -85,7 +86,7 @@ pub fn parse_symbols(text: &str) -> Result<Vec<(String, i64)>, String> {
 
 fn cpu_of(layout: &Layout) -> Result<rcasm::Cpu, String> {
     match (layout.machine, layout.cpu.as_deref()) {
-        (Machine::C64, _) => Ok(rcasm::Cpu::Mos6502),
+        (Machine::C64 | Machine::Atari, _) => Ok(rcasm::Cpu::Mos6502),
         (Machine::Spectrum | Machine::Cpc, _) => Ok(rcasm::Cpu::Z80),
         (Machine::Generic, Some("6502" | "6510" | "8502")) => Ok(rcasm::Cpu::Mos6502),
         (Machine::Generic, Some("z80")) => Ok(rcasm::Cpu::Z80),

@@ -9,10 +9,10 @@ tools. The tools build **on their own**; the emulator application does not build
 |---|---|---|
 | [`rcasm`](docs/rcasm.md) | two-pass assembler for the 6502 and the Z80, one shared syntax; flat binary, `.prg`, symbol file, listing | works |
 | [`rcdis`](docs/rcdis.md) | disassembler for the 6502 and the Z80 that writes source `rcasm` assembles back to the same bytes | works |
-| [`rcdisk`](docs/rcdisk.md) | list, info, validate, extract, add, rm, rename, create and convert disk images: Commodore `.d64`/`.x64`/`.d71`/`.d81` (`.g64` read), CPC / +3 `.dsk` with AMSDOS and +3DOS headers | works |
+| [`rcdisk`](docs/rcdisk.md) | list, info, validate, extract, add, rm, rename, create and convert disk images: Commodore `.d64`/`.x64`/`.d71`/`.d81` (`.g64` read), CPC / +3 `.dsk` with AMSDOS and +3DOS headers; Atari `.atr` info, blank creation and raw sectors (no filesystem) | works |
 | [`rctape`](docs/rctape.md) | inspect/edit Spectrum `.tzx`/`.tap`, extract Commodore `.t64`, inspect C64 `.tap`, validate/normalize VIC-20 TAP-v0/v1 and C16/Plus4 TAP-v2; `from-prg` creates VIC-20 KERNAL tapes | works |
 | [`rcsnap`](docs/rcsnap.md) | info, convert, dump, extract and create: ZX Spectrum `.z80`/`.sna`/`.szx` into each other, ZX81 `.p`/`.p81`, CPC `.sna`, C64 `.crt`, CPC Plus `.cpr` | works |
-| [`rcld`](docs/rcld.md) | place assembled programs (sources, binaries, `.prg`), check overlaps and regions, and write a runnable image: C64 `.prg`/`.d64`/`.d81`/`.crt` (with a `SYS` line), Spectrum `.tap`/`.tzx` (with a BASIC loader) and snapshots, CPC `.dsk` | works |
+| [`rcld`](docs/rcld.md) | place assembled programs (sources, binaries, `.prg`), check overlaps and regions, and write a runnable image: C64 `.prg`/`.d64`/`.d81`/`.crt` (with a `SYS` line), Spectrum `.tap`/`.tzx` (with a BASIC loader) and snapshots, CPC `.dsk`, Atari `.xex` build/inspect | works |
 
 ## Build
 

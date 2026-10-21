@@ -9,6 +9,7 @@ license = "GPL-3.0-or-later"
 publish = false
 
 [workspace.dependencies]
+atari-media = { git = "https://github.com/elpapimango/retroclawd-atari", rev = "a4e66847d54890b9e79b3362c8074e40da9cee27" }
 # The retroclawd crates, by git revision (public repositories).
 machine = { git = "https://github.com/elpapimango/retroclawd-crates", rev = "a8cfb2ef44aef943d6900c98bce02758acf926eb" }
 z80 = { git = "https://github.com/elpapimango/retroclawd-crates", rev = "a8cfb2ef44aef943d6900c98bce02758acf926eb" }

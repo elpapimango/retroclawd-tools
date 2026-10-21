@@ -45,6 +45,12 @@ enum Command {
     /// Copy files out of the image.
     Extract {
         image: PathBuf,
+        /// ATR: first raw sector (one-based); requires -o, without file names.
+        #[arg(long, value_parser = parse_u16)]
+        sector: Option<u16>,
+        /// ATR: number of consecutive sectors to extract.
+        #[arg(long, requires = "sector")]
+        count: Option<u16>,
         /// Names or patterns (`*`, `?`); with none, every file.
         names: Vec<String>,
         /// Directory to write into (created if missing); default: the current directory.
@@ -62,6 +68,9 @@ enum Command {
     /// Put host files on the disk.
     Add {
         image: PathBuf,
+        /// ATR: replace whole consecutive sectors from one raw file, starting here (one-based).
+        #[arg(long, value_parser = parse_u16)]
+        sector: Option<u16>,
         files: Vec<PathBuf>,
         /// Name on the disk (single file only); default: the file name without extension.
         #[arg(long)]
@@ -113,7 +122,13 @@ enum Command {
     /// Make a new, blank, formatted image.
     Create {
         output: PathBuf,
-        /// One of: d64, d64-40, x64, d71, d81, dsk, dsk-system, dsk-ibm, dsk-plus3 (see `rcdisk formats`;
+        /// ATR: sector count (default 720). Creates unformatted zero-filled sectors.
+        #[arg(long)]
+        sectors: Option<u16>,
+        /// ATR: 128 or 256 (default 128); first three sectors always have 128 bytes.
+        #[arg(long)]
+        sector_size: Option<u16>,
+        /// One of: d64, d64-40, x64, d71, d81, dsk, dsk-system, dsk-ibm, dsk-plus3, atr (see `rcdisk formats`;
         /// default: from the output file's extension).
         #[arg(long, short = 'f')]
         format: Option<String>,
@@ -149,8 +164,12 @@ fn fail(message: impl std::fmt::Display) -> ExitCode {
 }
 
 fn open_image(path: &Path) -> Result<Box<dyn Disk>, String> {
-    let bytes = std::fs::read(path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+    let bytes = read_image(path)?;
     rcdisk::open(&path.to_string_lossy(), &bytes).map_err(|e| format!("{}: {e}", path.display()))
+}
+
+fn read_image(path: &Path) -> Result<Vec<u8>, String> {
+    std::fs::read(path).map_err(|e| format!("cannot read {}: {e}", path.display()))
 }
 
 fn format_for(path: &Path, given: &Option<String>) -> Result<String, String> {
@@ -162,10 +181,10 @@ fn format_for(path: &Path, given: &Option<String>) -> Result<String, String> {
         .and_then(|e| e.to_str())
         .map(str::to_ascii_lowercase)
     {
-        Some(e) if ["d64", "x64", "d71", "d81", "g64"].contains(&e.as_str()) => Ok(e),
+        Some(e) if ["d64", "x64", "d71", "d81", "g64", "atr"].contains(&e.as_str()) => Ok(e),
         Some(e) if e == "dsk" || e == "edsk" => Ok("dsk".to_string()),
         _ => Err(format!(
-            "cannot tell the format from \"{}\"; name it .d64/.x64/.d71/.d81/.dsk or give --format (see `rcdisk formats`)",
+            "cannot tell the format from \"{}\"; name it .d64/.x64/.d71/.d81/.dsk/.atr or give --format (see `rcdisk formats`)",
             path.display()
         )),
     }
@@ -220,6 +239,7 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
                 rc_common::out(&format!("{name:<8} {text}\n"));
             }
             rc_common::out("g64      read only (converts to d64)\n");
+            rc_common::out("atr      raw sectors only; unformatted 128/256-byte creation\n");
         }
         Command::List { image, json } => {
             let disk = open_image(&image)?;
@@ -264,8 +284,12 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
             }
         }
         Command::Info { image, json } => {
-            let disk = open_image(&image)?;
-            let rows = disk.info();
+            let bytes = read_image(&image)?;
+            let rows = if rcdisk::sniff(&image.to_string_lossy(), &bytes)? == "atr" {
+                rcdisk::atari::info(&bytes)?
+            } else {
+                rcdisk::open(&image.to_string_lossy(), &bytes)?.info()
+            };
             if json {
                 rc_common::out(
                     &Json::Obj(rows.into_iter().map(|(k, v)| (k, Json::Str(v))).collect()).pretty(),
@@ -318,12 +342,26 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
         }
         Command::Extract {
             image,
+            sector,
+            count,
             names,
             dir,
             output,
             keep_header,
             force,
         } => {
+            if let Some(sector) = sector {
+                if !names.is_empty() || dir.is_some() || keep_header {
+                    return Err(
+                        "--sector cannot be combined with names, --dir or --keep-header".into(),
+                    );
+                }
+                let out = output.ok_or("--sector requires -o FILE")?;
+                let bytes = read_image(&image)?;
+                let raw = rcdisk::atari::extract_sectors(&bytes, sector, count.unwrap_or(1))?;
+                write_file(&out, &raw, force)?;
+                return Ok(ExitCode::SUCCESS);
+            }
             let disk = open_image(&image)?;
             let patterns = if names.is_empty() {
                 vec!["*".to_string()]
@@ -383,6 +421,7 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
         }
         Command::Add {
             image,
+            sector,
             files,
             name,
             kind,
@@ -394,6 +433,27 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
             output,
             force,
         } => {
+            if let Some(sector) = sector {
+                if files.len() != 1
+                    || name.is_some()
+                    || kind.is_some()
+                    || user != 0
+                    || header.is_some()
+                    || load.is_some()
+                    || entry.is_some()
+                    || replace
+                {
+                    return Err("--sector takes one raw file, without filesystem options".into());
+                }
+                let bytes = read_image(&image)?;
+                let raw = read_image(&files[0])?;
+                let changed = rcdisk::atari::insert_sectors(&bytes, sector, &raw)?;
+                match output {
+                    Some(out) => write_file(&out, &changed, force)?,
+                    None => write_file(&image, &changed, true)?,
+                }
+                return Ok(ExitCode::SUCCESS);
+            }
             if files.is_empty() {
                 return Err("no files to add".to_string());
             }
@@ -453,12 +513,26 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
         }
         Command::Create {
             output,
+            sectors,
+            sector_size,
             format,
             name,
             id,
             force,
         } => {
             let format = format_for(&output, &format)?;
+            if format == "atr" {
+                if name.is_some() || id.is_some() {
+                    return Err("ATR raw creation has no filesystem name or ID".into());
+                }
+                let bytes =
+                    rcdisk::atari::create(sectors.unwrap_or(720), sector_size.unwrap_or(128))?;
+                write_file(&output, &bytes, force)?;
+                return Ok(ExitCode::SUCCESS);
+            }
+            if sectors.is_some() || sector_size.is_some() {
+                return Err("--sectors and --sector-size apply only to ATR".into());
+            }
             let disk = rcdisk::create(&format, name.as_deref(), id.as_deref())?;
             write_file(&output, &disk.to_bytes(), force)?;
             rc_common::err(&format!(

@@ -520,7 +520,7 @@ fn layout_mistakes_are_named() {
             .unwrap_err()
             .contains("entri")
     );
-    assert!(layout::parse("machine = \"atari\"\n").is_err());
+    assert!(layout::parse("machine = \"unsupported\"\n").is_err());
     // Two kinds in one input.
     let e = p
         .build(

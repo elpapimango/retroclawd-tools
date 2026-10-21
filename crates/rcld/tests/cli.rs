@@ -62,6 +62,39 @@ impl Drop for Temp {
 
 const LAYOUT: &str = "machine = \"c64\"\nname = \"HELLO\"\nentry = \"start\"\noutput = \"out/hello.prg\"\n[[input]]\nasm = \"src/main.asm\"\n[[region]]\nname = \"ram\"\nstart = 0x0801\nend = 0x9FFF\n";
 
+#[test]
+fn xex_cli_build_inspect_and_rebuild_preserve_disjoint_ranges() {
+    let t = Temp::new("xex");
+    t.write("main.asm", "* = $2000\nstart: lda #42\n rts\n");
+    std::fs::write(t.0.join("data.bin"), [0xaa, 0xbb]).unwrap();
+    let layout = t.write(
+        "layout.toml",
+        "machine = \"atari\"\nentry = \"start\"\noutput = \"hello.xex\"\n\
+         [[input]]\nasm = \"main.asm\"\n[[input]]\nbin = \"data.bin\"\nat = 0x4000\n",
+    );
+    ok(&["build", &layout]);
+    let image = t.path("hello.xex");
+    let (listing, _) = ok(&["inspect", &image]);
+    assert!(listing.contains("$02E0-$02E1 (2 bytes)"), "{listing}");
+    assert!(listing.contains("$2000-$2002 (3 bytes)"), "{listing}");
+    assert!(listing.contains("$4000-$4001 (2 bytes)"), "{listing}");
+    let bytes = t.read("hello.xex");
+    let segments = rcld::atari::inspect(&bytes).unwrap();
+    assert_eq!(segments[0].bytes, [0, 32]);
+    assert_eq!(segments[1].bytes, [0xa9, 42, 0x60]);
+    assert_eq!(rcld::atari::create(segments).unwrap(), bytes);
+    assert!(fails(&["build", &layout]).contains("--force"));
+    ok(&["build", &layout, "--force"]);
+    assert_eq!(t.read("hello.xex"), bytes);
+    std::fs::write(&image, &bytes[..bytes.len() - 1]).unwrap();
+    assert!(fails(&["inspect", &image]).contains("truncated"));
+    t.write(
+        "main.asm",
+        "* = $2000\nstart: rts\n* = $02E0\n.byte 0, 32\n",
+    );
+    assert!(fails(&["build", &layout, "--force"]).contains("overlaps"));
+}
+
 fn project(t: &Temp) -> String {
     std::fs::create_dir_all(t.0.join("src")).unwrap();
     std::fs::create_dir_all(t.0.join("out")).unwrap();

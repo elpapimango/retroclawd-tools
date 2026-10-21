@@ -104,10 +104,14 @@ def main():
     parser.add_argument("--region", choices=["pal", "ntsc"], default="pal")
     parser.add_argument("--frames", type=int, default=300)
     parser.add_argument("--program", type=pathlib.Path)
+    parser.add_argument("--disk", type=pathlib.Path, help="Boot a private copy of an ATR through reference SIO")
+    parser.add_argument("--xex", type=pathlib.Path, help="Use the reference's segmented Program loader")
     parser.add_argument("--org", type=lambda value: int(value, 0), default=0x2000)
     parser.add_argument("--memory", help="START:LEN, decimal or 0x hexadecimal")
     parser.add_argument("--memory-out", type=pathlib.Path)
     args = parser.parse_args()
+    if sum(value is not None for value in [args.program, args.disk, args.xex]) > 1:
+        parser.error("--program, --disk and --xex are mutually exclusive")
     if sys.platform != "win32":
         parser.error("this capture adapter requires Atari800's Windows SDL build")
     if args.frames < 1 or not 0 <= args.org <= 0xffff:
@@ -143,6 +147,12 @@ def main():
             "-screenshots", "reference.png",
         ]
         command += ["-basic", "-basic_rom", str(basic), "-basic-rev", "custom"] if basic else ["-nobasic"]
+        if args.disk:
+            shutil.copyfile(args.disk.resolve(strict=True), work / "disk.atr")
+            command.append(str(work / "disk.atr"))
+        if args.xex:
+            shutil.copyfile(args.xex.resolve(strict=True), work / "program.xex")
+            command += ["-run", str(work / "program.xex")]
         process = subprocess.Popen(command, cwd=work, stdin=subprocess.PIPE,
                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         monitor = None

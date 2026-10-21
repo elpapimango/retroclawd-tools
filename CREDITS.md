@@ -1,5 +1,13 @@
 # Credits and references
 
+* Atari ATR/XEX tools reuse `atari-media` of `retroclawd-atari`, whose
+  format facts cite Atari800 7.2.1, revision
+  `63a381884175e3cbfc745ff00dfb3d70d928eb50`,
+  [`src/binload.c`](https://github.com/atari800/atari800/blob/63a381884175e3cbfc745ff00dfb3d70d928eb50/src/binload.c),
+  [`src/afile.h`](https://github.com/atari800/atari800/blob/63a381884175e3cbfc745ff00dfb3d70d928eb50/src/afile.h), and
+  [`src/sio.c`](https://github.com/atari800/atari800/blob/63a381884175e3cbfc745ff00dfb3d70d928eb50/src/sio.c).
+  No duplicate parser, DOS filesystem, or emulator implementation is added here.
+
 * The instruction sets, mnemonics and encodings come from the retroclawd crates `z80` and `mos6502`
   (`retroclawd-crates`), which cite their own sources (Z80 undocumented-behaviour documentation, ZEXALL / ZEXDOC,
   Klaus Dormann's 6502 functional test, Tom Seddon's NMOS 6502 tests).
