@@ -113,7 +113,7 @@ enum Command {
     /// Make a new, blank, formatted image.
     Create {
         output: PathBuf,
-        /// One of: d64, d64-40, x64, d71, d81, dsk, dsk-system, dsk-ibm, dsk-plus3 (see `rcdisk formats`;
+        /// One of: d64, d64-40, x64, d71, d81, dsk, dsk-system, dsk-ibm, dsk-plus3, st, st-ss (see `rcdisk formats`;
         /// default: from the output file's extension).
         #[arg(long, short = 'f')]
         format: Option<String>,
@@ -137,6 +137,16 @@ enum Command {
     },
     /// List the formats create and convert know.
     Formats,
+    /// Atari ST: make the boot sector executable with CODE (a raw 68000 program, at most 480 bytes): a BRA.S to
+    /// offset 30, the code there, and the checksum word that makes the sector sum to $1234.
+    Boot {
+        image: PathBuf,
+        code: PathBuf,
+        #[arg(long, short = 'o')]
+        output: Option<PathBuf>,
+        #[arg(long)]
+        force: bool,
+    },
 }
 
 fn parse_u16(text: &str) -> Result<u16, String> {
@@ -164,8 +174,9 @@ fn format_for(path: &Path, given: &Option<String>) -> Result<String, String> {
     {
         Some(e) if ["d64", "x64", "d71", "d81", "g64"].contains(&e.as_str()) => Ok(e),
         Some(e) if e == "dsk" || e == "edsk" => Ok("dsk".to_string()),
+        Some(e) if e == "st" => Ok("st".to_string()),
         _ => Err(format!(
-            "cannot tell the format from \"{}\"; name it .d64/.x64/.d71/.d81/.dsk or give --format (see `rcdisk formats`)",
+            "cannot tell the format from \"{}\"; name it .d64/.x64/.d71/.d81/.dsk/.st or give --format (see `rcdisk formats`)",
             path.display()
         )),
     }
@@ -235,7 +246,7 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
                     .pretty(),
                 );
             } else {
-                if disk.format() == "dsk" {
+                if disk.format() == "dsk" || disk.format().starts_with("st") {
                     // CP/M: name, size, type and what the header says.
                     for f in disk.files() {
                         let size = f.size.map_or(String::new(), |s| format!("{s}"));
@@ -465,6 +476,33 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
                 "rcdisk: created {} ({})\n",
                 output.display(),
                 disk.description()
+            ));
+        }
+        Command::Boot {
+            image,
+            code,
+            output,
+            force,
+        } => {
+            let disk = open_image(&image)?;
+            if !disk.format().starts_with("st") {
+                return Err(format!(
+                    "{}: boot code is for Atari ST disks (.st)",
+                    image.display()
+                ));
+            }
+            let program =
+                std::fs::read(&code).map_err(|e| format!("cannot read {}: {e}", code.display()))?;
+            let bytes = rcdisk::st::with_boot_code(&disk.to_bytes(), &program)?;
+            match &output {
+                Some(out) => write_file(out, &bytes, force)?,
+                None => write_file(&image, &bytes, true)?,
+            }
+            rc_common::err(&format!(
+                "rcdisk: {} is bootable ({} bytes of code)
+",
+                image.display(),
+                program.len()
             ));
         }
         Command::Convert {

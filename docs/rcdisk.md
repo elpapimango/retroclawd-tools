@@ -73,3 +73,14 @@ repositories validate clean and survive an extract/add round trip. Disks made, c
 were loaded by the emulator's real 1541 DOS (true drive). A `.dsk` made by `rcdisk create` with a binary added
 `--header amsdos` was run in the emulator on a CPC6128: real AMSDOS's `CAT` lists it with the size and free space
 `rcdisk` computes, and `RUN"DISC` loads and runs it (a program assembled with `rcasm` that writes to memory).
+
+## Atari ST `.st` (FAT12)
+
+`rcdisk create game.st` (or `--format st-ss` for a single-sided 360 KB disk) makes a blank disk with the BPB of
+*Atari ST Internals* p.178 (512-byte sectors, 2 per cluster, 2 FATs of 5 sectors, 112 root entries). `add`, `list`,
+`extract`, `rm`, `rename` and `validate` work on the root directory (8.3 names, stored upper case; no
+subdirectories yet). `rcdisk boot game.st code.bin` makes the boot sector executable: a `BRA.S` to offset 30, the
+raw 68000 code there (at most 480 bytes), and the checksum word so the sector sums to `$1234` (*Internals* p.179).
+The FAT12 rules (entry packing, end of chain, directory entries, legal names) follow Microsoft's *FAT: General
+Overview of On-Disk Format* v1.03; a chain that loops, leaves the disk, or is shorter than the file's size is an
+error, never a panic.
