@@ -50,6 +50,10 @@ diagnostics' lines are compared with Caprice32 (`scripts/capture_caprice_screen.
 the screen differently). Not done: a `trace` kind (S8; the
 plugin ABI has no instruction trace), memory windows above 64K, S2/S4/S7 on machines where the reference cannot be driven (the 128K
 menu, the C128's S3), z80test and the CPC acid disks as manifests (the hand-written suites cover them).
+The Atari ST's reference is Hatari 2.6.1, run as a black box: `scripts/capture_hatari_screen.py ROM VBLS OUT.png`
+(a debugger breakpoint at that VBL takes `screenshot`; 640x400 with `--borders off --statusbar off`, byte-identical on
+repeated runs) and `scripts/capture_hatari_trace.py` (`--kind pc|io`, `--disk-a`, `--trace-extra`). Hatari cannot be
+given keys or mouse input headlessly, so the ST's input scenarios have `exact` goldens made by retroclawd.
 
 ## What this is
 
