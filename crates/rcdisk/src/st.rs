@@ -326,8 +326,10 @@ impl Disk for StDisk {
         found
             .iter()
             .map(|e| {
-                let mut data = Vec::with_capacity(e.size);
-                for n in self.chain(e)? {
+                // The chain is checked against the size first: the size field is untrusted.
+                let chain = self.chain(e)?;
+                let mut data = Vec::with_capacity(chain.len() * self.layout.cluster_bytes());
+                for n in chain {
                     let at = self.cluster_offset(n);
                     data.extend_from_slice(&self.bytes[at..at + self.layout.cluster_bytes()]);
                 }

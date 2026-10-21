@@ -153,6 +153,36 @@ fn size_beyond_chain_is_an_error() {
     assert!(err.contains("5000") || err.contains("size"), "{err}");
 }
 
+/// Records the largest single allocation of this test binary, so a test can see an allocation sized from untrusted
+/// input before it is checked.
+struct Largest;
+
+static LARGEST: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+unsafe impl std::alloc::GlobalAlloc for Largest {
+    unsafe fn alloc(&self, layout: std::alloc::Layout) -> *mut u8 {
+        LARGEST.fetch_max(layout.size(), std::sync::atomic::Ordering::Relaxed);
+        unsafe { std::alloc::System.alloc(layout) }
+    }
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: std::alloc::Layout) {
+        unsafe { std::alloc::System.dealloc(ptr, layout) }
+    }
+}
+
+#[global_allocator]
+static ALLOCATOR: Largest = Largest;
+
+/// A 4 GiB size in a directory entry is an error from the chain check, not a 4 GiB allocation first.
+#[test]
+fn a_huge_size_is_an_error_not_an_allocation() {
+    let b = hostile(2, u32::MAX, &[(2, 0xFFF)]);
+    let disk = rcdisk::open("x.st", &b).unwrap();
+    let err = disk.read("A.BIN", &ReadOptions::default()).unwrap_err();
+    assert!(err.contains("size"), "{err}");
+    let largest = LARGEST.load(std::sync::atomic::Ordering::Relaxed);
+    assert!(largest < 64 << 20, "an allocation of {largest} bytes");
+}
+
 #[test]
 fn bad_names_are_refused() {
     let mut disk = rcdisk::create("st", None, None).unwrap();
