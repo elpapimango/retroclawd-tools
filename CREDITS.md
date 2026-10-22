@@ -1,11 +1,15 @@
 # Credits and references
 
-* Atari ATR/XEX tools reuse `atari-media` of `retroclawd-atari`, whose
+* Atari ATR/XEX/CAR tools reuse `atari-media` of `retroclawd-atari`, whose
   format facts cite Atari800 7.2.1, revision
   `63a381884175e3cbfc745ff00dfb3d70d928eb50`,
   [`src/binload.c`](https://github.com/atari800/atari800/blob/63a381884175e3cbfc745ff00dfb3d70d928eb50/src/binload.c),
   [`src/afile.h`](https://github.com/atari800/atari800/blob/63a381884175e3cbfc745ff00dfb3d70d928eb50/src/afile.h), and
   [`src/sio.c`](https://github.com/atari800/atari800/blob/63a381884175e3cbfc745ff00dfb3d70d928eb50/src/sio.c).
+  Standard CAR headers and checksums follow the format crate's pinned
+  [`DOC/cart.txt`](https://github.com/atari800/atari800/blob/63a381884175e3cbfc745ff00dfb3d70d928eb50/DOC/cart.txt)
+  and [`src/cartridge_info.c`](https://github.com/atari800/atari800/blob/63a381884175e3cbfc745ff00dfb3d70d928eb50/src/cartridge_info.c)
+  facts; serialization stays in that crate.
   No duplicate parser, DOS filesystem, or emulator implementation is added here.
 
 * The instruction sets, mnemonics and encodings come from the retroclawd crates `z80` and `mos6502`
