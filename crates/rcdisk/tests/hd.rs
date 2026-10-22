@@ -259,7 +259,12 @@ fn hostile_images_never_panic() {
     good.add(0, "a.txt", &vec![9u8; 4000], false).unwrap();
     good.add(0, "b.txt", &[8u8; 100], false).unwrap();
     let image = good.into_bytes();
-    for round in 0..600 {
+    for round in 0..600
+        * std::env::var("RC_SWEEP")
+            .ok()
+            .and_then(|v| v.parse::<u32>().ok())
+            .unwrap_or(1)
+    {
         let mut raw = image.clone();
         for _ in 0..(1 + next() % 8) {
             // Mostly the root sector, the boot sector, the FATs and the directory: where the structure is.

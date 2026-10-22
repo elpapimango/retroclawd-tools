@@ -232,7 +232,12 @@ fn parse_of_random_bytes_never_panics() {
         state
     };
     let good = sample().to_bytes();
-    for round in 0..20_000 {
+    for round in 0..20_000
+        * std::env::var("RC_SWEEP")
+            .ok()
+            .and_then(|v| v.parse::<u32>().ok())
+            .unwrap_or(1)
+    {
         let len = (next() % 600) as usize;
         let mut bytes: Vec<u8> = (0..len).map(|_| next() as u8).collect();
         if round % 2 == 0 {

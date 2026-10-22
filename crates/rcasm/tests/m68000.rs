@@ -495,7 +495,12 @@ fn hostile_input_never_panics() {
         "trap",
         "dbra",
     ];
-    for _ in 0..4_000 {
+    for _ in 0..4_000
+        * std::env::var("RC_SWEEP")
+            .ok()
+            .and_then(|v| v.parse::<u32>().ok())
+            .unwrap_or(1)
+    {
         let n = 1 + next() % 14;
         let mut line = String::from("    ");
         for _ in 0..n {

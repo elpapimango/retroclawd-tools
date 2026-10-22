@@ -128,7 +128,12 @@ fn random_bytes_assemble_back_to_themselves() {
         state ^= state << 17;
         state
     };
-    for round in 0..40 {
+    for round in 0..40
+        * std::env::var("RC_SWEEP")
+            .ok()
+            .and_then(|v| v.parse::<u32>().ok())
+            .unwrap_or(1)
+    {
         let len = 2 + (next() % 3000) as usize;
         // Real code has a lot of structure: mix noise with opcode-shaped words.
         let image: Vec<u8> = (0..len)
