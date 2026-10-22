@@ -13,6 +13,8 @@ publish = false
 machine = { git = "https://github.com/elpapimango/retroclawd-crates", rev = "a8cfb2ef44aef943d6900c98bce02758acf926eb" }
 z80 = { git = "https://github.com/elpapimango/retroclawd-crates", rev = "a8cfb2ef44aef943d6900c98bce02758acf926eb" }
 mos6502 = { git = "https://github.com/elpapimango/retroclawd-crates", rev = "a8cfb2ef44aef943d6900c98bce02758acf926eb" }
+# The 68000 core: the assembler checks what it produces with its disassembler, `rcdis` prints with it.
+mc68000 = { git = "https://github.com/elpapimango/retroclawd-crates", rev = "39dfdcc276719bffd9da53ead351e0d3da14b1bb" }
 # The Commodore format crates (retroclawd-commodore), by revision.
 cbm-dos = { git = "https://github.com/elpapimango/retroclawd-commodore", rev = "f4cb47adad8d34d1658a3f22411a26f6ec5a5e14" }
 d64 = { git = "https://github.com/elpapimango/retroclawd-commodore", rev = "f4cb47adad8d34d1658a3f22411a26f6ec5a5e14" }
