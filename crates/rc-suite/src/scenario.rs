@@ -330,7 +330,7 @@ impl Manifest {
                         s.id
                     ));
                 }
-                Kind::Audio if s.audio.is_none() => {
+                Kind::Audio if !uncaptured && s.audio.is_none() => {
                     return Err(format!("scenario {}: audio needs an `audio` table", s.id));
                 }
                 Kind::Timing if s.cycles_per_frame.is_none() || s.frames == 0 => {
@@ -753,6 +753,12 @@ pub fn run_scenario(
                 .to_string(),
         );
     }
+    if matches!(s.kind, Kind::Audio) && s.audio.is_none() {
+        return Err(
+            "not run: reference audio expectations not captured; measure them before comparison"
+                .to_string(),
+        );
+    }
     match s.kind {
         Kind::Screen => run_screen(env, goldens, manifest, s),
         Kind::Memory => run_memory(env, goldens, manifest, s),
@@ -877,7 +883,7 @@ cycles_per_frame = 65000
 
     #[test]
     fn an_uncaptured_golden_is_an_explicit_gap_not_a_fabricated_hash_or_pass() {
-        for kind in ["screen", "memory"] {
+        for kind in ["screen", "memory", "audio"] {
             let source = format!(
                 r#"
 machine = "vic20"
@@ -900,11 +906,7 @@ gap = {{ reason = "Reference capture unavailable", evidence = "docs/vic20-gaps.m
             assert!(report.passed.is_empty());
             assert!(report.failed.is_empty());
             assert_eq!(report.gaps.len(), 1);
-            assert!(
-                report.gaps[0]
-                    .2
-                    .contains("not run: reference golden not captured")
-            );
+            assert!(report.gaps[0].2.contains("not run: reference"));
             manifest.scenarios[0].status = Status::Pass;
             manifest.scenarios[0].gap = None;
             assert!(manifest.validate().is_err());

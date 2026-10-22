@@ -292,6 +292,29 @@ fn a_cartridge_gets_vectors_and_the_signature() {
 }
 
 #[test]
+fn atari_car_preserves_explicit_vectors_and_checks_the_rom_window() {
+    let p = Project::new("atari-car");
+    let layout = "machine = \"atari\"\nfill = 255\n[[input]]\nasm = \"main.asm\"\n";
+    let source = "* = $A000\nstart: jmp start\n* = $BFFA\n.word start\n.byte 0, 4\n.word start\n";
+    for (extra, mapper, base) in [("", 1, 0xa000), ("* = $8000\n.byte $55\n", 2, 0x8000)] {
+        p.file("main.asm", &format!("{source}{extra}"));
+        let built = p.build(layout, "program.car").unwrap();
+        let cart = atari_media::Cartridge::parse_car(&built.bytes).unwrap();
+        assert_eq!(cart.mapper().car_type(), mapper);
+        assert_eq!(cart.rom().len(), 0xc000 - base);
+        assert_eq!(&cart.rom()[0xa000 - base..0xa003 - base], &[0x4c, 0, 0xa0]);
+        assert_eq!(&cart.rom()[0xbffa - base..], &[0, 0xa0, 0, 4, 0, 0xa0]);
+        assert_eq!(cart.read(0xbff9), Some(255));
+    }
+    p.file("main.asm", &format!("{source}* = $C000\n.byte 0\n"));
+    assert!(
+        p.build(layout, "bad.car")
+            .unwrap_err()
+            .contains("outside the cartridge ROM")
+    );
+}
+
+#[test]
 fn a_flat_binary_is_the_pieces_from_the_lowest_address() {
     let p = Project::new("bin");
     p.file("main.asm", Z80_CODE);

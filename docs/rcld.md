@@ -84,6 +84,18 @@ and length, including repeats/overlaps in external files, without executing it.
 Library APIs `atari::inspect` and `atari::create` use the published family
 `atari-media` crate and preserve supplied segment order.
 
+## Atari CAR
+
+An Atari `.car` output packages a standard 8K cartridge at `$A000-$BFFF`,
+or 16K when any input starts below `$A000` within `$8000-$BFFF`. The emitter
+checks the ROM window, fills unused bytes with the layout's `fill` value,
+and writes the typed CART header and checksum through `atari-media`.
+Use `fill = 255` for unconnected ROM bytes.
+
+Supply the native OS entry/init vectors and flags explicitly at `$BFFA-$BFFF`;
+unlike `.xex`, the emitter inserts no RUNAD or startup code. XEGS banked
+creation and CAS creation are not exposed by this linker.
+
 ## Checks
 
 Every error names the pieces: `data.bin ($0810-$081F) overlaps assembled code ($080D-$0826)`, `... is outside every

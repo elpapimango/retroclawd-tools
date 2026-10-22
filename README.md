@@ -12,16 +12,23 @@ tools. The tools build **on their own**; the emulator application does not build
 | [`rcdisk`](docs/rcdisk.md) | list, info, validate, extract, add, rm, rename, create and convert disk images: Commodore `.d64`/`.x64`/`.d71`/`.d81` (`.g64` read), CPC / +3 `.dsk` with AMSDOS and +3DOS headers; Atari `.atr` info, blank creation and raw sectors (no filesystem) | works |
 | [`rctape`](docs/rctape.md) | inspect/edit Spectrum `.tzx`/`.tap`, extract Commodore `.t64`, inspect C64 `.tap`, validate/normalize VIC-20 TAP-v0/v1 and C16/Plus4 TAP-v2; `from-prg` creates VIC-20 KERNAL tapes | works |
 | [`rcsnap`](docs/rcsnap.md) | info, convert, dump, extract and create: ZX Spectrum `.z80`/`.sna`/`.szx` into each other, ZX81 `.p`/`.p81`, CPC `.sna`, C64 `.crt`, CPC Plus `.cpr` | works |
-| [`rcld`](docs/rcld.md) | place assembled programs (sources, binaries, `.prg`), check overlaps and regions, and write a runnable image: C64 `.prg`/`.d64`/`.d81`/`.crt` (with a `SYS` line), Spectrum `.tap`/`.tzx` (with a BASIC loader) and snapshots, CPC `.dsk`, Atari `.xex` build/inspect | works |
+| [`rcld`](docs/rcld.md) | place assembled programs (sources, binaries, `.prg`), check overlaps and regions, and write a runnable image: C64 `.prg`/`.d64`/`.d81`/`.crt` (with a `SYS` line), Spectrum `.tap`/`.tzx` (with a BASIC loader) and snapshots, CPC `.dsk`, Atari `.xex` build/inspect and standard `.car` creation | works |
 
 ## Build
 
 Reference capture: `scripts/capture_atari800_screen.py` drives Atari800 7.2.1
-Win64 through its monitor and native screenshot key, using explicit Atari 800
-OS/BASIC replacements and no ROM patches. It supports cold boot and a tools-built
-raw Program, with optional memory goldens. It does not yet drive printable
+Win64 through its monitor and native screenshot key, using explicit 800/XL/XE
+OS/BASIC replacements and no ROM patches. `--machine` selects 800, 800XL, 65XE
+(the equivalent reference 64K XL mapping), or 130XE. It supports cold boot,
+raw/XEX Programs, ATR/XFD disks and CAR cartridges, with optional memory
+goldens. It does not yet drive printable
 reference keyboard input or record reference audio. Windows/standard-library only;
 run `python scripts/capture_atari800_screen.py --help` for arguments.
+
+Scenario manifests may record missing reference audio measurements as
+`kind = "audio"`, `status = "known-gap"` with reason/evidence and no `audio`
+table. The runner reports these as not run, never as an empty successful check.
+Passing audio scenarios still require measured expectations.
 
 ```
 cargo build --release --workspace      # target/release/rcasm, target/release/rcdis

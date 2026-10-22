@@ -61,7 +61,7 @@ dependencies = [
 [[package]]
 name = "atari-media"
 version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-atari?rev=a4e66847d54890b9e79b3362c8074e40da9cee27#a4e66847d54890b9e79b3362c8074e40da9cee27"
+source = "git+https://github.com/elpapimango/retroclawd-atari?rev=462496fb3794981eb444a0e2863c8b545948db26#462496fb3794981eb444a0e2863c8b545948db26"
 
 [[package]]
 name = "bitflags"

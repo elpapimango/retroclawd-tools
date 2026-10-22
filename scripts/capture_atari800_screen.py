@@ -102,16 +102,18 @@ def main():
     parser.add_argument("--basic", type=pathlib.Path)
     parser.add_argument("--atari800", default=shutil.which("atari800") or "atari800")
     parser.add_argument("--region", choices=["pal", "ntsc"], default="pal")
+    parser.add_argument("--machine", choices=["atari-800", "atari-800xl", "atari-65xe", "atari-130xe"], default="atari-800")
     parser.add_argument("--frames", type=int, default=300)
     parser.add_argument("--program", type=pathlib.Path)
-    parser.add_argument("--disk", type=pathlib.Path, help="Boot a private copy of an ATR through reference SIO")
+    parser.add_argument("--disk", type=pathlib.Path, help="Boot a private copy of an ATR/XFD through reference SIO")
     parser.add_argument("--xex", type=pathlib.Path, help="Use the reference's segmented Program loader")
+    parser.add_argument("--cartridge", type=pathlib.Path, help="Boot a CAR through the reference cartridge slot")
     parser.add_argument("--org", type=lambda value: int(value, 0), default=0x2000)
     parser.add_argument("--memory", help="START:LEN, decimal or 0x hexadecimal")
     parser.add_argument("--memory-out", type=pathlib.Path)
     args = parser.parse_args()
-    if sum(value is not None for value in [args.program, args.disk, args.xex]) > 1:
-        parser.error("--program, --disk and --xex are mutually exclusive")
+    if sum(value is not None for value in [args.program, args.disk, args.xex, args.cartridge]) > 1:
+        parser.error("--program, --disk, --xex and --cartridge are mutually exclusive")
     if sys.platform != "win32":
         parser.error("this capture adapter requires Atari800's Windows SDL build")
     if args.frames < 1 or not 0 <= args.org <= 0xffff:
@@ -128,8 +130,9 @@ def main():
         except ValueError:
             parser.error("--memory requires START:LEN within the 16-bit address space")
     os_rom = args.os_rom.resolve(strict=True)
-    if os_rom.stat().st_size != 10240:
-        parser.error("Atari 800 OS ROM must contain exactly 10240 bytes")
+    os_size = 10240 if args.machine == "atari-800" else 16384
+    if os_rom.stat().st_size != os_size:
+        parser.error(f"{args.machine} OS ROM must contain exactly {os_size} bytes")
     basic = args.basic.resolve(strict=True) if args.basic else None
     if basic and basic.stat().st_size != 8192:
         parser.error("BASIC ROM must contain exactly 8192 bytes")
@@ -142,17 +145,28 @@ def main():
         (work / "reference.cfg").write_text("Atari 800 Emulator, Version 7.2.1\n", encoding="ascii")
         command = [
             executable, "-config", str(work / "reference.cfg"), "-no-autosave-config",
-            "-atari", "-" + args.region, "-osb_rom", str(os_rom), "-800-rev", "custom",
             "-nopatchall", "-turbo", "-nosound", "-monitor", "-windowed",
             "-screenshots", "reference.png",
         ]
+        command.append("-" + args.region)
+        if args.machine == "atari-800":
+            command += ["-atari", "-osb_rom", str(os_rom), "-800-rev", "custom"]
+        else:
+            # The 65XE has the same 64K memory routing as the reference's XL.
+            command += ["-xe" if args.machine == "atari-130xe" else "-xl",
+                        "-xlxe_rom", str(os_rom), "-xl-rev", "custom"]
         command += ["-basic", "-basic_rom", str(basic), "-basic-rev", "custom"] if basic else ["-nobasic"]
         if args.disk:
-            shutil.copyfile(args.disk.resolve(strict=True), work / "disk.atr")
-            command.append(str(work / "disk.atr"))
+            source = args.disk.resolve(strict=True)
+            disk = work / ("disk" + source.suffix.lower())
+            shutil.copyfile(source, disk)
+            command.append(str(disk))
         if args.xex:
             shutil.copyfile(args.xex.resolve(strict=True), work / "program.xex")
             command += ["-run", str(work / "program.xex")]
+        if args.cartridge:
+            shutil.copyfile(args.cartridge.resolve(strict=True), work / "cartridge.car")
+            command += ["-cart", str(work / "cartridge.car")]
         process = subprocess.Popen(command, cwd=work, stdin=subprocess.PIPE,
                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         monitor = None
