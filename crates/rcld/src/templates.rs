@@ -5,6 +5,7 @@ pub fn template(machine: &str) -> Option<&'static str> {
         "c64" => C64,
         "spectrum" => SPECTRUM,
         "cpc" => CPC,
+        "atari-st" => ATARI_ST,
         _ => return None,
     })
 }
@@ -96,4 +97,16 @@ end = 0xA6FF
 
 [options]
 # file_name = "GAME.BIN"
+"#;
+
+const ATARI_ST: &str = r#"# rcld layout for the Atari ST.  rcld build this-file.toml
+machine = "atari-st"
+output = "hello.prg"             # a GEMDOS program (.prg, .tos or .ttp); rcld build -o overrides
+
+[[input]]
+asm = ["hello.s"]                # assembled together, in this order, as one relocatable 68000 program
+                                 # (sections .text .data .bss; the program starts at the first byte of its text)
+
+[define]
+# NAME = 1                       # constants for the sources, like rcasm -D
 "#;

@@ -384,6 +384,7 @@ fn can_make(machine: Machine) -> &'static str {
         Machine::C64 => ".prg .d64 .d81 .crt .bin",
         Machine::Spectrum => ".tap .tzx .sna .z80 .szx .dsk (+3) .bin",
         Machine::Cpc => ".dsk .bin",
+        Machine::AtariSt => ".prg",
         Machine::Generic => ".bin",
     }
 }

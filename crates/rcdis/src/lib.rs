@@ -8,6 +8,8 @@
 //! an encoding the assembler would not reproduce (the six `*NOP`s, a Z80 prefix that does nothing) is
 //! written as `.byte` instead.
 
+pub mod m68k;
+
 use machine::SymbolTable;
 use rcasm::Cpu;
 use rcasm::cpu::{Site, encode};

@@ -1848,3 +1848,41 @@ pub fn assemble_m68k(
         listing: asm.listing,
     })
 }
+
+/// `NAME = $VALUE` (the symbol file `retroclawd --symbols` and `rcdis --symbols` read); constants only with `all`.
+pub fn symbols_text(asm: &M68kAssembly, all: bool) -> String {
+    use std::fmt::Write;
+    let mut out = String::new();
+    for sym in &asm.symbols {
+        if all || sym.label {
+            let _ = writeln!(out, "{} = ${:06X}", sym.name, sym.value & 0xFFFF_FFFF);
+        }
+    }
+    out
+}
+
+/// `ADDR  BYTES  source`, four bytes per row.
+pub fn listing_text(asm: &M68kAssembly) -> String {
+    use std::fmt::Write;
+    let mut out = String::new();
+    for entry in &asm.listing {
+        let mut rows = entry.bytes.chunks(4);
+        let first: String = rows
+            .next()
+            .map(|c| c.iter().map(|b| format!("{b:02X} ")).collect())
+            .unwrap_or_default();
+        let addr = if entry.bytes.is_empty() {
+            "      ".to_string()
+        } else {
+            format!("{:06X}", entry.addr)
+        };
+        let _ = writeln!(out, "{addr}  {first:<12} {}", entry.source);
+        let mut at = entry.addr + 4;
+        for chunk in rows {
+            let bytes: String = chunk.iter().map(|b| format!("{b:02X} ")).collect();
+            let _ = writeln!(out, "{at:06X}  {bytes:<12}");
+            at += 4;
+        }
+    }
+    out
+}
