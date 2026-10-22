@@ -21,8 +21,62 @@ struct Cli {
     command: Command,
 }
 
+/// `rcdisk hd ...`: Atari ST hard disk images (an AHDI root sector, FAT16 partitions).
+#[derive(Subcommand)]
+enum HdCommand {
+    /// Make a disk image with one partition, formatted FAT16.
+    New {
+        out: PathBuf,
+        /// The whole disk (`8M`, `32M`, ...; at most 512M).
+        #[arg(long)]
+        size: String,
+        /// The partition (default: the whole disk but the root sector).
+        #[arg(long)]
+        partition: Option<String>,
+        #[arg(long)]
+        force: bool,
+    },
+    /// Show the partitions and the files in the root directory of one.
+    List {
+        image: PathBuf,
+        #[arg(long, default_value_t = 0)]
+        partition: usize,
+    },
+    /// Copy files into the root directory of a partition (8.3 names), writing IMAGE in place or a copy with -o.
+    Add {
+        image: PathBuf,
+        files: Vec<PathBuf>,
+        /// The name on the disk (with one file).
+        #[arg(long)]
+        name: Option<String>,
+        #[arg(long, default_value_t = 0)]
+        partition: usize,
+        /// Replace a file of the same name.
+        #[arg(long)]
+        replace: bool,
+        #[arg(long, short = 'o')]
+        output: Option<PathBuf>,
+    },
+    /// Copy files out of the root directory of a partition.
+    Extract {
+        image: PathBuf,
+        names: Vec<String>,
+        #[arg(long, short = 'd')]
+        dir: Option<PathBuf>,
+        #[arg(long, default_value_t = 0)]
+        partition: usize,
+        #[arg(long)]
+        force: bool,
+    },
+}
+
 #[derive(Subcommand)]
 enum Command {
+    /// Atari ST hard disk images: AHDI partitions with FAT16.
+    Hd {
+        #[command(subcommand)]
+        action: HdCommand,
+    },
     /// Show the directory.
     List {
         image: PathBuf,
@@ -224,8 +278,125 @@ fn main() -> ExitCode {
     }
 }
 
+fn read_hard_disk(path: &Path) -> Result<rcdisk::hd::HardDisk, String> {
+    let bytes = std::fs::read(path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+    rcdisk::hd::HardDisk::parse(bytes).map_err(|e| format!("{}: {e}", path.display()))
+}
+
+fn run_hd(action: HdCommand) -> Result<ExitCode, String> {
+    use rcdisk::hd::{HardDisk, SECTOR, parse_size, safe_file_name};
+    match action {
+        HdCommand::New {
+            out,
+            size,
+            partition,
+            force,
+        } => {
+            let total = parse_size(&size)? / SECTOR as u64;
+            let part = match partition {
+                Some(p) => parse_size(&p)? / SECTOR as u64,
+                None => total.saturating_sub(1),
+            };
+            let disk = HardDisk::create(total, part)?;
+            write_file(&out, disk.bytes(), force)?;
+            rc_common::err(&format!(
+                "rcdisk: {} ({} sectors, one partition of {} sectors)\n",
+                out.display(),
+                total,
+                part
+            ));
+        }
+        HdCommand::List { image, partition } => {
+            let disk = read_hard_disk(&image)?;
+            for (i, p) in disk.partitions()?.iter().enumerate() {
+                rc_common::out(&format!(
+                    "partition {i}: {} start {} size {} sectors{}\n",
+                    p.id_text(),
+                    p.start,
+                    p.size,
+                    if p.flag & 0x80 != 0 {
+                        " (bootable)"
+                    } else {
+                        ""
+                    }
+                ));
+            }
+            for e in disk.list(partition)? {
+                rc_common::out(&format!("{:<12} {:>10}\n", e.name, e.size));
+            }
+        }
+        HdCommand::Add {
+            image,
+            files,
+            name,
+            partition,
+            replace,
+            output,
+        } => {
+            if files.is_empty() {
+                return Err("no files to add".to_string());
+            }
+            if name.is_some() && files.len() != 1 {
+                return Err("--name works with a single file".to_string());
+            }
+            let mut disk = read_hard_disk(&image)?;
+            for f in &files {
+                let data =
+                    std::fs::read(f).map_err(|e| format!("cannot read {}: {e}", f.display()))?;
+                let on_disk = match &name {
+                    Some(n) => n.clone(),
+                    None => f
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .ok_or_else(|| format!("{} has no usable file name", f.display()))?
+                        .to_string(),
+                };
+                disk.add(partition, &on_disk, &data, replace)?;
+                rc_common::err(&format!(
+                    "rcdisk: {} -> {on_disk} ({} bytes)\n",
+                    f.display(),
+                    data.len()
+                ));
+            }
+            match output {
+                Some(o) => write_file(&o, disk.bytes(), false)?,
+                None => write_file(&image, disk.bytes(), true)?,
+            }
+        }
+        HdCommand::Extract {
+            image,
+            names,
+            dir,
+            partition,
+            force,
+        } => {
+            let disk = read_hard_disk(&image)?;
+            let wanted: Vec<String> = if names.is_empty() {
+                disk.list(partition)?
+                    .into_iter()
+                    .filter(|e| !e.directory)
+                    .map(|e| e.name)
+                    .collect()
+            } else {
+                names
+            };
+            let dir = dir.unwrap_or_else(|| PathBuf::from("."));
+            std::fs::create_dir_all(&dir)
+                .map_err(|e| format!("cannot make {}: {e}", dir.display()))?;
+            for n in &wanted {
+                let file = safe_file_name(n)?;
+                let data = disk.read(partition, file)?;
+                write_file(&dir.join(file), &data, force)?;
+                rc_common::err(&format!("rcdisk: {file} ({} bytes)\n", data.len()));
+            }
+        }
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
 fn run(cli: Cli) -> Result<ExitCode, String> {
     match cli.command {
+        Command::Hd { action } => return run_hd(action),
         Command::Formats => {
             for (name, text) in FORMATS {
                 rc_common::out(&format!("{name:<8} {text}\n"));

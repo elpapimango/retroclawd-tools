@@ -7,6 +7,7 @@
 
 pub mod cbm;
 pub mod cpm;
+pub mod hd;
 pub mod st;
 
 /// One file in a directory listing.
