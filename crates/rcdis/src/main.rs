@@ -10,7 +10,7 @@ use std::process::ExitCode;
 #[command(
     name = "rcdis",
     version,
-    about = "Disassembler for the 6502 and the Z80 that writes source rcasm assembles back",
+    about = "Disassembler for the 6502, the Z80 and the 68000 that writes source rcasm assembles back",
     long_about = "Disassembler for the 6502 and the Z80. The output is rcasm source: assembling it gives \
         the input bytes back (rcdis checks every instruction).\n\n\
         Without --entry/--follow every byte is decoded in order (linear). With them, jumps, calls and \
@@ -76,8 +76,14 @@ fn fail(message: impl std::fmt::Display) -> ExitCode {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
+    if matches!(
+        cli.cpu.trim().to_ascii_lowercase().as_str(),
+        "68000" | "m68000" | "68k" | "mc68000"
+    ) {
+        return run_68000(&cli);
+    }
     let Some(cpu) = Cpu::parse(&cli.cpu) else {
-        return fail(format!("unknown CPU \"{}\" (6502 or z80)", cli.cpu));
+        return fail(format!("unknown CPU \"{}\" (6502, z80 or 68000)", cli.cpu));
     };
     let raw = match std::fs::read(&cli.file) {
         Ok(b) => b,
@@ -147,6 +153,74 @@ fn main() -> ExitCode {
     opts.comments = cli.addresses;
 
     let result = match disassemble(body, &opts) {
+        Ok(r) => r,
+        Err(e) => return fail(e),
+    };
+    match &cli.output {
+        Some(path) => {
+            if let Err(e) = write_file(path, result.source.as_bytes(), cli.force) {
+                return fail(e);
+            }
+        }
+        None => rc_common::out(&result.source),
+    }
+    rc_common::err(&format!(
+        "rcdis: {} instructions, {} data bytes, {} labels",
+        result.instructions, result.data_bytes, result.labels
+    ));
+    ExitCode::SUCCESS
+}
+
+/// `--cpu 68000`: a linear sweep. A file that starts with `$601A` is a GEMDOS executable: its text segment is
+/// disassembled (at `--org`, default 0, which is where a relocatable program counts its addresses from); any other file
+/// is raw bytes and needs `--org`.
+fn run_68000(cli: &Cli) -> ExitCode {
+    use rcdis::m68k::{M68kDisOptions, disassemble_m68k};
+    let raw = match std::fs::read(&cli.file) {
+        Ok(b) => b,
+        Err(e) => return fail(format!("cannot read {}: {e}", cli.file.display())),
+    };
+    let gemdos = raw.starts_with(&[0x60, 0x1A]);
+    let (body, default_org): (Vec<u8>, Option<u32>) = if gemdos {
+        match rc_common::prg::parse(&raw) {
+            Ok(p) => (p.text, Some(0)),
+            Err(e) => return fail(format!("{}: {e}", cli.file.display())),
+        }
+    } else {
+        (raw, None)
+    };
+    let org = match (&cli.org, default_org) {
+        (Some(o), _) => match rc_common::parse_number(o).map(u32::try_from) {
+            Ok(Ok(a)) => a,
+            Ok(Err(_)) => return fail("--org: out of range"),
+            Err(e) => return fail(format!("--org: {e}")),
+        },
+        (None, Some(a)) => a,
+        (None, None) => return fail("a raw file needs --org <address>"),
+    };
+    if cli.skip > body.len() {
+        return fail(format!("--skip {} is past the end of the file", cli.skip));
+    }
+    let body = &body[cli.skip..];
+    let body = &body[..cli.length.map_or(body.len(), |l| l.min(body.len()))];
+    let Some(org) = (org as u64)
+        .checked_add(cli.skip as u64)
+        .and_then(|a| u32::try_from(a).ok())
+    else {
+        return fail("the start address passes the 24-bit address space");
+    };
+    if !cli.entry.is_empty() || cli.follow || !cli.data.is_empty() || !cli.symbols.is_empty() {
+        return fail(
+            "--entry, --follow, --data and --symbols are for the 8-bit CPUs; the 68000 is a linear sweep",
+        );
+    }
+    let result = match disassemble_m68k(
+        body,
+        &M68kDisOptions {
+            org,
+            comments: cli.addresses,
+        },
+    ) {
         Ok(r) => r,
         Err(e) => return fail(e),
     };

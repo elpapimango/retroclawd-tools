@@ -79,10 +79,10 @@ fn xex_cli_build_inspect_and_rebuild_preserve_disjoint_ranges() {
     assert!(listing.contains("$2000-$2002 (3 bytes)"), "{listing}");
     assert!(listing.contains("$4000-$4001 (2 bytes)"), "{listing}");
     let bytes = t.read("hello.xex");
-    let segments = rcld::atari::inspect(&bytes).unwrap();
+    let segments = rcld::xex::inspect(&bytes).unwrap();
     assert_eq!(segments[0].bytes, [0, 32]);
     assert_eq!(segments[1].bytes, [0xa9, 42, 0x60]);
-    assert_eq!(rcld::atari::create(segments).unwrap(), bytes);
+    assert_eq!(rcld::xex::create(segments).unwrap(), bytes);
     assert!(fails(&["build", &layout]).contains("--force"));
     ok(&["build", &layout, "--force"]);
     assert_eq!(t.read("hello.xex"), bytes);

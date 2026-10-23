@@ -87,7 +87,7 @@ pub fn sanitize_name(name: &str, taken: &mut HashSet<String>) -> String {
 }
 
 /// A `*` / `?` wildcard match on `NAME.EXT` (case insensitive); `*` matches any run of characters.
-fn glob(pattern: &str, name: &str) -> bool {
+pub(crate) fn glob(pattern: &str, name: &str) -> bool {
     fn go(p: &[u8], n: &[u8]) -> bool {
         match p.first() {
             None => n.is_empty(),

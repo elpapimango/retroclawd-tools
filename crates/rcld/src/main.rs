@@ -68,7 +68,7 @@ fn run() -> Result<(), String> {
         Command::Inspect { image } => {
             let bytes = std::fs::read(&image)
                 .map_err(|e| format!("cannot read {}: {e}", image.display()))?;
-            for (index, segment) in rcld::atari::inspect(&bytes)?.iter().enumerate() {
+            for (index, segment) in rcld::xex::inspect(&bytes)?.iter().enumerate() {
                 let end = usize::from(segment.start) + segment.bytes.len() - 1;
                 rc_common::out(&format!(
                     "{index}: ${:04X}-${end:04X} ({} bytes)\n",

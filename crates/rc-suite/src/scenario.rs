@@ -211,7 +211,17 @@ pub struct ScenarioReport {
     pub gaps: Vec<(String, String, String)>,
     /// Known gaps that pass now: the marker must go.
     pub closed: Vec<String>,
+    /// Not run because an input is unavailable here (firmware `--firmware auto` cannot find): id, why.
+    pub skipped: Vec<(String, String)>,
 }
+
+/// The line retroclawd prints when `--firmware auto` finds no firmware in the cache, on RomM or at its URL
+/// (`apps/retroclawd/src/firmware.rs` in the application): nothing to test against, so the scenario is skipped.
+const FIRMWARE_UNAVAILABLE: &str = "--firmware auto: no firmware with a matching SHA-1";
+
+/// Part of the detail retroclawd adds when a file was found but its hash is not the one wanted (a changed download, a
+/// bad RomM file): that is a failure, never a skip.
+const FIRMWARE_WRONG_HASH: &str = "has SHA-1";
 
 impl ScenarioReport {
     pub fn ok(&self) -> bool {
@@ -220,11 +230,12 @@ impl ScenarioReport {
 
     pub fn summary(&self) -> String {
         let mut s = format!(
-            "{} passed, {} failed, {} known gaps, {} gaps now closed\n",
+            "{} passed, {} failed, {} known gaps, {} gaps now closed, {} skipped\n",
             self.passed.len(),
             self.failed.len(),
             self.gaps.len(),
-            self.closed.len()
+            self.closed.len(),
+            self.skipped.len()
         );
         for (id, why) in &self.failed {
             s += &format!("  FAIL   {id}: {why}\n");
@@ -234,6 +245,9 @@ impl ScenarioReport {
         }
         for (id, reason, got) in &self.gaps {
             s += &format!("  gap    {id}: {reason}\n           fails now with: {got}\n");
+        }
+        for (id, why) in &self.skipped {
+            s += &format!("  SKIP   {id}: {why}\n");
         }
         s
     }
@@ -770,6 +784,19 @@ pub fn run_scenario(
 
 /// Sorts a scenario's result with its declared status into the report.
 pub fn record(report: &mut ScenarioReport, s: &Scenario, result: Result<(), String>) {
+    if let Err(e) = &result
+        && !e.contains(FIRMWARE_WRONG_HASH)
+        && let Some(line) = e.lines().find(|l| l.contains(FIRMWARE_UNAVAILABLE))
+    {
+        report.skipped.push((
+            s.id.clone(),
+            format!(
+                "firmware not available (no cache, RomM or network): {}",
+                line.trim()
+            ),
+        ));
+        return;
+    }
     match (result, s.status) {
         (Ok(()), Status::Pass) => report.passed.push(s.id.clone()),
         (Err(e), Status::Pass) => report.failed.push((s.id.clone(), e)),
@@ -1043,5 +1070,40 @@ gap = {{ reason = "Reference capture unavailable", evidence = "docs/vic20-gaps.m
         assert!(!report.ok(), "a gap that passes must be unmarked");
         assert_eq!(report.passed, ["S6"]);
         m.scenarios.clear();
+    }
+
+    #[test]
+    fn firmware_that_cannot_be_found_skips_the_scenario() {
+        let m = Manifest::parse(MINIMAL).unwrap();
+        let err = "retroclawd atari-st --headless --firmware auto failed: firmware: no RomM server (...)\n\
+                   --firmware auto: no firmware with a matching SHA-1 for: rom (wanted: EmuTOS 1.4 192K)\n\
+                   see `retroclawd romm match atari-st`";
+        let mut report = ScenarioReport::default();
+        record(&mut report, &m.scenarios[0], Err(err.to_string()));
+        assert!(report.ok(), "{}", report.summary());
+        assert!(report.failed.is_empty());
+        assert_eq!(report.skipped.len(), 1);
+        let summary = report.summary();
+        assert!(summary.contains("1 skipped"), "{summary}");
+        assert!(
+            summary.contains("SKIP   S6: firmware not available"),
+            "{summary}"
+        );
+        assert!(
+            summary.contains("no firmware with a matching SHA-1 for: rom"),
+            "the host's own line is kept: {summary}"
+        );
+    }
+
+    #[test]
+    fn firmware_with_the_wrong_hash_fails_the_scenario() {
+        let m = Manifest::parse(MINIMAL).unwrap();
+        let err = "retroclawd atari-st --headless --firmware auto failed: 
+                   --firmware auto: no firmware with a matching SHA-1 for: rom (wanted: EmuTOS 1.4 192K)                    [EmuTOS 1.4 192K: https://example/e.zip has SHA-1 0000 but firmware.toml pins 904e]";
+        let mut report = ScenarioReport::default();
+        record(&mut report, &m.scenarios[0], Err(err.to_string()));
+        assert!(report.skipped.is_empty(), "{}", report.summary());
+        assert_eq!(report.failed.len(), 1);
+        assert!(!report.ok());
     }
 }

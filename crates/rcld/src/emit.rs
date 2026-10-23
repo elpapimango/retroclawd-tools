@@ -239,7 +239,7 @@ fn atari_xex(c: &mut Ctx) -> Result<Made, String> {
             bytes: p.bytes.clone(),
         })
         .collect();
-    let bytes = crate::atari::create(segments)?;
+    let bytes = crate::xex::create(segments)?;
     Ok(Made { bytes, pieces })
 }
 
@@ -428,6 +428,7 @@ fn can_make(machine: Machine) -> &'static str {
         Machine::Atari => ".xex .car .bin",
         Machine::Spectrum => ".tap .tzx .sna .z80 .szx .dsk (+3) .bin",
         Machine::Cpc => ".dsk .bin",
+        Machine::AtariSt => ".prg",
         Machine::Generic => ".bin",
     }
 }

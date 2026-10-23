@@ -19,4 +19,5 @@ rcasm = { path = "../rcasm" }
 machine.workspace = true
 z80.workspace = true
 mos6502.workspace = true
+mc68000.workspace = true
 clap.workspace = true

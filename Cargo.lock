@@ -61,7 +61,7 @@ dependencies = [
 [[package]]
 name = "atari-media"
 version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-atari?rev=462496fb3794981eb444a0e2863c8b545948db26#462496fb3794981eb444a0e2863c8b545948db26"
+source = "git+https://github.com/elpapimango/retroclawd-atari?rev=04a2108d3eabb33a2c39a04adae058c99afffa53#04a2108d3eabb33a2c39a04adae058c99afffa53"
 
 [[package]]
 name = "bitflags"
@@ -312,6 +312,14 @@ version = "0.1.0"
 source = "git+https://github.com/elpapimango/retroclawd-crates?rev=a8cfb2ef44aef943d6900c98bce02758acf926eb#a8cfb2ef44aef943d6900c98bce02758acf926eb"
 
 [[package]]
+name = "mc68000"
+version = "0.1.0"
+source = "git+https://github.com/elpapimango/retroclawd-crates?rev=cdc441725cce3ae9771876eede52023f71f6edcd#cdc441725cce3ae9771876eede52023f71f6edcd"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "memchr"
 version = "2.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -410,6 +418,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "machine",
+ "mc68000",
  "mos6502",
  "rc-common",
  "z80",
@@ -421,6 +430,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "machine",
+ "mc68000",
  "mos6502",
  "rc-common",
  "rcasm",

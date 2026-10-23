@@ -504,3 +504,28 @@ fn real_disks_validate_and_survive_an_extract_and_add_round_trip() {
         eprintln!("skipping: no .d64 in {}", dir.display());
     }
 }
+
+/// An Atari ST disk from the command line: create, add, list, extract, and an executable boot sector.
+#[test]
+fn an_atari_st_disk_from_the_command_line() {
+    let t = Temp::new("st");
+    let disk = t.path("game.st");
+    ok(&["create", &disk]);
+    let file = t.path("hello.txt");
+    std::fs::write(&file, b"Hello, ST\r\n").unwrap();
+    ok(&["add", &disk, &file]);
+    let listing = ok(&["list", &disk]);
+    assert!(listing.contains("HELLO.TXT"), "{listing}");
+    let code = t.path("boot.bin");
+    std::fs::write(&code, [0x60, 0xFE]).unwrap();
+    ok(&["boot", &disk, &code]);
+    let b = std::fs::read(&disk).unwrap();
+    let sum = b[..512].chunks(2).fold(0u16, |s, w| {
+        s.wrapping_add(u16::from_be_bytes([w[0], w[1]]))
+    });
+    assert_eq!(sum, 0x1234);
+    let out = t.path("back.txt");
+    ok(&["extract", &disk, "HELLO.TXT", "-o", &out]);
+    assert_eq!(std::fs::read(&out).unwrap(), b"Hello, ST\r\n");
+    assert!(fails(&["boot", &file, &code]).contains("rcdisk"));
+}

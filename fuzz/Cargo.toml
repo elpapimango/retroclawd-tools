@@ -1,0 +1,42 @@
+[package]
+name = "retroclawd-tools-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+rc-common = { path = "../crates/rc-common" }
+rcasm = { path = "../crates/rcasm" }
+rcdis = { path = "../crates/rcdis" }
+rcdisk = { path = "../crates/rcdisk" }
+
+[[bin]]
+name = "prg"
+path = "fuzz_targets/prg.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "ahdi_fat16"
+path = "fuzz_targets/ahdi_fat16.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "rcasm68k"
+path = "fuzz_targets/rcasm68k.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "rcdis68k"
+path = "fuzz_targets/rcdis68k.rs"
+test = false
+doc = false
+
+# Not part of the tools workspace: `cargo +nightly fuzz run prg` from this folder.
+[workspace]

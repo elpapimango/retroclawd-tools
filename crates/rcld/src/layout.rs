@@ -39,6 +39,9 @@ pub enum Machine {
     Atari,
     Spectrum,
     Cpc,
+    /// The Atari ST: one 68000 program, written as a GEMDOS `.PRG`.
+    #[serde(rename = "atari-st")]
+    AtariSt,
     /// No machine: raw images only, and the CPU has to be named.
     Generic,
 }
@@ -50,6 +53,7 @@ impl Machine {
             Machine::Atari => "atari",
             Machine::Spectrum => "spectrum",
             Machine::Cpc => "cpc",
+            Machine::AtariSt => "atari-st",
             Machine::Generic => "generic",
         }
     }

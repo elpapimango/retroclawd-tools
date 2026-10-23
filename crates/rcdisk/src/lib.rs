@@ -8,6 +8,8 @@
 pub mod atari;
 pub mod cbm;
 pub mod cpm;
+pub mod hd;
+pub mod st;
 
 /// One file in a directory listing.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -119,6 +121,8 @@ pub const FORMATS: &[(&str, &str)] = &[
     ),
     ("dsk-ibm", "CPC IBM format, 8 sectors per track"),
     ("dsk-plus3", "Spectrum +3 format, 173 KB free (+3DOS)"),
+    ("st", "Atari ST, 80 tracks, double sided, 720 KB (FAT12)"),
+    ("st-ss", "Atari ST, 80 tracks, single sided, 360 KB (FAT12)"),
 ];
 
 /// Which format a file is, from its name and, failing that, its size and magic.
@@ -136,6 +140,7 @@ pub fn sniff(name: &str, bytes: &[u8]) -> Result<&'static str, String> {
         Some("g64") => return Ok("g64"),
         Some("dsk") | Some("edsk") => return Ok("dsk"),
         Some("atr") => return Ok("atr"),
+        Some("st") => return Ok("st"),
         _ => {}
     }
     if bytes.starts_with(b"MV - CPC") || bytes.starts_with(b"EXTENDED CPC DSK") {
@@ -167,6 +172,7 @@ pub fn open(name: &str, bytes: &[u8]) -> Result<Box<dyn Disk>, String> {
             "ATR filesystem operations are unsupported; use info or add/extract --sector".into(),
         ),
         "dsk" => cpm::open(bytes),
+        "st" => st::open(bytes),
         format => cbm::open(format, bytes),
     }
 }
@@ -175,6 +181,8 @@ pub fn open(name: &str, bytes: &[u8]) -> Result<Box<dyn Disk>, String> {
 pub fn create(format: &str, name: Option<&str>, id: Option<&str>) -> Result<Box<dyn Disk>, String> {
     if format.starts_with("dsk") {
         cpm::create(format)
+    } else if format.starts_with("st") {
+        st::create(format)
     } else {
         cbm::create(format, name, id)
     }

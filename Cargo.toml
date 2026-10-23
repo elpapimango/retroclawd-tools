@@ -9,11 +9,13 @@ license = "GPL-3.0-or-later"
 publish = false
 
 [workspace.dependencies]
-atari-media = { git = "https://github.com/elpapimango/retroclawd-atari", rev = "462496fb3794981eb444a0e2863c8b545948db26" }
+atari-media = { git = "https://github.com/elpapimango/retroclawd-atari", rev = "04a2108d3eabb33a2c39a04adae058c99afffa53" }
 # The retroclawd crates, by git revision (public repositories).
 machine = { git = "https://github.com/elpapimango/retroclawd-crates", rev = "a8cfb2ef44aef943d6900c98bce02758acf926eb" }
 z80 = { git = "https://github.com/elpapimango/retroclawd-crates", rev = "a8cfb2ef44aef943d6900c98bce02758acf926eb" }
 mos6502 = { git = "https://github.com/elpapimango/retroclawd-crates", rev = "a8cfb2ef44aef943d6900c98bce02758acf926eb" }
+# The 68000 core: the assembler checks what it produces with its disassembler, `rcdis` prints with it.
+mc68000 = { git = "https://github.com/elpapimango/retroclawd-crates", rev = "cdc441725cce3ae9771876eede52023f71f6edcd" }
 # The Commodore format crates (retroclawd-commodore), by revision.
 cbm-dos = { git = "https://github.com/elpapimango/retroclawd-commodore", rev = "8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7" }
 d64 = { git = "https://github.com/elpapimango/retroclawd-commodore", rev = "8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7" }

@@ -35,3 +35,11 @@
 * The C64 BASIC line layout (`SYS` token 0x9E, link pointer) and the Spectrum BASIC token numbers and the hidden five-byte
   number form follow the C64 and Spectrum ROM disassemblies; the CBM80 cartridge signature is the one the C64 KERNAL tests
   at $8004. The loaders were run on the real ROMs in the emulator.
+
+## Atari ST FAT12 disks (`rcdisk`, `crates/rcdisk/src/st.rs`, 2026-10-21)
+
+- Microsoft, *FAT: General Overview of On-Disk Format*, v1.03, December 2000,
+  https://download.microsoft.com/download/1/6/1/161ba512-40e2-4cc9-843a-923143f3456c/fatgen103.doc (SHA-256
+  `b17d66c796d9cd3070adf4ccbc00add5a8b6b6f5491fe8ea949df778fce60172`): BPB fields, FAT12 entries, directory entries,
+  short names.
+- *Atari ST Internals*, Abacus Software 1985, pp.178-179: the ST's BPB values and the executable boot sector.

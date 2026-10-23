@@ -7,6 +7,7 @@
 mod asm;
 pub mod cpu;
 pub mod expr;
+pub mod m68k;
 pub mod text;
 
 pub use asm::{Assembly, DiskFiles, Files, ListEntry, Options, Segment, Symbol, assemble};

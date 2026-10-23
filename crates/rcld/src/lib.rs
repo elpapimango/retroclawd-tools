@@ -6,6 +6,7 @@
 //! the image the output's extension asks for: a `.prg`, a disk, a cartridge, a tape or a snapshot.
 
 pub mod atari;
+pub mod xex;
 pub mod basic;
 pub mod emit;
 pub mod layout;
@@ -88,6 +89,9 @@ fn cpu_of(layout: &Layout) -> Result<rcasm::Cpu, String> {
     match (layout.machine, layout.cpu.as_deref()) {
         (Machine::C64 | Machine::Atari, _) => Ok(rcasm::Cpu::Mos6502),
         (Machine::Spectrum | Machine::Cpc, _) => Ok(rcasm::Cpu::Z80),
+        (Machine::AtariSt, _) => {
+            Err("the Atari ST is a 68000: it is built by `rcld::atari`".to_string())
+        }
         (Machine::Generic, Some("6502" | "6510" | "8502")) => Ok(rcasm::Cpu::Mos6502),
         (Machine::Generic, Some("z80")) => Ok(rcasm::Cpu::Z80),
         (Machine::Generic, Some(other)) => Err(format!("cpu \"{other}\": 6502 or z80")),
@@ -254,6 +258,9 @@ pub fn build(
     output: &Path,
     cli_defines: &[(String, i64)],
 ) -> Result<Build, String> {
+    if layout.machine == Machine::AtariSt {
+        return atari::build(layout, base, output, cli_defines);
+    }
     let program = load(layout, base, cli_defines)?;
     emit::emit(layout, base, output, program)
 }

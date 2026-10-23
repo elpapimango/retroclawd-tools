@@ -2,6 +2,7 @@
 //! source file is reported, and the "never overwrite without `--force`" rule for output files.
 
 pub mod json;
+pub mod prg;
 
 use std::fmt;
 use std::fs;

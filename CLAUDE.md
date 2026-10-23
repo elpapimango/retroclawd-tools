@@ -29,6 +29,9 @@ A screen or memory known gap with no captured golden may omit both `golden` and 
 Its reason and evidence must be nonempty. The runner reports `not run: reference golden not captured` without starting the emulator;
 it never substitutes a hash, invents a comparison, or counts that scenario as passed. Memory ranges remain required.
 Once a golden is supplied, the ordinary pin, comparison and unexpected-pass rules apply unchanged.
+`status = "known-gap"` with a `gap` (reason and evidence) and the run fails when a known gap starts passing; unknown keys are errors. A scenario whose `--firmware auto` finds no firmware (no cache, RomM or network; retroclawd's "no firmware with a
+matching SHA-1" line) is reported as `SKIP` with that line and does not fail the run; a file found with the wrong hash
+(`has SHA-1 ... but ...`) still fails it.
 **A picture from another emulator is compared with `mode = "similarity"`** (both reduced to a 64x48 luminance grid over an optional
 `crop`, mean absolute difference at most `max_mad`): the reference draws its own border, scale and palette, so pixel equality is not
 possible. `normalize = true` stretches each picture's pixel brightness to the full range (a different palette); `anchor_ground =
@@ -54,6 +57,10 @@ diagnostics' lines are compared with Caprice32 (`scripts/capture_caprice_screen.
 the screen differently). Not done: a `trace` kind (S8; the
 plugin ABI has no instruction trace), memory windows above 64K, S2/S4/S7 on machines where the reference cannot be driven (the 128K
 menu, the C128's S3), z80test and the CPC acid disks as manifests (the hand-written suites cover them).
+The Atari ST's reference is Hatari 2.6.1, run as a black box: `scripts/capture_hatari_screen.py ROM VBLS OUT.png`
+(a debugger breakpoint at that VBL takes `screenshot`; 640x400 with `--borders off --statusbar off`, byte-identical on
+repeated runs) and `scripts/capture_hatari_trace.py` (`--kind pc|io`, `--disk-a`, `--trace-extra`). Hatari cannot be
+given keys or mouse input headlessly, so the ST's input scenarios have `exact` goldens made by retroclawd.
 
 ## What this is
 
@@ -82,8 +89,9 @@ crates/rc-common/   Diag (file:line messages), number parsing, write_file (never
 crates/rcasm/       lib + bin: expr.rs (expressions), text.rs, cpu.rs (6502 and Z80 encoders), asm.rs (passes,
                     directives, macros, conditionals, includes), lib.rs (flat/prg images, symbol file, listing)
 crates/rcdis/       lib + bin: linear and flow disassembly, labels, symbols, `.byte` fallback, rcasm-checked
-crates/rcdisk/      lib + bin: a `Disk` trait (lib.rs) with two adapters: cbm.rs (d64/x64/d71/d81/g64 over cbm-dos) and
-                    cpm.rs (CPCEMU .dsk over dsk::cpm, AMSDOS/+3DOS headers); main.rs is the CLI
+crates/rcdisk/      lib + bin: a `Disk` trait (lib.rs) with three adapters: cbm.rs (d64/x64/d71/d81/g64 over cbm-dos),
+                    cpm.rs (CPCEMU .dsk over dsk::cpm, AMSDOS/+3DOS headers) and st.rs (Atari ST .st, FAT12, `rcdisk
+                    boot` for an executable boot sector); main.rs is the CLI
 crates/rctape/      lib + bin: tzx.rs (block model: ID + body, byte-exact round trip), spectrum.rs (header, checksum, BASIC
                     lister), c64.rs (.t64, .tap facts over c64-tape), lib.rs (.tap, rows, selection, split, cleanup,
                     extract); main.rs is the CLI
