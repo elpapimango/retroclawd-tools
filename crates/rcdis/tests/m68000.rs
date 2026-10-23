@@ -145,7 +145,7 @@ fn random_bytes_assemble_back_to_themselves() {
                 }
             })
             .collect();
-        let org = 0x2000 * (round as u32 % 5);
+        let org = 0x2000 * (round % 5);
         let d = disassemble_m68k(&image, &opts(org)).unwrap();
         let again = assemble_m68k("t.s", &d.source, &M68kOptions::default(), &NoFiles)
             .unwrap_or_else(|e| panic!("round {round}: {}", e[0]))
