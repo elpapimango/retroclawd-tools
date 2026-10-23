@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Captures Hatari's screen at a given VBL as a PNG: the reference picture of an Atari ST scenario (S1).
 
-    capture_hatari_screen.py ROM VBLS OUT.png [--memsize MIB] [--disk-a IMAGE] [--hatari PATH]
+    capture_hatari_screen.py ROM VBLS OUT.png [--memsize MIB] [--disk-a IMAGE] [--hatari PATH] [--borders on|off]
+                             [--video-timing ws1..ws4] [--monitor rgb|mono]
 
 Hatari (2.6.1+) runs as a black box (GPL; nothing of it is copied) with `--parse FILE`, whose debugger commands set a
 breakpoint `b VBL = VBLS :trace :once :file SHOT` (Hatari manual `doc/debugger.html`, "Breakpoint options" and
@@ -26,6 +27,9 @@ def main() -> int:
     ap.add_argument("--hatari", default=shutil.which("hatari") or "hatari")
     ap.add_argument("--memsize", default="1")
     ap.add_argument("--disk-a")
+    ap.add_argument("--borders", default="off", choices=["on", "off"])
+    ap.add_argument("--video-timing", default="ws3")
+    ap.add_argument("--monitor", default="rgb", choices=["rgb", "mono"])
     a = ap.parse_args()
     out = os.path.abspath(a.out)
     if os.path.exists(out):
@@ -45,7 +49,10 @@ def main() -> int:
             "--sound", "off",
             "--fast-forward", "on",
             "--confirm-quit", "off",
-            "--borders", "off",
+            "--borders", a.borders,
+            "--cpu-exact", "true",
+            "--video-timing", a.video_timing,
+            "--monitor", a.monitor,
             "--statusbar", "off",
             "--drive-led", "off",
             "--parse", start,
