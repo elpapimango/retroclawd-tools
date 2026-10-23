@@ -29,6 +29,7 @@ def main() -> int:
     ap.add_argument("length")
     ap.add_argument("out")
     ap.add_argument("--hatari", default=shutil.which("hatari") or "hatari")
+    ap.add_argument("--machine", default="st", choices=["st", "megast", "ste"], help="the Hatari machine type")
     ap.add_argument("--memsize", default="1")
     ap.add_argument("--video-timing", default="ws3")
     ap.add_argument("--monitor", default="rgb", choices=["rgb", "mono"])
@@ -49,7 +50,7 @@ def main() -> int:
         cmd = [
             a.hatari,
             "--configfile", cfg,
-            "--machine", "st",
+            "--machine", a.machine,
             "--tos", os.path.abspath(a.rom),
             "--memsize", a.memsize,
             "--cpu-exact", "true",

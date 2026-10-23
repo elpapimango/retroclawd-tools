@@ -25,6 +25,7 @@ def main() -> int:
     ap.add_argument("vbls", type=int)
     ap.add_argument("out")
     ap.add_argument("--hatari", default=shutil.which("hatari") or "hatari")
+    ap.add_argument("--machine", default="st", choices=["st", "megast", "ste"], help="the Hatari machine type")
     ap.add_argument("--memsize", default="1")
     ap.add_argument("--disk-a")
     ap.add_argument("--borders", default="off", choices=["on", "off"])
@@ -43,7 +44,7 @@ def main() -> int:
             f.write(f"b VBL = {a.vbls} :trace :once :file {shot}\n")
         cmd = [
             a.hatari,
-            "--machine", "st",
+            "--machine", a.machine,
             "--tos", os.path.abspath(a.rom),
             "--memsize", a.memsize,
             "--sound", "off",

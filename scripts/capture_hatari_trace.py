@@ -38,6 +38,7 @@ def main() -> int:
     ap.add_argument("count", type=int)
     ap.add_argument("out")
     ap.add_argument("--hatari", default=shutil.which("hatari") or "hatari")
+    ap.add_argument("--machine", default="st", choices=["st", "megast", "ste"], help="the Hatari machine type")
     ap.add_argument("--vbls", type=int, default=5)
     ap.add_argument("--memsize", default="1")
     ap.add_argument("--kind", choices=["pc", "io"], default="pc")
@@ -49,7 +50,7 @@ def main() -> int:
         trace = os.path.join(tmp, "trace.txt")
         cmd = [
             a.hatari,
-            "--machine", "st",
+            "--machine", a.machine,
             "--tos", os.path.abspath(a.rom),
             "--memsize", a.memsize,
             "--sound", "off",
