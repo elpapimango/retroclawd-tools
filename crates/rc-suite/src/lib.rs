@@ -922,7 +922,11 @@ mod audio_tests {
                     as f32
             })
             .collect();
-        Audio { rate, samples }
+        Audio {
+            rate,
+            samples,
+            channels: 1,
+        }
     }
 
     #[test]
