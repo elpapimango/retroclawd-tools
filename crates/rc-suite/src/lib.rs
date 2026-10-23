@@ -286,11 +286,13 @@ impl Outcome {
 /// What a run played: mono samples in -1..1.
 pub struct Audio {
     pub rate: u32,
+    /// Interleaved when the file has more than one channel; `channel` picks one out.
     pub samples: Vec<f32>,
+    pub channels: usize,
 }
 
 impl Audio {
-    /// Reads the 16-bit mono PCM `.wav` that `--dump-audio` writes.
+    /// Reads the 16-bit PCM `.wav` that `--dump-audio` writes (mono or interleaved stereo).
     pub fn read(path: &Path) -> Result<Audio, String> {
         let bytes =
             std::fs::read(path).map_err(|e| format!("no audio file {}: {e}", path.display()))?;
@@ -298,13 +300,42 @@ impl Audio {
             return Err("not a .wav file".to_string());
         }
         let rate = u32::from_le_bytes(bytes[24..28].try_into().expect("4 bytes"));
+        let channels = usize::from(u16::from_le_bytes(
+            bytes[22..24].try_into().expect("2 bytes"),
+        ))
+        .max(1);
         let samples = bytes[44..]
             .as_chunks::<2>()
             .0
             .iter()
             .map(|b| f32::from(i16::from_le_bytes(*b)) / 32768.0)
             .collect();
-        Ok(Audio { rate, samples })
+        Ok(Audio {
+            rate,
+            samples,
+            channels,
+        })
+    }
+
+    /// One channel of the file as a mono signal at the same rate.
+    pub fn channel(&self, n: usize) -> Result<Audio, String> {
+        if n >= self.channels {
+            return Err(format!(
+                "the audio has {} channel(s), not channel {n}",
+                self.channels
+            ));
+        }
+        Ok(Audio {
+            rate: self.rate,
+            samples: self
+                .samples
+                .iter()
+                .skip(n)
+                .step_by(self.channels)
+                .copied()
+                .collect(),
+            channels: 1,
+        })
     }
 
     /// The samples from `from_s` to `to_s` seconds.

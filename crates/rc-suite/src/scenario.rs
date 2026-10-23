@@ -155,6 +155,12 @@ pub struct AudioExpect {
     /// The window must be silent: the level (mean removed) stays below this.
     #[serde(default)]
     pub silent_below_rms: Option<f64>,
+    /// For a stereo file: the channel (0 left, 1 right) the checks above look at. Default: the first.
+    #[serde(default)]
+    pub channel: Option<usize>,
+    /// For a stereo file: the other channel's level (mean removed) must stay below this (a tone on one side only).
+    #[serde(default)]
+    pub other_channel_below_rms: Option<f64>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -642,7 +648,25 @@ fn run_memory(env: &Env, goldens: &Path, manifest: &Manifest, s: &Scenario) -> R
 fn run_audio(env: &Env, manifest: &Manifest, s: &Scenario) -> Result<(), String> {
     let want = s.audio.as_ref().expect("validated");
     let out = base_run(env, manifest, s)?.audio().go()?;
-    let audio = out.audio()?;
+    let whole = out.audio()?;
+    let audio_owned;
+    let audio = if whole.channels > 1 {
+        let ch = want.channel.unwrap_or(0);
+        if let Some(limit) = want.other_channel_below_rms {
+            for other in (0..whole.channels).filter(|c| *c != ch) {
+                let rms = whole.channel(other)?.rms(want.from_s, want.to_s);
+                if rms >= limit {
+                    return Err(format!(
+                        "channel {other} should stay below {limit}, its level is {rms:.4}"
+                    ));
+                }
+            }
+        }
+        audio_owned = whole.channel(ch)?;
+        &audio_owned
+    } else {
+        whole
+    };
     if let Some(limit) = want.silent_below_rms {
         let rms = audio.rms(want.from_s, want.to_s);
         if rms >= limit {
