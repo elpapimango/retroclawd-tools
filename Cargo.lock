@@ -309,7 +309,7 @@ source = "git+https://github.com/elpapimango/retroclawd-crates?rev=a8cfb2ef44aef
 [[package]]
 name = "mc68000"
 version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-crates?rev=39dfdcc276719bffd9da53ead351e0d3da14b1bb#39dfdcc276719bffd9da53ead351e0d3da14b1bb"
+source = "git+https://github.com/elpapimango/retroclawd-crates?rev=cdc441725cce3ae9771876eede52023f71f6edcd#cdc441725cce3ae9771876eede52023f71f6edcd"
 dependencies = [
  "serde",
 ]
