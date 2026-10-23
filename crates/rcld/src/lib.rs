@@ -6,12 +6,12 @@
 //! the image the output's extension asks for: a `.prg`, a disk, a cartridge, a tape or a snapshot.
 
 pub mod atari;
-pub mod xex;
 pub mod basic;
 pub mod emit;
 pub mod layout;
 pub mod place;
 pub mod templates;
+pub mod xex;
 
 use layout::{Layout, Machine, Value};
 use place::Piece;
