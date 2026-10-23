@@ -24,6 +24,11 @@ prints the SHA-256 to pin a golden, `rc-scenarios check <manifest>` validates wi
 `RC_GOLDENS` (fetched from RomM by hash, never committed), diff images of failing screens in `RC_SCENARIO_OUT`.
 
 Rules the code enforces: every golden is pinned by hash; a tolerance needs a written `reason`; a scenario that cannot be matched is
+`status = "known-gap"` with a `gap` (reason and evidence) and the run fails when a known gap starts passing; unknown keys are errors.
+A screen or memory known gap with no captured golden may omit both `golden` and `golden_sha256` (and `compare` for a screen).
+Its reason and evidence must be nonempty. The runner reports `not run: reference golden not captured` without starting the emulator;
+it never substitutes a hash, invents a comparison, or counts that scenario as passed. Memory ranges remain required.
+Once a golden is supplied, the ordinary pin, comparison and unexpected-pass rules apply unchanged.
 `status = "known-gap"` with a `gap` (reason and evidence) and the run fails when a known gap starts passing; unknown keys are errors. A scenario whose `--firmware auto` finds no firmware (no cache, RomM or network; retroclawd's "no firmware with a
 matching SHA-1" line) is reported as `SKIP` with that line and does not fail the run; a file found with the wrong hash
 (`has SHA-1 ... but ...`) still fails it.
@@ -67,6 +72,17 @@ brief, with the decisions already taken, is `docs/prompts/retroclawd-tools.md` i
 own instead of being a fifth submodule.
 
 ## Layout
+
+Atari media: `rcdisk::atari` uses the published `atari-media` Family Format
+for canonical ATR geometry/info and raw one-based sector insertion/extraction.
+`rcdisk create out.atr --sectors 720 --sector-size 128` makes zero-filled
+unformatted media; `add IMAGE FILE --sector N` and
+`extract IMAGE --sector N --count N -o FILE` transfer whole sectors.
+No Atari DOS filesystem is claimed. `rcld` accepts `machine = "atari"`
+for 6502 `.xex` builds, keeping disjoint pieces as segments and adding RUNAD
+only for explicit `entry`. `rcld inspect FILE.xex` lists ordered ranges.
+The root workspace dependency pins `retroclawd-atari`; no local path override
+is needed. No Atari Machine, SIO, POKEY or Host behavior belongs to these tools.
 
 ```
 crates/rc-common/   Diag (file:line messages), number parsing, write_file (never overwrites without --force)
@@ -245,8 +261,13 @@ purpose. Everything skips unless `RETROCLAWD_BIN`, `RETROCLAWD_MACHINE_PLUGIN_DI
 * `rcdis` reads raw and `.prg` input only; extracting from a disk or tape image (`rcdis game.d64:NAME`) is still to do.
 * `rcdisk`: no `.g64` output, no REL/partition copying, CP/M writing only for the standard 1 KB layout and side 0, no
   BASIC tokenizer for AMSDOS `.bas` files, no zip/URL inputs.
-* `rctape`: no Commodore `.tap` decoding (only facts), no `.wav`/`.csw`/`.pzx`/`.voc`, `add --type basic` needs an
+* `rctape`: no Commodore `.tap` file decoding (C64 facts; VIC-20 v0/v1 and C16/Plus4 v2 structural validation/normalization), no `.wav`/`.csw`/`.pzx`/`.voc`, `add --type basic` needs an
   already tokenised program, loops and jumps are kept but not followed.
+  `from-prg` creates platform-1 PAL/NTSC VIC-20 KERNAL tapes using the Family's
+  existing Commodore encoder and strict `c64-tape::vic20` format API.
+  Both real regional KERNALs loaded the generated fixture in retroclawd's two
+  execution modes and installed VICE 3.9 with fast tape traps disabled.
+  Only speed 1 was firmware-verified; `--tape-speed` scales pulses, not CPU time.
 * `rcld`: no CPC tape / ZX81 / `.cpr` output, no 128K snapshots, sources are assembled as one program (no separate modules).
 * `rcsnap`: `create` is 48K only, there is no register patching of an existing snapshot, ZX81 BASIC is not listed.
 * The Z80 `DD`/`FD` prefix before an instruction that ignores it is disassembled but not assembled back (rcdis emits
@@ -257,4 +278,3 @@ purpose. Everything skips unless `RETROCLAWD_BIN`, `RETROCLAWD_MACHINE_PLUGIN_DI
 - `cpc_acid`: `RC_ACID_PRINT=1` prints `BASELINE|name|finishes|{failing}|passed|last line|frames`; `RC_ACID_ONLY=name`. Segmented runner: 700-frame first segment, then 200-frame segments via `--at N:save_state`/`--load-state`; 40 silent segments = hang. `UNRELIABLE` = programs the author flags (ppi vsync-on).
 - Remaining CPC gaps (in `BASELINE`): cpctest, asicfloat, asicppi (hang), asicrom, asictest, asic_external_ram, dmatest, pritest, FDC programs (nec765 is instant, no overrun), fdc_wp (needs write-protect).
 - `spectrum_timing`: pad filler must use `ld d,0` (never BC; port programs keep it). Delay = contended cycles - uncontended cycles.
-

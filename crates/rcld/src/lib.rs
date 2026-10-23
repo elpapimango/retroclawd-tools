@@ -11,6 +11,7 @@ pub mod emit;
 pub mod layout;
 pub mod place;
 pub mod templates;
+pub mod xex;
 
 use layout::{Layout, Machine, Value};
 use place::Piece;
@@ -86,7 +87,7 @@ pub fn parse_symbols(text: &str) -> Result<Vec<(String, i64)>, String> {
 
 fn cpu_of(layout: &Layout) -> Result<rcasm::Cpu, String> {
     match (layout.machine, layout.cpu.as_deref()) {
-        (Machine::C64, _) => Ok(rcasm::Cpu::Mos6502),
+        (Machine::C64 | Machine::Atari, _) => Ok(rcasm::Cpu::Mos6502),
         (Machine::Spectrum | Machine::Cpc, _) => Ok(rcasm::Cpu::Z80),
         (Machine::AtariSt, _) => {
             Err("the Atari ST is a 68000: it is built by `rcld::atari`".to_string())

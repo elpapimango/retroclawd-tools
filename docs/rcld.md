@@ -2,6 +2,7 @@
 
 ```
 rcld build     LAYOUT [-o OUTPUT] [--map FILE] [--symbols FILE] [-D NAME=VALUE]... [--force]
+rcld inspect   IMAGE.xex
 rcld template  c64|spectrum|cpc
 ```
 
@@ -14,7 +15,7 @@ A layout is a TOML file; every path in it is relative to the layout file, and `r
 point. Nothing overwrites an existing file without `--force`.
 
 ```toml
-machine = "c64"                  # c64 | spectrum | cpc | generic (needs cpu = "6502" or "z80")
+machine = "c64"                  # c64 | spectrum | cpc | atari | generic (needs cpu = "6502" or "z80")
 name = "MYGAME"                  # program name on the medium (tape header, disk file, cartridge)
 entry = "start"                  # a symbol of the inputs, or an address
 output = "mygame.d64"            # the extension chooses the image; `rcld build -o` overrides
@@ -54,6 +55,46 @@ LEVEL = 3
 
 [options]                            # see the machines below
 ```
+
+## Atari XEX
+
+Use `machine = "atari"` and an `.xex` output to package the existing 6502
+assembler output or addressed raw binaries as disjoint load segments:
+
+```toml
+machine = "atari"
+output = "hello.xex"
+entry = "start"
+
+[[input]]
+asm = "hello.asm"
+
+[[input]]
+bin = "data.bin"
+at = 0x4000
+```
+
+`rcld build layout.toml` keeps gaps as separate segments rather than filling
+them. Normal region/reserve/overlap checks apply. An explicit `entry` adds a
+two-byte RUNAD segment at `$02E0`; without `entry`, no vector is invented.
+If inputs already supply RUNAD, omit `entry`; defining both is an overlap error.
+No BASIC stub or INITAD execution is involved. Assembler syntax is unchanged.
+`rcld inspect hello.xex` reports each ordered segment's inclusive address range
+and length, including repeats/overlaps in external files, without executing it.
+Library APIs `atari::inspect` and `atari::create` use the published family
+`atari-media` crate and preserve supplied segment order.
+
+## Atari CAR
+
+An Atari `.car` output packages a standard 8K cartridge at `$A000-$BFFF`,
+or 16K when any input starts below `$A000` within `$8000-$BFFF`. The emitter
+checks the ROM window, fills unused bytes with the layout's `fill` value,
+and writes the typed CART header and checksum through `atari-media`.
+Use `fill = 255` for unconnected ROM bytes.
+
+Supply the native OS entry/init vectors and flags explicitly at `$BFFA-$BFFF`;
+unlike `.xex`, the emitter inserts no RUNAD or startup code. XEGS banked
+creation and CAS creation are not exposed by this linker.
 
 ## Checks
 

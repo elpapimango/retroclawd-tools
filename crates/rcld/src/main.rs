@@ -12,7 +12,7 @@ use std::process::ExitCode;
         A layout file (TOML) names the inputs (assembler sources, raw binaries, .prg files, symbol files), the memory \
         regions they may use and the machine. rcld assembles the sources, checks that nothing overlaps or leaves its \
         region, and writes the image the output's extension asks for: .prg, .d64, .d81 or .crt for the C64; .tap, \
-        .tzx, .sna, .z80, .szx or .dsk for the Spectrum; .dsk for the CPC; .bin for any.\n\n\
+        .tzx, .sna, .z80, .szx or .dsk for the Spectrum; .dsk for the CPC; .xex for Atari; .bin for any.\n\n\
         `rcld template c64|spectrum|cpc` prints a starting layout. Nothing overwrites an existing file without --force."
 )]
 struct Cli {
@@ -22,6 +22,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Inspect ordered XEX load segments without executing INITAD/RUNAD.
+    Inspect { image: PathBuf },
     /// Link: assemble, place, check and write the image.
     Build {
         layout: PathBuf,
@@ -63,6 +65,18 @@ fn parse_define(text: &str) -> Result<(String, i64), String> {
 
 fn run() -> Result<(), String> {
     match Cli::parse().command {
+        Command::Inspect { image } => {
+            let bytes = std::fs::read(&image)
+                .map_err(|e| format!("cannot read {}: {e}", image.display()))?;
+            for (index, segment) in rcld::xex::inspect(&bytes)?.iter().enumerate() {
+                let end = usize::from(segment.start) + segment.bytes.len() - 1;
+                rc_common::out(&format!(
+                    "{index}: ${:04X}-${end:04X} ({} bytes)\n",
+                    segment.start,
+                    segment.bytes.len()
+                ));
+            }
+        }
         Command::Template { machine } => {
             let text = rcld::templates::template(&machine).ok_or_else(|| {
                 format!("no template for \"{machine}\"; try c64, spectrum or cpc")

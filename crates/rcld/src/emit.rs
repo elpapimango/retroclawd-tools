@@ -200,6 +200,49 @@ fn bin(c: &mut Ctx) -> Result<Made, String> {
     Ok(Made { bytes, pieces })
 }
 
+fn atari_car(c: &mut Ctx) -> Result<Made, String> {
+    let pieces = c.checked(c.user.clone())?;
+    if let Some(piece) = pieces.iter().find(|p| p.start < 0x8000 || p.end() > 0xc000) {
+        return Err(format!(
+            "{} ({}) is outside the cartridge ROM ($8000-$BFFF)",
+            piece.name,
+            piece.range()
+        ));
+    }
+    let lowest = c
+        .lowest()
+        .ok_or("there is nothing to put in the cartridge")?;
+    let base = if lowest >= 0xa000 { 0xa000 } else { 0x8000 };
+    let mut rom = vec![c.fill; usize::from(0xc000 - base)];
+    for piece in &pieces {
+        let offset = usize::from(piece.start - base);
+        rom[offset..offset + piece.bytes.len()].copy_from_slice(&piece.bytes);
+    }
+    let bytes = atari_media::Cartridge::parse_raw(&rom, None)?.to_car();
+    Ok(Made { bytes, pieces })
+}
+
+fn atari_xex(c: &mut Ctx) -> Result<Made, String> {
+    let mut pieces = c.user.clone();
+    if let Some((entry, _)) = c.entry {
+        pieces.push(Piece {
+            name: "RUNAD".into(),
+            start: 0x02e0,
+            bytes: entry.to_le_bytes().to_vec(),
+        });
+    }
+    let pieces = c.checked(pieces)?;
+    let segments = pieces
+        .iter()
+        .map(|p| atari_media::Segment {
+            start: p.start,
+            bytes: p.bytes.clone(),
+        })
+        .collect();
+    let bytes = crate::xex::create(segments)?;
+    Ok(Made { bytes, pieces })
+}
+
 fn spectrum_snapshot(c: &mut Ctx, format: Format) -> Result<Made, String> {
     let pieces = c.checked(c.user.clone())?;
     no_rom(&pieces)?;
@@ -382,6 +425,7 @@ fn cpm_disk(c: &mut Ctx, format: &str, header: &str) -> Result<Made, String> {
 fn can_make(machine: Machine) -> &'static str {
     match machine {
         Machine::C64 => ".prg .d64 .d81 .crt .bin",
+        Machine::Atari => ".xex .car .bin",
         Machine::Spectrum => ".tap .tzx .sna .z80 .szx .dsk (+3) .bin",
         Machine::Cpc => ".dsk .bin",
         Machine::AtariSt => ".prg",
@@ -418,6 +462,8 @@ pub fn emit(
     };
     let made = match (layout.machine, ext.as_str()) {
         (_, "bin") => bin(&mut c),
+        (Machine::Atari, "xex") => atari_xex(&mut c),
+        (Machine::Atari, "car") => atari_car(&mut c),
         (Machine::C64, "prg") => c64_prg(&mut c),
         (Machine::C64, "d64") => c64_disk(&mut c, "d64"),
         (Machine::C64, "d81") => c64_disk(&mut c, "d81"),

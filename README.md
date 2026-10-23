@@ -9,12 +9,26 @@ tools. The tools build **on their own**; the emulator application does not build
 |---|---|---|
 | [`rcasm`](docs/rcasm.md) | two-pass assembler for the 6502 and the Z80, one shared syntax; flat binary, `.prg`, symbol file, listing | works |
 | [`rcdis`](docs/rcdis.md) | disassembler for the 6502 and the Z80 that writes source `rcasm` assembles back to the same bytes | works |
-| [`rcdisk`](docs/rcdisk.md) | list, info, validate, extract, add, rm, rename, create and convert disk images: Commodore `.d64`/`.x64`/`.d71`/`.d81` (`.g64` read), CPC / +3 `.dsk` with AMSDOS and +3DOS headers | works |
-| [`rctape`](docs/rctape.md) | list, info, validate, extract, cat (hex / BASIC), cut, rm, merge, split, cleanup, add and convert tape images: ZX Spectrum `.tzx` block by block and `.tap`, Commodore `.t64` (and `.tap` described) | works |
+| [`rcdisk`](docs/rcdisk.md) | list, info, validate, extract, add, rm, rename, create and convert disk images: Commodore `.d64`/`.x64`/`.d71`/`.d81` (`.g64` read), CPC / +3 `.dsk` with AMSDOS and +3DOS headers; Atari `.atr` info, blank creation and raw sectors (no filesystem) | works |
+| [`rctape`](docs/rctape.md) | inspect/edit Spectrum `.tzx`/`.tap`, extract Commodore `.t64`, inspect C64 `.tap`, validate/normalize VIC-20 TAP-v0/v1 and C16/Plus4 TAP-v2; `from-prg` creates VIC-20 KERNAL tapes | works |
 | [`rcsnap`](docs/rcsnap.md) | info, convert, dump, extract and create: ZX Spectrum `.z80`/`.sna`/`.szx` into each other, ZX81 `.p`/`.p81`, CPC `.sna`, C64 `.crt`, CPC Plus `.cpr` | works |
-| [`rcld`](docs/rcld.md) | place assembled programs (sources, binaries, `.prg`), check overlaps and regions, and write a runnable image: C64 `.prg`/`.d64`/`.d81`/`.crt` (with a `SYS` line), Spectrum `.tap`/`.tzx` (with a BASIC loader) and snapshots, CPC `.dsk` | works |
+| [`rcld`](docs/rcld.md) | place assembled programs (sources, binaries, `.prg`), check overlaps and regions, and write a runnable image: C64 `.prg`/`.d64`/`.d81`/`.crt` (with a `SYS` line), Spectrum `.tap`/`.tzx` (with a BASIC loader) and snapshots, CPC `.dsk`, Atari `.xex` build/inspect and standard `.car` creation | works |
 
 ## Build
+
+Reference capture: `scripts/capture_atari800_screen.py` drives Atari800 7.2.1
+Win64 through its monitor and native screenshot key, using explicit 800/XL/XE
+OS/BASIC replacements and no ROM patches. `--machine` selects 800, 800XL, 65XE
+(the equivalent reference 64K XL mapping), or 130XE. It supports cold boot,
+raw/XEX Programs, ATR/XFD disks and CAR cartridges, with optional memory
+goldens. It does not yet drive printable
+reference keyboard input or record reference audio. Windows/standard-library only;
+run `python scripts/capture_atari800_screen.py --help` for arguments.
+
+Scenario manifests may record missing reference audio measurements as
+`kind = "audio"`, `status = "known-gap"` with reason/evidence and no `audio`
+table. The runner reports these as not run, never as an empty successful check.
+Passing audio scenarios still require measured expectations.
 
 ```
 cargo build --release --workspace      # target/release/rcasm, target/release/rcdis
@@ -98,6 +112,19 @@ included). Programs built with `rcasm` run in the emulator and leave the expecte
 need the ROM images and a built emulator, so they run only when told where they are (see `CLAUDE.md`).
 
 See `CLAUDE.md` for the layout and conventions, `CREDITS.md` for the references.
+
+## Machine scenarios
+
+`rc-scenarios check <machine>.manifest.toml` validates a scenario manifest without
+firmware. `rc-scenarios run <manifest>` runs it with `RETROCLAWD_BIN`, the machine
+plugin directory, `RC_ROMS` and `RC_GOLDENS` configured (see `CLAUDE.md`).
+
+Every captured golden requires its real SHA-256. Before a reference capture is
+available, a `screen` or `memory` scenario may use `status = "known-gap"` with a
+nonempty `gap.reason` and `gap.evidence`, omitting the golden and hash together.
+The report explicitly says the comparison was not run; it is never counted as
+passed. Memory ranges remain required. Adding a golden restores the normal
+comparison rules, including failure when a known gap starts passing.
 
 ## License
 

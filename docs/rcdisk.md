@@ -5,11 +5,14 @@ rcdisk list      IMAGE [--json]
 rcdisk info      IMAGE [--json]
 rcdisk validate  IMAGE [--json]              exit status 1 when there are errors
 rcdisk extract   IMAGE [NAMES...] [-d DIR | -o FILE] [--keep-header] [--force]
+rcdisk extract   IMAGE --sector N [--count N] -o FILE [--force]             (ATR)
 rcdisk add       IMAGE FILES... [--name N] [--type T] [--replace] [-o OUT] [--force]
                                 [--user N] [--header amsdos|plus3dos] [--load A] [--entry A]   (CP/M)
+rcdisk add       IMAGE FILE --sector N [-o OUT] [--force]                  (ATR)
 rcdisk rm        IMAGE NAMES... [-o OUT] [--force]
 rcdisk rename    IMAGE OLD NEW [-o OUT] [--force]
 rcdisk create    OUTPUT [-f FORMAT] [-n NAME] [--id XY] [--force]
+rcdisk create    OUTPUT.atr [--sectors N] [--sector-size 128|256] [--force]
 rcdisk convert   INPUT OUTPUT [--to FORMAT] [--force]
 rcdisk formats
 ```
@@ -27,10 +30,35 @@ else overwrites an existing file without `--force`. Names may be patterns: `*` (
 | `.d71`, `.d81` | yes | yes | 1571, 1581 |
 | `.g64` | yes | no | the standard sectors are decoded; `convert --to d64` keeps those (copy protection is lost, and said so) |
 | `.dsk` / `.edsk` | yes | yes | CPCEMU standard and extended; CP/M with AMSDOS (CPC) or +3DOS (Spectrum +3) |
+| `.atr` | raw sectors | raw sectors | canonical 128/256-byte sectors; no DOS filesystem |
 
 `create --format`: `d64`, `d64-40`, `x64`, `d71`, `d81`, and for CP/M `dsk` (CPC data format, 178 KB free),
 `dsk-system` (CPC system format), `dsk-ibm`, `dsk-plus3` (+3, 173 KB free). The format is otherwise taken from the
 output's extension.
+
+## Atari ATR raw sectors
+
+`create boot.atr` makes 720 zero-filled 128-byte sectors, with no filesystem.
+Use `--sectors` and `--sector-size` to choose another supported geometry.
+At 256-byte density, sectors 1–3 still contain exactly 128 bytes each.
+`info` reports geometry and header write protection, not directory/free-space claims.
+
+```
+rcdisk create boot.atr --sectors 720 --sector-size 128
+rcdisk add boot.atr boot.bin --sector 1
+rcdisk extract boot.atr --sector 1 --count 3 -o boot-roundtrip.bin
+rcdisk info boot.atr --json
+```
+
+Supply a real boot header and program in `boot.bin`; `create` does not invent them.
+`add --sector` replaces whole consecutive sectors from one raw file, including
+the 128-to-256-byte transition when appropriate. A partial final sector,
+out-of-range transfer, or write-protected header fails without changing the image.
+`-o` writes a copy; without it `add` atomically updates the original.
+`extract --sector` requires `-o`, defaults to one sector, and never strips bytes.
+Filesystem options, listing, validation, removal, renaming, and conversion are
+unsupported for ATR. Extended/protected layouts are refused, not normalized.
+The parser/writer is the published `atari-media` dependency; no parser is duplicated here.
 
 ## Commodore disks
 

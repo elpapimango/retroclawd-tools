@@ -36,6 +36,7 @@ pub enum Value {
 #[serde(rename_all = "lowercase")]
 pub enum Machine {
     C64,
+    Atari,
     Spectrum,
     Cpc,
     /// The Atari ST: one 68000 program, written as a GEMDOS `.PRG`.
@@ -49,6 +50,7 @@ impl Machine {
     pub fn name(self) -> &'static str {
         match self {
             Machine::C64 => "c64",
+            Machine::Atari => "atari",
             Machine::Spectrum => "spectrum",
             Machine::Cpc => "cpc",
             Machine::AtariSt => "atari-st",

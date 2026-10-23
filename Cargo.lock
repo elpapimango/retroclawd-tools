@@ -59,6 +59,11 @@ dependencies = [
 ]
 
 [[package]]
+name = "atari-media"
+version = "0.1.0"
+source = "git+https://github.com/elpapimango/retroclawd-atari?rev=04a2108d3eabb33a2c39a04adae058c99afffa53#04a2108d3eabb33a2c39a04adae058c99afffa53"
+
+[[package]]
 name = "bitflags"
 version = "2.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -76,12 +81,12 @@ dependencies = [
 [[package]]
 name = "c64-cartridge"
 version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-commodore?rev=f4cb47adad8d34d1658a3f22411a26f6ec5a5e14#f4cb47adad8d34d1658a3f22411a26f6ec5a5e14"
+source = "git+https://github.com/elpapimango/retroclawd-commodore?rev=8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7#8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7"
 
 [[package]]
 name = "c64-tape"
 version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-commodore?rev=f4cb47adad8d34d1658a3f22411a26f6ec5a5e14#f4cb47adad8d34d1658a3f22411a26f6ec5a5e14"
+source = "git+https://github.com/elpapimango/retroclawd-commodore?rev=8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7#8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7"
 dependencies = [
  "serde",
 ]
@@ -89,7 +94,7 @@ dependencies = [
 [[package]]
 name = "cbm-dos"
 version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-commodore?rev=f4cb47adad8d34d1658a3f22411a26f6ec5a5e14#f4cb47adad8d34d1658a3f22411a26f6ec5a5e14"
+source = "git+https://github.com/elpapimango/retroclawd-commodore?rev=8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7#8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7"
 
 [[package]]
 name = "cfg-if"
@@ -187,7 +192,7 @@ dependencies = [
 [[package]]
 name = "d64"
 version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-commodore?rev=f4cb47adad8d34d1658a3f22411a26f6ec5a5e14#f4cb47adad8d34d1658a3f22411a26f6ec5a5e14"
+source = "git+https://github.com/elpapimango/retroclawd-commodore?rev=8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7#8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7"
 dependencies = [
  "cbm-dos",
 ]
@@ -195,7 +200,7 @@ dependencies = [
 [[package]]
 name = "d71"
 version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-commodore?rev=f4cb47adad8d34d1658a3f22411a26f6ec5a5e14#f4cb47adad8d34d1658a3f22411a26f6ec5a5e14"
+source = "git+https://github.com/elpapimango/retroclawd-commodore?rev=8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7#8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7"
 dependencies = [
  "cbm-dos",
 ]
@@ -203,7 +208,7 @@ dependencies = [
 [[package]]
 name = "d81"
 version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-commodore?rev=f4cb47adad8d34d1658a3f22411a26f6ec5a5e14#f4cb47adad8d34d1658a3f22411a26f6ec5a5e14"
+source = "git+https://github.com/elpapimango/retroclawd-commodore?rev=8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7#8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7"
 dependencies = [
  "cbm-dos",
 ]
@@ -252,7 +257,7 @@ dependencies = [
 [[package]]
 name = "g64"
 version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-commodore?rev=f4cb47adad8d34d1658a3f22411a26f6ec5a5e14#f4cb47adad8d34d1658a3f22411a26f6ec5a5e14"
+source = "git+https://github.com/elpapimango/retroclawd-commodore?rev=8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7#8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7"
 dependencies = [
  "d64",
 ]
@@ -436,6 +441,7 @@ dependencies = [
 name = "rcdisk"
 version = "0.1.0"
 dependencies = [
+ "atari-media",
  "cbm-dos",
  "clap",
  "d64",
@@ -451,6 +457,7 @@ dependencies = [
 name = "rcld"
 version = "0.1.0"
 dependencies = [
+ "atari-media",
  "c64-cartridge",
  "clap",
  "rc-common",

@@ -52,6 +52,48 @@ fn bytes(len: usize, seed: u8) -> Vec<u8> {
         .collect()
 }
 
+#[test]
+fn atr_raw_cli_roundtrip_and_failed_writes_are_atomic() {
+    let t = Temp::new("atr");
+    let image = t.path("boot.atr");
+    let source = t.path("boot.bin");
+    let copy = t.path("copy.atr");
+    let extracted = t.path("raw.bin");
+    ok(&["create", &image, "--sectors", "720", "--sector-size", "256"]);
+    assert!(ok(&["info", &image, "--json"]).contains("\"sectors\": \"720\""));
+    let raw = bytes(128 + 256, 23);
+    std::fs::write(&source, &raw).unwrap();
+    ok(&["add", &image, &source, "--sector", "3", "-o", &copy]);
+    ok(&[
+        "extract", &copy, "--sector", "3", "--count", "2", "-o", &extracted,
+    ]);
+    assert_eq!(std::fs::read(&extracted).unwrap(), raw);
+    assert!(fails(&["extract", &copy, "--sector", "3", "-o", &extracted]).contains("--force"));
+    let original = std::fs::read(&copy).unwrap();
+    std::fs::write(&source, [1; 129]).unwrap();
+    assert!(fails(&["add", &copy, &source, "--sector", "1"]).contains("partial"));
+    assert_eq!(std::fs::read(&copy).unwrap(), original);
+    std::fs::write(&source, [42; 128]).unwrap();
+    ok(&["add", &copy, &source, "--sector", "1"]);
+    ok(&[
+        "extract", &copy, "--sector", "1", "-o", &extracted, "--force",
+    ]);
+    assert_eq!(std::fs::read(&extracted).unwrap(), [42; 128]);
+    let mut protected = std::fs::read(&copy).unwrap();
+    protected[15] = 1;
+    std::fs::write(&copy, &protected).unwrap();
+    assert!(fails(&["add", &copy, &source, "--sector", "1"]).contains("write protected"));
+    assert_eq!(std::fs::read(&copy).unwrap(), protected);
+    assert!(
+        fails(&[
+            "extract", &copy, "--sector", "720", "--count", "2", "-o", &extracted
+        ])
+        .contains("outside")
+    );
+    assert!(fails(&["list", &image]).contains("filesystem"));
+    assert!(fails(&["create", &t.path("bad.atr"), "--sector-size", "512"]).contains("sector size"));
+}
+
 fn every_commodore_format_round_trips_files() {
     for (file, format) in [
         ("a.d64", "d64"),

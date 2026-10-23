@@ -9,6 +9,7 @@ license = "GPL-3.0-or-later"
 publish = false
 
 [workspace.dependencies]
+atari-media = { git = "https://github.com/elpapimango/retroclawd-atari", rev = "04a2108d3eabb33a2c39a04adae058c99afffa53" }
 # The retroclawd crates, by git revision (public repositories).
 machine = { git = "https://github.com/elpapimango/retroclawd-crates", rev = "a8cfb2ef44aef943d6900c98bce02758acf926eb" }
 z80 = { git = "https://github.com/elpapimango/retroclawd-crates", rev = "a8cfb2ef44aef943d6900c98bce02758acf926eb" }
@@ -16,12 +17,12 @@ mos6502 = { git = "https://github.com/elpapimango/retroclawd-crates", rev = "a8c
 # The 68000 core: the assembler checks what it produces with its disassembler, `rcdis` prints with it.
 mc68000 = { git = "https://github.com/elpapimango/retroclawd-crates", rev = "cdc441725cce3ae9771876eede52023f71f6edcd" }
 # The Commodore format crates (retroclawd-commodore), by revision.
-cbm-dos = { git = "https://github.com/elpapimango/retroclawd-commodore", rev = "f4cb47adad8d34d1658a3f22411a26f6ec5a5e14" }
-d64 = { git = "https://github.com/elpapimango/retroclawd-commodore", rev = "f4cb47adad8d34d1658a3f22411a26f6ec5a5e14" }
-d71 = { git = "https://github.com/elpapimango/retroclawd-commodore", rev = "f4cb47adad8d34d1658a3f22411a26f6ec5a5e14" }
-d81 = { git = "https://github.com/elpapimango/retroclawd-commodore", rev = "f4cb47adad8d34d1658a3f22411a26f6ec5a5e14" }
-g64 = { git = "https://github.com/elpapimango/retroclawd-commodore", rev = "f4cb47adad8d34d1658a3f22411a26f6ec5a5e14" }
-c64-tape = { git = "https://github.com/elpapimango/retroclawd-commodore", rev = "f4cb47adad8d34d1658a3f22411a26f6ec5a5e14" }
+cbm-dos = { git = "https://github.com/elpapimango/retroclawd-commodore", rev = "8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7" }
+d64 = { git = "https://github.com/elpapimango/retroclawd-commodore", rev = "8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7" }
+d71 = { git = "https://github.com/elpapimango/retroclawd-commodore", rev = "8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7" }
+d81 = { git = "https://github.com/elpapimango/retroclawd-commodore", rev = "8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7" }
+g64 = { git = "https://github.com/elpapimango/retroclawd-commodore", rev = "8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7" }
+c64-tape = { git = "https://github.com/elpapimango/retroclawd-commodore", rev = "8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7" }
 dsk = { git = "https://github.com/elpapimango/retroclawd-crates", rev = "a8cfb2ef44aef943d6900c98bce02758acf926eb" }
 zx-tape = { git = "https://github.com/elpapimango/retroclawd-crates", rev = "a8cfb2ef44aef943d6900c98bce02758acf926eb" }
 # Snapshot and cartridge formats of the machine families (by revision). Their Z80 snapshot types use the
@@ -32,7 +33,7 @@ szx-snapshot = { git = "https://github.com/elpapimango/retroclawd-sinclair", rev
 zx81-snapshot = { git = "https://github.com/elpapimango/retroclawd-sinclair", rev = "93fa593f6150c101fc3d6ab83e46916cbbb50dcb" }
 cpc-snapshot = { git = "https://github.com/elpapimango/retroclawd-amstrad", rev = "34461e3e1faa6931b405b3b7896c3cbda71ce96a" }
 cpc-cartridge = { git = "https://github.com/elpapimango/retroclawd-amstrad", rev = "34461e3e1faa6931b405b3b7896c3cbda71ce96a" }
-c64-cartridge = { git = "https://github.com/elpapimango/retroclawd-commodore", rev = "f4cb47adad8d34d1658a3f22411a26f6ec5a5e14" }
+c64-cartridge = { git = "https://github.com/elpapimango/retroclawd-commodore", rev = "8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7" }
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 clap = { version = "4", features = ["derive"] }

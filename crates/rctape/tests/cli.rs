@@ -59,6 +59,53 @@ fn bytes(len: usize, seed: u8) -> Vec<u8> {
         .collect()
 }
 
+#[test]
+fn vic20_prg_tape_preserves_region_and_pulses_and_checks_input() {
+    let t = Temp::new("vic20-prg");
+    let prg = t.write(
+        "pattern.prg",
+        &[0x00, 0x10, 0xa9, 0x55, 0x8d, 0x00, 0x1e, 0x60],
+    );
+    for (region, video) in [
+        ("pal", c64_tape::vic20::VideoStandard::Pal),
+        ("ntsc", c64_tape::vic20::VideoStandard::Ntsc),
+    ] {
+        let output = t.path(&format!("{region}.tap"));
+        ok(&[
+            "from-prg", &prg, &output, "--region", region, "--name", "pattern",
+        ]);
+        let encoded = std::fs::read(&output).unwrap();
+        let (actual, tape) = c64_tape::vic20::parse(&encoded).unwrap();
+        assert_eq!(actual, video);
+        let canonical = c64_tape::Tape::from_pulses(
+            tape.pulses()
+                .iter()
+                .map(|&n| {
+                    ((u64::from(n) * 985_248 + u64::from(video.clock_hz()) / 2)
+                        / u64::from(video.clock_hz())) as u32
+                })
+                .collect(),
+        );
+        let files = c64_tape::rom_format::decode_files(&canonical);
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].start, 0x1000);
+        assert_eq!(files[0].trimmed_name(), b"PATTERN");
+        assert_eq!(files[0].data, [0xa9, 0x55, 0x8d, 0x00, 0x1e, 0x60]);
+        assert!(ok(&["info", &output]).contains("VIC-20"));
+        assert!(ok(&["list", &output]).contains("VIC-20"));
+        assert!(ok(&["validate", &output, "--json"]).contains("checksums are not checked"));
+        let copy = t.path(&format!("{region}-copy.tap"));
+        ok(&["convert", &output, &copy]);
+        assert_eq!(std::fs::read(copy).unwrap(), encoded);
+        assert!(fails(&["from-prg", &prg, &output]).contains("exists"));
+    }
+    let empty = t.write("empty.prg", &[0x00, 0x10]);
+    assert!(fails(&["from-prg", &empty, &t.path("bad.tap")]).contains("data bytes"));
+    let wraps = t.write("wraps.prg", &[0xff, 0xff, 0x60]);
+    assert!(fails(&["from-prg", &wraps, &t.path("bad.tap")]).contains("end address"));
+    assert!(!std::path::Path::new(&t.path("bad.tap")).exists());
+}
+
 /// A tape with two programs, made the way a user would.
 fn two_programs(t: &Temp) -> String {
     let a = t.write("alpha.bin", &bytes(300, 1));
@@ -273,6 +320,37 @@ fn a_commodore_tap_is_described() {
     assert!(info.contains("384 to 688"), "{info}");
     assert!(fails(&["extract", &file]).contains("pulses"));
 }
+
+#[test]
+fn c16_halfwave_tapes_use_ted_clocks_and_never_become_spectrum_blocks() {
+    let t = Temp::new("c16tap");
+    let mut tap = b"C16-TAPE-RAW".to_vec();
+    tap.extend_from_slice(&[2, 2, 0, 0, 6, 0, 0, 0]);
+    tap.extend_from_slice(&[1, 0, 1, 2, 3, 255]);
+    let file = t.write("c16.tap", &tap);
+    let info = ok(&["info", &file, "--json"]);
+    assert!(
+        info.contains("C16/Plus4") && info.contains("\"halfwaves\": 3"),
+        "{info}"
+    );
+    assert!(info.contains("\"clock_hz\": 886724"), "{info}");
+    assert!(info.contains("\"cycles\": 199169"), "{info}");
+    assert!(ok(&["validate", &file]).contains("halfwave encoding"));
+    assert!(fails(&["extract", &file]).contains("pulses"));
+    assert!(fails(&["rm", &file, "1"]).contains("raw pulse"));
+    assert_eq!(t.read("c16.tap"), tap);
+    let copy = t.path("copy.tap");
+    ok(&["convert", &file, &copy]);
+    assert_eq!(t.read("copy.tap"), tap);
+    assert!(fails(&["convert", &file, &copy]).contains("exists"));
+    tap[14] = 1;
+    let ntsc = t.write("ntsc.tap", &tap);
+    assert!(ok(&["info", &ntsc, "--json"]).contains("\"clock_hz\": 894886"));
+    tap[16] += 1;
+    let malformed = t.write("bad.tap", &tap);
+    assert!(fails(&["validate", &malformed]).contains("size"));
+}
+
 /// Merged (every check kept): `a_headerless_data_block_and_clear_errors`, `a_t64_lists_and_extracts_prg_files`, `a_commodore_tap_is_described`.
 #[test]
 fn tape_edge_cases() {

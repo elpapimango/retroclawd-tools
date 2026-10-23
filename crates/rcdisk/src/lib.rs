@@ -5,6 +5,7 @@
 //! crates; this layer only maps it to common operations. The trait is deliberately small and
 //! provisional: more systems (CP/M `.dsk` next) will show what it is missing.
 
+pub mod atari;
 pub mod cbm;
 pub mod cpm;
 pub mod hd;
@@ -138,11 +139,15 @@ pub fn sniff(name: &str, bytes: &[u8]) -> Result<&'static str, String> {
         Some("d81") => return Ok("d81"),
         Some("g64") => return Ok("g64"),
         Some("dsk") | Some("edsk") => return Ok("dsk"),
+        Some("atr") => return Ok("atr"),
         Some("st") => return Ok("st"),
         _ => {}
     }
     if bytes.starts_with(b"MV - CPC") || bytes.starts_with(b"EXTENDED CPC DSK") {
         return Ok("dsk");
+    }
+    if bytes.starts_with(&[0x96, 0x02]) {
+        return Ok("atr");
     }
     if bytes.starts_with(b"GCR-1541") {
         return Ok("g64");
@@ -155,7 +160,7 @@ pub fn sniff(name: &str, bytes: &[u8]) -> Result<&'static str, String> {
         349696 | 351062 => Ok("d71"),
         819200 | 822400 => Ok("d81"),
         n => Err(format!(
-            "cannot tell what kind of disk image {name} is ({n} bytes); name it .d64, .d71, .d81, .x64, .g64 or .dsk"
+            "cannot tell what kind of disk image {name} is ({n} bytes); name it .d64, .d71, .d81, .x64, .g64, .dsk or .atr"
         )),
     }
 }
@@ -163,6 +168,9 @@ pub fn sniff(name: &str, bytes: &[u8]) -> Result<&'static str, String> {
 /// Opens an image.
 pub fn open(name: &str, bytes: &[u8]) -> Result<Box<dyn Disk>, String> {
     match sniff(name, bytes)? {
+        "atr" => Err(
+            "ATR filesystem operations are unsupported; use info or add/extract --sector".into(),
+        ),
         "dsk" => cpm::open(bytes),
         "st" => st::open(bytes),
         format => cbm::open(format, bytes),
