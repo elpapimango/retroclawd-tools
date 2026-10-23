@@ -2,3 +2,9 @@
 # local development override pointing the git dependencies at checked-out sources
 /.cargo/config.toml
 __pycache__/
+
+# cargo-fuzz output
+fuzz/target/
+fuzz/corpus/
+fuzz/artifacts/
+fuzz/Cargo.lock
