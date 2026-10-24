@@ -164,6 +164,7 @@ class Frontend:
         self.pad = 0
         self.keep = []
         self.swap16 = False
+        self.declared = {}
         self.core.retro_get_memory_data.restype = ctypes.c_void_p
         self.core.retro_get_memory_size.restype = ctypes.c_size_t
         self.core.retro_serialize_size.restype = ctypes.c_size_t
@@ -199,7 +200,14 @@ class Frontend:
             if cmd in (ENV_GET_CAN_DUPE,):
                 ctypes.cast(data, ctypes.POINTER(ctypes.c_bool))[0] = True
                 return True
-            if cmd in (ENV_SET_VARIABLES, ENV_SET_INPUT_DESCRIPTORS, ENV_SET_CONTROLLER_INFO, ENV_SET_GEOMETRY,
+            if cmd == ENV_SET_VARIABLES:
+                arr = ctypes.cast(data, ctypes.POINTER(Variable))
+                i = 0
+                while arr[i].key:
+                    self.declared[arr[i].key.decode()] = (arr[i].value or b"").decode(errors="replace")
+                    i += 1
+                return True
+            if cmd in (ENV_SET_INPUT_DESCRIPTORS, ENV_SET_CONTROLLER_INFO, ENV_SET_GEOMETRY,
                        ENV_SET_SYSTEM_AV_INFO, ENV_SET_PERFORMANCE_LEVEL, ENV_SET_SUPPORT_NO_GAME, ENV_SET_ROTATION,
                        ENV_SET_MESSAGE, ENV_SET_KEYBOARD_CALLBACK):
                 return True
@@ -229,6 +237,8 @@ class Frontend:
         @INPUT_STATE_CB
         def state(port, device, index, ident):
             if port == 0 and device == 1:
+                if ident == 256:  # RETRO_DEVICE_ID_JOYPAD_MASK: all buttons at once
+                    return self.pad & 0xFFFF
                 return (self.pad >> ident) & 1
             return 0
 
@@ -298,6 +308,7 @@ def main():
     ap.add_argument("--frame-at", action="append", default=[])
     ap.add_argument("--ram-at", action="append", default=[])
     ap.add_argument("--info", action="store_true")
+    ap.add_argument("--list-options", action="store_true", help="print the core options the core declares and exit")
     ap.add_argument("--swap16", action="store_true",
                     help="swap the two bytes of every word of the RAM dumps (the Mega Drive cores expose the big-endian "
                          "68000 RAM with the bytes of each word swapped; this gives the 68000's own byte order)")
@@ -311,6 +322,11 @@ def main():
         print(info.name.decode(), info.version.decode())
         if not args.rom:
             return
+    if args.list_options:
+        fe.load(args.rom)
+        for k, v in fe.declared.items():
+            print(k, "=", v)
+        return
     fe.load(args.rom)
     if args.info:
         print("fps %.6f rate %.1f %dx%d" % (fe.av.timing.fps, fe.av.timing.sample_rate, fe.av.geometry.base_width,
