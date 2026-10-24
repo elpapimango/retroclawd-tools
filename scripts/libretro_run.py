@@ -11,7 +11,7 @@ RetroArch installation), and usable with any libretro core.
 The input script has one line per change: `FRAME BUTTON[,BUTTON...]` (RetroPad names: b y select start up down left right
 a x l r; `-` for none). The buttons stay held from FRAME until the next line. Port 1 only.
 
---out-ram writes RETRO_MEMORY_SYSTEM_RAM after the last frame, --ram-at writes it after frame N (1-based).
+--out-ram writes RETRO_MEMORY_SYSTEM_RAM (see --swap16) after the last frame, --ram-at writes it after frame N (1-based).
 Core, ROM and system files are untrusted input to this script: nothing in them is printed.
 """
 
@@ -163,6 +163,7 @@ class Frontend:
         self.audio = []
         self.pad = 0
         self.keep = []
+        self.swap16 = False
         self.core.retro_get_memory_data.restype = ctypes.c_void_p
         self.core.retro_get_memory_size.restype = ctypes.c_size_t
         self.core.retro_serialize_size.restype = ctypes.c_size_t
@@ -259,7 +260,12 @@ class Frontend:
     def ram(self, kind=MEMORY_SYSTEM_RAM):
         ptr = self.core.retro_get_memory_data(kind)
         size = self.core.retro_get_memory_size(kind)
-        return ctypes.string_at(ptr, size) if ptr and size else b""
+        data = ctypes.string_at(ptr, size) if ptr and size else b""
+        if self.swap16:
+            swapped = bytearray(data)
+            swapped[0::2], swapped[1::2] = data[1::2], data[0::2]
+            data = bytes(swapped)
+        return data
 
     def state(self):
         size = self.core.retro_serialize_size()
@@ -292,9 +298,13 @@ def main():
     ap.add_argument("--frame-at", action="append", default=[])
     ap.add_argument("--ram-at", action="append", default=[])
     ap.add_argument("--info", action="store_true")
+    ap.add_argument("--swap16", action="store_true",
+                    help="swap the two bytes of every word of the RAM dumps (the Mega Drive cores expose the big-endian "
+                         "68000 RAM with the bytes of each word swapped; this gives the 68000's own byte order)")
     args = ap.parse_args()
     options = dict(o.split("=", 1) for o in args.option)
     fe = Frontend(args.core, args.system_dir, options)
+    fe.swap16 = args.swap16
     if args.info or not args.rom:
         info = SystemInfo()
         fe.core.retro_get_system_info(ctypes.byref(info))
