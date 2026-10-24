@@ -187,11 +187,11 @@ pub struct Scenario {
     pub golden_sha256: Option<String>,
     #[serde(default)]
     pub compare: Option<Compare>,
-    /// `memory`: first address and length (at most 64K).
+    /// `memory`: first address (up to 32 bits: the 68000 machines' work RAM is above `$FF0000`) and length (at most 64K).
     #[serde(default)]
-    pub start: Option<u16>,
+    pub start: Option<u32>,
     #[serde(default)]
-    pub len: Option<u16>,
+    pub len: Option<u32>,
     #[serde(default)]
     pub audio: Option<AudioExpect>,
     /// `state`: further frames run after the reload.
@@ -626,19 +626,19 @@ fn run_memory(env: &Env, goldens: &Path, manifest: &Manifest, s: &Scenario) -> R
         s.golden_sha256.as_deref().unwrap_or_default(),
     )?;
     let (start, len) = (s.start.expect("validated"), s.len.expect("validated"));
-    if want.len() != usize::from(len) {
+    if want.len() != len as usize {
         return Err(format!(
             "the golden holds {} bytes, `len` is {len}",
             want.len()
         ));
     }
-    let out = base_run(env, manifest, s)?.dump(start, len).go()?;
-    let got = out.bytes(start, len)?;
+    let out = base_run(env, manifest, s)?.dump32(start, len).go()?;
+    let got = out.bytes32(start, len)?;
     match got.iter().zip(&want).position(|(a, b)| a != b) {
         None => Ok(()),
         Some(i) => Err(format!(
             "memory differs first at 0x{:04X}: {:02X} here, {:02X} in the golden",
-            u32::from(start) + i as u32,
+            start + i as u32,
             got[i],
             want[i]
         )),

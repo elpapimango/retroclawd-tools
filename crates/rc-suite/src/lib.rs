@@ -138,7 +138,7 @@ pub fn z80_program(tag: &str, org: u16, source: &str) -> Result<PathBuf, String>
 pub struct Run<'e> {
     env: &'e Env,
     args: Vec<String>,
-    dumps: Vec<(u16, u16)>,
+    dumps: Vec<(u32, u32)>,
     screen: bool,
     audio: bool,
 }
@@ -159,7 +159,12 @@ impl Run<'_> {
     }
 
     /// Read `len` bytes from `start` after the run.
-    pub fn dump(mut self, start: u16, len: u16) -> Self {
+    pub fn dump(self, start: u16, len: u16) -> Self {
+        self.dump32(u32::from(start), u32::from(len))
+    }
+
+    /// `dump` for a machine with a wider address space (the 68000's work RAM is at `$FF0000`).
+    pub fn dump32(mut self, start: u32, len: u32) -> Self {
         self.dumps.push((start, len));
         self
     }
@@ -242,13 +247,17 @@ impl Run<'_> {
 pub struct Outcome {
     pub registers: HashMap<String, u16>,
     pub cycles: u64,
-    memory: HashMap<u16, u8>,
+    memory: HashMap<u32, u8>,
     pub screen: Option<Screen>,
     pub audio: Option<Audio>,
 }
 
 impl Outcome {
     pub fn byte(&self, addr: u16) -> Result<u8, String> {
+        self.byte32(u32::from(addr))
+    }
+
+    pub fn byte32(&self, addr: u32) -> Result<u8, String> {
         self.memory
             .get(&addr)
             .copied()
@@ -261,6 +270,10 @@ impl Outcome {
 
     pub fn bytes(&self, addr: u16, len: u16) -> Result<Vec<u8>, String> {
         (0..len).map(|i| self.byte(addr.wrapping_add(i))).collect()
+    }
+
+    pub fn bytes32(&self, addr: u32, len: u32) -> Result<Vec<u8>, String> {
+        (0..len).map(|i| self.byte32(addr.wrapping_add(i))).collect()
     }
 
     pub fn reg(&self, name: &str) -> Result<u16, String> {
@@ -471,7 +484,7 @@ fn parse(stdout: &str, out: &mut Outcome) -> Result<(), String> {
             }
         } else if let Some(rest) = t.strip_prefix("0x")
             && let Some((addr, bytes)) = rest.split_once(": ")
-            && let Ok(mut a) = u16::from_str_radix(addr, 16)
+            && let Ok(mut a) = u32::from_str_radix(addr, 16)
         {
             for b in bytes.split_whitespace() {
                 let v =
