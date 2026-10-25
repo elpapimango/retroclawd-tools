@@ -236,12 +236,29 @@ class Frontend:
 
         @INPUT_STATE_CB
         def state(port, device, index, ident):
+            if os.environ.get('RC_TRACE_INPUT') and device != 1:
+                print('state', port, device, index, ident, file=sys.stderr)
             if port == 0 and device == 1:
                 if ident == 256:  # RETRO_DEVICE_ID_JOYPAD_MASK: all buttons at once
                     return self.pad & 0xFFFF
                 return (self.pad >> ident) & 1
+            if device == 6 and self.gun_port >= 0:  # RETRO_DEVICE_POINTER, what a core uses for a gun in its touchscreen mode
+                x, y, trigger = self.gun
+                return {0: x, 1: y, 2: trigger & 1, 3: 1 if trigger & 1 else 0}.get(ident, 0)
+            if device == 4 and self.gun_port >= 0:  # RETRO_DEVICE_LIGHTGUN
+                x, y, trigger = self.gun
+                return {13: x, 14: y, 15: 0, 2: trigger & 1, 3: (trigger >> 1) & 1, 4: (trigger >> 2) & 1}.get(ident, 0)
+            if device == 2 and port == self.mouse_port:  # RETRO_DEVICE_MOUSE
+                if ident in (0, 1):
+                    return self.mouse_delta[ident]
+                return {2: self.mouse_buttons & 1, 3: (self.mouse_buttons >> 1) & 1, 6: (self.mouse_buttons >> 2) & 1}.get(ident, 0)
             return 0
 
+        self.mouse_port = -1
+        self.gun_port = -1
+        self.gun = (0, 0, 0)
+        self.mouse_delta = [0, 0]
+        self.mouse_buttons = 0
         self.callbacks = (env, video, audio, audio_batch, poll, state)
         self.core.retro_set_environment(env)
         self.core.retro_set_video_refresh(video)
@@ -308,6 +325,12 @@ def main():
     ap.add_argument("--frame-at", action="append", default=[])
     ap.add_argument("--ram-at", action="append", default=[])
     ap.add_argument("--info", action="store_true")
+    ap.add_argument("--device", action="append", default=[],
+                    help="PORT=ID: select the controller device of a port (libretro device id: 1 pad, 2 mouse, 4 lightgun ...)")
+    ap.add_argument("--gun", help="X,Y[,WIDTH,HEIGHT[,buttons]]: aim the light gun of the port set to a lightgun device at screen "
+                    "pixel X,Y of a WIDTH x HEIGHT picture (default 256x224); buttons are letters t a b for trigger, aux a, aux b")
+    ap.add_argument("--mouse", action="append", default=[],
+                    help="FRAME:DX,DY[:lrm]: the mouse moves by DX,DY during that frame; letters l r m hold buttons then")
     ap.add_argument("--list-options", action="store_true", help="print the core options the core declares and exit")
     ap.add_argument("--swap16", action="store_true",
                     help="swap the two bytes of every word of the RAM dumps (the Mega Drive cores expose the big-endian "
@@ -331,6 +354,27 @@ def main():
     if args.info:
         print("fps %.6f rate %.1f %dx%d" % (fe.av.timing.fps, fe.av.timing.sample_rate, fe.av.geometry.base_width,
                                             fe.av.geometry.base_height))
+    for d in args.device:
+        port, ident = (int(v) for v in d.split("=", 1))
+        fe.core.retro_set_controller_port_device(port, ident)
+        if ident == 2:
+            fe.mouse_port = port
+        if ident & 0xFF == 4:
+            fe.gun_port = port
+    if args.gun:
+        g = args.gun.split(",")
+        gx, gy = int(g[0]), int(g[1])
+        gw = int(g[2]) if len(g) > 2 else 256
+        gh = int(g[3]) if len(g) > 3 else 224
+        letters = g[4] if len(g) > 4 else ""
+        fe.gun = (-((-gx * 0xFFFE) // gw) - 0x7FFF, -((-gy * 0xFFFE) // gh) - 0x7FFF,
+                  ("t" in letters) | ("a" in letters) << 1 | ("b" in letters) << 2)
+    mouse_at = {}
+    for m in args.mouse:
+        parts = m.split(":")
+        dx, dy = (int(v) for v in parts[1].split(","))
+        letters = parts[2] if len(parts) > 2 else ""
+        mouse_at[int(parts[0])] = (dx, dy, ("l" in letters) | ("r" in letters) << 1 | ("m" in letters) << 2)
     steps = parse_input(args.input)
     frame_at = {int(s.split(":", 1)[0]): s.split(":", 1)[1] for s in args.frame_at}
     ram_at = {int(s.split(":", 1)[0]): s.split(":", 1)[1] for s in args.ram_at}
@@ -338,6 +382,9 @@ def main():
         for frame, mask in steps:
             if frame <= n:
                 fe.pad = mask
+        dx, dy, buttons = mouse_at.get(n, (0, 0, 0))
+        fe.mouse_delta = [dx, dy]
+        fe.mouse_buttons = buttons
         fe.run()
         if n in frame_at and fe.frame:
             write(frame_at[n], png_bytes(*fe.frame[:2], fe.frame[2]))
