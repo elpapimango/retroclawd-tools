@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/rc-common", "crates/rcasm", "crates/rcdis", "crates/rcdisk", "crates/rctape", "crates/rcsnap", "crates/rcld", "crates/rc-suite"]
+members = ["crates/rc-common", "crates/rcasm", "crates/rcdis", "crates/rcdisk", "crates/rcchd", "crates/rctape", "crates/rcsnap", "crates/rcld", "crates/rc-suite"]
 
 [workspace.package]
 version = "0.1.0"
@@ -34,6 +34,8 @@ zx81-snapshot = { git = "https://github.com/elpapimango/retroclawd-sinclair", re
 cpc-snapshot = { git = "https://github.com/elpapimango/retroclawd-amstrad", rev = "34461e3e1faa6931b405b3b7896c3cbda71ce96a" }
 cpc-cartridge = { git = "https://github.com/elpapimango/retroclawd-amstrad", rev = "34461e3e1faa6931b405b3b7896c3cbda71ce96a" }
 c64-cartridge = { git = "https://github.com/elpapimango/retroclawd-commodore", rev = "8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7" }
+# The CHD library (the Sega family): the writer and the codecs behind rcchd.
+chd = { git = "https://github.com/elpapimango/retroclawd-sega", rev = "480e60b2e6bc6053f4be2a8eacc1a41397469467" }
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 clap = { version = "4", features = ["derive"] }

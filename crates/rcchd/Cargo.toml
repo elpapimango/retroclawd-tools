@@ -1,0 +1,19 @@
+[package]
+name = "rcchd"
+description = "Create, extract, inspect, verify and edit CHD files, the way chdman does (retroclawd tools)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "rcchd"
+
+[[bin]]
+name = "rcchd"
+path = "src/main.rs"
+
+[dependencies]
+chd.workspace = true
+rc-common = { path = "../rc-common" }
+clap.workspace = true

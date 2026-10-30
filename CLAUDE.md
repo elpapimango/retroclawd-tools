@@ -66,7 +66,7 @@ given keys or mouse input headlessly, so the ST's input scenarios have `exact` g
 
 `retroclawd-tools`: command-line tools on top of the retroclawd crates. A standalone Cargo workspace (it is **not** a
 submodule of the application and the application never builds it). Done: `rcasm` (assembler), `rcdis`
-(disassembler), `rcdisk` (disk images), `rctape` (tape images), `rcsnap` (snapshots, cartridges), `rcld` (linker / packager) (linker / packager). The original
+(disassembler), `rcdisk` (disk images), `rctape` (tape images), `rcchd` (CHD files: the work of `chdman`), `rcsnap` (snapshots, cartridges), `rcld` (linker / packager) (linker / packager). The original
 brief, with the decisions already taken, is `docs/prompts/retroclawd-tools.md` in the
 [`retroclawd`](https://github.com/elpapimango/retroclawd) repository -- except that this repository stands on its
 own instead of being a fifth submodule.
@@ -95,11 +95,14 @@ crates/rcdisk/      lib + bin: a `Disk` trait (lib.rs) with three adapters: cbm.
 crates/rctape/      lib + bin: tzx.rs (block model: ID + body, byte-exact round trip), spectrum.rs (header, checksum, BASIC
                     lister), c64.rs (.t64, .tap facts over c64-tape), lib.rs (.tap, rows, selection, split, cleanup,
                     extract); main.rs is the CLI
+crates/rcchd/       lib + bin: cue.rs/gdi.rs/cdsrc.rs (CD sources), createcd.rs, extractcd.rs, rawio.rs (createraw/hd/dvd, extracts, copy,
+                    metadata), hdgeom.rs (chdman's CHS guess, templates), types.rs (CHT2/CHGD text), report.rs; the CHD format, codecs
+                    and writer are the `chd` crate of the Sega family
 crates/rcsnap/      lib + bin: spectrum.rs (one model for .z80/.sna/.szx, conversions with a list of what is lost), zx81.rs,
                     carts.rs (.crt / .cpr <-> raw), lib.rs (detection, info); main.rs is the CLI
 crates/rcld/        lib + bin: layout.rs (TOML layout), place.rs (pieces, overlap / region / reserve checks, map), emit.rs (what
                     each machine and extension gets), basic.rs (the C64 `SYS` line, the Spectrum loader), templates.rs
-docs/               rcasm.md, rcdis.md, rcdisk.md, rctape.md, rcsnap.md, rcld.md
+docs/               rcasm.md, rcdis.md, rcdisk.md, rctape.md, rcchd.md, rcsnap.md, rcld.md
 ```
 
 Each tool is a library crate (reusable) plus its binary. Common code goes into `rc-common`.
@@ -261,6 +264,7 @@ purpose. Everything skips unless `RETROCLAWD_BIN`, `RETROCLAWD_MACHINE_PLUGIN_DI
 * `rcdis` reads raw and `.prg` input only; extracting from a disk or tape image (`rcdis game.d64:NAME`) is still to do.
 * `rcdisk`: no `.g64` output, no REL/partition copying, CP/M writing only for the standard 1 KB layout and side 0, no
   BASIC tokenizer for AMSDOS `.bas` files, no zip/URL inputs.
+* `rcchd`: no laser disc images (`createld`/`extractld`), no CHD versions 1-4, no CD subchannel data, no `.toc`/`.nrg`/WAV cue sheets; its `info` text is not chdman's; the FLAC and Zstandard encoders are simple (valid, a little larger). chdman 0.289 (the MAME install in the Emulators folder, run with `RC_CHDMAN=path cargo test -p rcchd -- --ignored`) is the oracle: its files read here, ours pass `chdman verify` with equal SHA-1s, and uncompressed files are byte-identical.
 * `rctape`: no Commodore `.tap` file decoding (C64 facts; VIC-20 v0/v1 and C16/Plus4 v2 structural validation/normalization), no `.wav`/`.csw`/`.pzx`/`.voc`, `add --type basic` needs an
   already tokenised program, loops and jumps are kept but not followed.
   `from-prg` creates platform-1 PAL/NTSC VIC-20 KERNAL tapes using the Family's
