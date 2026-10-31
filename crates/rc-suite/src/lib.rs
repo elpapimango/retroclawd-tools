@@ -54,11 +54,21 @@ impl Env {
         })
     }
 
-    /// A file below `RC_ROMS`, e.g. `sinclair/roms/zx81/zx81.rom`; an error naming it when it is missing.
+    /// A file below `RC_ROMS`, e.g. `sinclair/roms/zx81/zx81.rom`; an error naming it when it is missing. A `#selector` after a
+    /// `.zip` (`neogeo.zip#*`, `set.zip#entry`) is the host's own and stays on the path handed to it.
     pub fn file(&self, rel: &str) -> Result<PathBuf, String> {
-        let p = self.roms.join(rel);
+        let (path, selector) = match rel.rsplit_once('#') {
+            Some((base, sel)) if base.to_ascii_lowercase().ends_with(".zip") && !sel.is_empty() => {
+                (base, Some(sel))
+            }
+            _ => (rel, None),
+        };
+        let p = self.roms.join(path);
         if p.is_file() {
-            Ok(p)
+            Ok(match selector {
+                Some(sel) => PathBuf::from(format!("{}#{sel}", p.display())),
+                None => p,
+            })
         } else {
             Err(format!("missing firmware file {}", p.display()))
         }
@@ -273,7 +283,9 @@ impl Outcome {
     }
 
     pub fn bytes32(&self, addr: u32, len: u32) -> Result<Vec<u8>, String> {
-        (0..len).map(|i| self.byte32(addr.wrapping_add(i))).collect()
+        (0..len)
+            .map(|i| self.byte32(addr.wrapping_add(i)))
+            .collect()
     }
 
     pub fn reg(&self, name: &str) -> Result<u16, String> {
