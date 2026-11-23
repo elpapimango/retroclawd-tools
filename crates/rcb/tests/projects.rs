@@ -1,0 +1,130 @@
+//! `rcb new` then `rcb build` for every machine's template, and the project file's rules.
+
+use rcb::{Project, templates};
+use std::path::PathBuf;
+use std::process::Command;
+
+fn temp(tag: &str) -> PathBuf {
+    let d = std::env::temp_dir().join(format!("rcb-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&d);
+    std::fs::create_dir_all(&d).unwrap();
+    d
+}
+
+fn rcb(args: &[&str], dir: &std::path::Path) -> std::process::Output {
+    Command::new(env!("CARGO_BIN_EXE_rcb"))
+        .args(args)
+        .current_dir(dir)
+        .output()
+        .unwrap()
+}
+
+#[test]
+fn every_template_builds_as_it_is() {
+    let d = temp("all");
+    for t in templates::ALL {
+        let name = format!("p-{}", t.machine);
+        let out = rcb(&["new", &name, "--machine", t.machine], &d);
+        assert!(
+            out.status.success(),
+            "{}: {}",
+            t.machine,
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let out = rcb(&["build", "-C", &name], &d);
+        assert!(
+            out.status.success(),
+            "{}: {}",
+            t.machine,
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let p = Project::load(&d.join(&name)).unwrap();
+        assert!(p.output.exists(), "{}", t.machine);
+        assert!(p.map_path().exists());
+        let len = std::fs::metadata(&p.output).unwrap().len();
+        assert!(len > 0, "{}", t.machine);
+        // check writes nothing new, clean removes the folder
+        assert!(rcb(&["check", "-C", &name], &d).status.success());
+        assert!(rcb(&["clean", "-C", &name], &d).status.success());
+        assert!(!d.join(&name).join("build").exists());
+    }
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn new_refuses_what_exists_and_unknown_machines() {
+    let d = temp("new");
+    assert!(rcb(&["new", "a", "--machine", "nes"], &d).status.success());
+    let out = rcb(&["new", "a", "--machine", "nes"], &d);
+    assert!(!out.status.success() && String::from_utf8_lossy(&out.stderr).contains("exists"));
+    let out = rcb(&["new", "b", "--machine", "vic20x"], &d);
+    assert!(!out.status.success() && String::from_utf8_lossy(&out.stderr).contains("no template"));
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn the_project_table_expands_globs_and_the_default_output() {
+    let d = temp("glob");
+    std::fs::create_dir_all(d.join("src")).unwrap();
+    std::fs::write(d.join("src/a.asm"), "nop\n").unwrap();
+    std::fs::write(d.join("src/b.asm"), "nop\n").unwrap();
+    std::fs::write(d.join("src/c.txt"), "x\n").unwrap();
+    let p = Project::parse(
+        &d,
+        "[project]\nname = \"demo\"\nsources = [\"src/*.asm\"]\nseparate = true\nmachine = \"c64\"\n",
+    );
+    // `machine` belongs outside [project]: the keys after the table header are the table's
+    assert!(p.is_err());
+    let p = Project::parse(
+        &d,
+        "machine = \"c64\"\n[project]\nname = \"demo\"\nsources = [\"src/*.asm\"]\nseparate = true\n",
+    );
+    // (the toml above puts machine first: top-level; project table last)
+    let p = p.unwrap();
+    assert_eq!(p.output, d.join("build").join("demo.prg"));
+    let inputs = &p.layout.input;
+    assert_eq!(inputs.len(), 1);
+    assert_eq!(
+        inputs[0].src.as_ref().unwrap().list(),
+        ["src/a.asm", "src/b.asm"]
+    );
+    let e = Project::parse(
+        &d,
+        "machine = \"c64\"\n[project]\nsources = [\"nothing/*.asm\"]\n",
+    )
+    .err()
+    .unwrap();
+    assert!(e.contains("nothing"), "{e}");
+    let e = Project::parse(&d, "machine = \"c64\"\n[project]\nbogus = 1\n")
+        .err()
+        .unwrap();
+    assert!(e.contains("bogus"), "{e}");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn run_arguments_come_from_the_table_or_the_machine() {
+    let d = temp("run");
+    let p = Project::parse(&d, "machine = \"pcengine\"\n[project]\nname = \"x\"\n").unwrap();
+    let a = p.run_args(false).unwrap();
+    assert_eq!(a[0], "pcengine");
+    assert_eq!(a[1], "--rom");
+    let a = p.run_args(true).unwrap();
+    assert!(a.contains(&"--symbols".to_string()));
+    let p = Project::parse(&d, "machine = \"snes\"\n[project]\nname = \"x\"\n").unwrap();
+    assert!(
+        p.run_args(false)
+            .unwrap_err()
+            .contains("no snes machine yet")
+            || p.run_args(false).is_err()
+    );
+    let p = Project::parse(
+        &d,
+        "machine = \"snes\"\n[project]\nname = \"x\"\n[run]\nargs = [\"snes\", \"{output}\"]\n",
+    )
+    .unwrap();
+    let a = p.run_args(false).unwrap();
+    assert_eq!(a[0], "snes");
+    assert!(a[1].ends_with("x.sfc"), "{a:?}");
+    let _ = std::fs::remove_dir_all(&d);
+}

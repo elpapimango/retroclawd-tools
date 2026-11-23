@@ -15,6 +15,7 @@ tools. The tools build **on their own**; the emulator application does not build
 | [`rcsnap`](docs/rcsnap.md) | info, convert, dump, extract and create: ZX Spectrum `.z80`/`.sna`/`.szx` into each other, ZX81 `.p`/`.p81`, CPC `.sna`, C64 `.crt`, CPC Plus `.cpr` | works |
 | [`rcld`](docs/rcld.md) | link and place programs (sources, separately assembled objects, libraries, binaries, `.prg`), check overlaps and regions, and write a runnable image: C64 `.prg`/`.d64`/`.d81`/`.crt` (with a `SYS` line), Spectrum `.tap`/`.tzx` (with a BASIC loader) and snapshots, CPC `.dsk`, Atari `.xex` build/inspect and standard `.car` creation | works |
 | [`rcar`](docs/rcar.md) | object libraries: create, list, extract, add and delete members of `.rca` files (`rcasm -f object` writes the objects, `rcld` links them) | works |
+| [`rcb`](docs/rcb.md) | the project driver: `rcb new`, `build`, `run`, `debug`, `clean`, `check` over an `rcb.toml` (an rcld layout plus the sources), for every machine the tools write | works |
 
 ## Build
 

@@ -526,6 +526,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "rcb"
+version = "0.3.0"
+dependencies = [
+ "clap",
+ "rc-common",
+ "rcld",
+ "serde",
+ "toml",
+]
+
+[[package]]
 name = "rcchd"
 version = "0.3.0"
 dependencies = [

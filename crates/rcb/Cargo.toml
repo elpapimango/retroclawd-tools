@@ -1,0 +1,21 @@
+[package]
+name = "rcb"
+description = "Project driver for the retroclawd tools: new, build, run, debug, clean, check (retroclawd tools)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "rcb"
+
+[[bin]]
+name = "rcb"
+path = "src/main.rs"
+
+[dependencies]
+rc-common = { path = "../rc-common", version = "0.3.0" }
+rcld = { path = "../rcld", version = "0.3.0" }
+serde.workspace = true
+toml.workspace = true
+clap.workspace = true
