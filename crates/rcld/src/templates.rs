@@ -9,6 +9,8 @@ pub fn template(machine: &str) -> Option<&'static str> {
         "pcengine" => PCENGINE,
         "nes" => NES,
         "snes" => SNES,
+        "amiga" => AMIGA,
+        "x68000" => X68000,
         _ => return None,
     })
 }
@@ -177,4 +179,35 @@ mapping = "lorom"                # lorom, hirom or exhirom
 
 # Vectors: labels reset (or start / entry above), nmi, irq, cop, brk and abort fill the header's vector table; the
 # checksum is computed. Write the header yourself (at $FFC0 for HiROM, $FFC0 of bank 0 for LoROM) to take over.
+"#;
+
+const AMIGA: &str = r#"# rcld layout for the Amiga.  rcld build this-file.toml
+machine = "amiga"
+name = "MYGAME"                  # the disk name
+output = "mygame.adf"            # an ADF disk, or "mygame" / "mygame.exe" for the hunk file alone
+
+[[input]]
+asm = ["main.s"]                 # 68000 source with sections .text .data .bss; the program starts at the first byte of the text
+
+[options]
+# memory = "chip"                # where the hunks load: any (default), chip or fast
+# hunk_symbols = true            # HUNK_SYMBOL blocks, for a debugger
+# fs = "ofs"                     # ADF: ofs (default) or ffs
+# bootable = true                # ADF: the standard boot block (default)
+# file_name = "mygame"           # the program's name on the disk
+# startup = "mygame"             # s/startup-sequence
+
+# [[file]]
+# path = "music.mod"
+# name = "data/music.mod"        # a file on the disk (directories are made)
+"#;
+
+const X68000: &str = r#"# rcld layout for the Sharp X68000.  rcld build this-file.toml
+machine = "x68000"
+name = "MYGAME"
+entry = "start"                  # a label (or an offset) in the text; the default is its first byte
+output = "mygame.x"              # a Human68k executable
+
+[[input]]
+asm = ["main.s"]                 # 68000 source with sections .text .data .bss
 "#;

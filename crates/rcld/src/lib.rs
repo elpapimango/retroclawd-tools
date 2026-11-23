@@ -5,6 +5,7 @@
 //! the machine and the output are. [`build`] checks that nothing overlaps or leaves its region and then writes
 //! the image the output's extension asks for: a `.prg`, a disk, a cartridge, a tape or a snapshot.
 
+pub mod amiga;
 pub mod atari;
 pub mod basic;
 pub mod emit;
@@ -15,6 +16,7 @@ pub mod pcengine;
 pub mod place;
 pub mod snes;
 pub mod templates;
+pub mod x68000;
 pub mod xex;
 
 use layout::{Layout, Machine, Value};
@@ -96,6 +98,10 @@ fn cpu_of(layout: &Layout) -> Result<rcasm::Cpu, String> {
         (Machine::PcEngine, _) => Ok(rcasm::Cpu::Huc6280),
         (Machine::Nes, _) => Ok(rcasm::Cpu::Mos6502),
         (Machine::Snes, _) => Ok(rcasm::Cpu::W65816),
+        (Machine::Amiga | Machine::X68000, _) => Err(
+            "the Amiga and the X68000 are 68000 machines: they are built by their own modules"
+                .to_string(),
+        ),
         (Machine::AtariSt, _) => {
             Err("the Atari ST is a 68000: it is built by `rcld::atari`".to_string())
         }
@@ -398,6 +404,12 @@ pub fn build(
     }
     if layout.machine == Machine::PcEngine {
         return pcengine::build(layout, base, output, cli_defines);
+    }
+    if layout.machine == Machine::Amiga {
+        return amiga::build(layout, base, output, cli_defines);
+    }
+    if layout.machine == Machine::X68000 {
+        return x68000::build(layout, base, output, cli_defines);
     }
     if layout.machine == Machine::Nes {
         return nes::build(layout, base, output, cli_defines);

@@ -271,6 +271,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "rc-amiga"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "99ffd1535baa23ea7def4015611177dec6614506211a4ae4e0ddf29e8d2d72bc"
+
+[[package]]
 name = "rc-atari-media"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -455,6 +461,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "rc-x68k"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5e2dde6853b020675e1b392c617e3c68bf35bd3f1863f85238629ade491fef5a"
+
+[[package]]
 name = "rc-z80"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -558,11 +570,13 @@ name = "rcld"
 version = "0.2.0"
 dependencies = [
  "clap",
+ "rc-amiga",
  "rc-atari-media",
  "rc-c64-cartridge",
  "rc-common",
  "rc-ines",
  "rc-sfc",
+ "rc-x68k",
  "rcasm",
  "rcdisk",
  "rcsnap",

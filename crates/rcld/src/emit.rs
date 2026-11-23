@@ -432,6 +432,8 @@ fn can_make(machine: Machine) -> &'static str {
         Machine::PcEngine => ".pce",
         Machine::Nes => ".nes",
         Machine::Snes => ".sfc",
+        Machine::Amiga => ".exe (a hunk executable) .adf",
+        Machine::X68000 => ".x",
         Machine::Generic => ".bin",
     }
 }

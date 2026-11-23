@@ -49,6 +49,10 @@ pub enum Machine {
     Nes,
     /// The Super Nintendo / Super Famicom: 65816 code placed by 24-bit address, written as a `.sfc`.
     Snes,
+    /// The Amiga: a relocatable 68000 program, written as a hunk executable or an ADF disk.
+    Amiga,
+    /// The Sharp X68000: a relocatable 68000 program, written as a Human68k `.X` executable.
+    X68000,
     /// No machine: raw images only, and the CPU has to be named.
     Generic,
 }
@@ -64,6 +68,8 @@ impl Machine {
             Machine::PcEngine => "pcengine",
             Machine::Nes => "nes",
             Machine::Snes => "snes",
+            Machine::Amiga => "amiga",
+            Machine::X68000 => "x68000",
             Machine::Generic => "generic",
         }
     }
@@ -207,6 +213,14 @@ pub struct Options {
     pub country: Option<u8>,
     pub version: Option<u8>,
     pub fix_checksum: Option<bool>,
+    /// Amiga: the memory the hunks load into (`any`, `chip`, `fast`), whether to write `HUNK_SYMBOL` blocks, the ADF
+    /// file system (`ofs` default, `ffs`), whether the disk boots (default true), the startup sequence text (default
+    /// the program's name).
+    pub memory: Option<String>,
+    pub hunk_symbols: Option<bool>,
+    pub fs: Option<String>,
+    pub bootable: Option<bool>,
+    pub startup: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]

@@ -30,6 +30,7 @@ spc700 = { package = "rc-spc700", version = "0.1" }
 ines = { package = "rc-ines", version = "0.1" }
 sfc = { package = "rc-sfc", version = "0.1" }
 amiga = { package = "rc-amiga", version = "0.1" }
+x68k = { package = "rc-x68k", version = "0.1" }
 mc68000 = { package = "rc-mc68000", version = "0.1" }
 mos6502 = { package = "rc-mos6502", version = "0.1" }
 sna-snapshot = { package = "rc-sna-snapshot", version = "0.1" }

@@ -80,7 +80,7 @@ fn run() -> Result<(), String> {
         Command::Template { machine } => {
             let text = rcld::templates::template(&machine).ok_or_else(|| {
                 format!(
-                    "no template for \"{machine}\"; try c64, spectrum, cpc, atari-st, pcengine, nes or snes"
+                    "no template for \"{machine}\"; try c64, spectrum, cpc, atari-st, pcengine, nes, snes, amiga or x68000"
                 )
             })?;
             rc_common::out(text);
