@@ -318,7 +318,7 @@ dependencies = [
 
 [[package]]
 name = "rc-common"
-version = "0.2.0"
+version = "0.3.0"
 
 [[package]]
 name = "rc-cpc-cartridge"
@@ -409,9 +409,9 @@ dependencies = [
 
 [[package]]
 name = "rc-mos6502"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b0775635fad0c14e34e72f845d875030f8065329470f5e3870cb41e261edd9e7"
+checksum = "d67719b8710b9e6e692d8e1363b53128c9fd70ef2fa136e091945a01a83d5bd3"
 dependencies = [
  "rc-machine",
  "serde",
@@ -503,7 +503,7 @@ checksum = "acdc748316044913fa9d97c98772e4c21ef9a166a0bc14511a840fb6bb1bb463"
 
 [[package]]
 name = "rcar"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "clap",
  "rc-common",
@@ -512,7 +512,7 @@ dependencies = [
 
 [[package]]
 name = "rcasm"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "clap",
  "rc-common",
@@ -527,7 +527,7 @@ dependencies = [
 
 [[package]]
 name = "rcchd"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "clap",
  "rc-chd",
@@ -535,7 +535,7 @@ dependencies = [
 
 [[package]]
 name = "rcdis"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "clap",
  "rc-common",
@@ -551,7 +551,7 @@ dependencies = [
 
 [[package]]
 name = "rcdisk"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "clap",
  "rc-atari-media",
@@ -567,7 +567,7 @@ dependencies = [
 
 [[package]]
 name = "rcld"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "clap",
  "rc-amiga",
@@ -587,7 +587,7 @@ dependencies = [
 
 [[package]]
 name = "rcsnap"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "clap",
  "rc-c64-cartridge",
@@ -604,7 +604,7 @@ dependencies = [
 
 [[package]]
 name = "rctape"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "clap",
  "rc-c64-tape",
