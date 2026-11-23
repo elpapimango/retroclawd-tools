@@ -83,7 +83,7 @@ fn main() -> ExitCode {
         return run_68000(&cli);
     }
     let Some(cpu) = Cpu::parse(&cli.cpu) else {
-        return fail(format!("unknown CPU \"{}\" (6502, z80 or 68000)", cli.cpu));
+        return fail(format!("unknown CPU \"{}\" (6502, z80, huc6280 or 68000)", cli.cpu));
     };
     let raw = match std::fs::read(&cli.file) {
         Ok(b) => b,

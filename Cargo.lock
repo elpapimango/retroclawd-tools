@@ -443,6 +443,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "rc-common",
+ "rc-huc6280",
  "rc-machine",
  "rc-mc68000",
  "rc-mos6502",

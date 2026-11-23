@@ -89,10 +89,11 @@ fn parse_hex_token(text: &str) -> Option<u16> {
 }
 
 fn decode(cpu: Cpu, image: &[u8], at: usize, addr: u16) -> Option<Insn> {
-    let window = &image[at..image.len().min(at + 4)];
+    let window = &image[at..image.len().min(at + 8)];
     let (text, len) = match cpu {
         Cpu::Mos6502 => mos6502::disassemble::disassemble(window, addr),
         Cpu::Z80 => z80::disassemble::disassemble_at(window, addr),
+        Cpu::Huc6280 => huc6280::disassemble::disassemble(window, addr),
     };
     if len == 0 || at + len > image.len() {
         return None;
@@ -102,6 +103,7 @@ fn decode(cpu: Cpu, image: &[u8], at: usize, addr: u16) -> Option<Insn> {
     let (flow, reference) = match cpu {
         Cpu::Mos6502 => flow_6502(&text),
         Cpu::Z80 => flow_z80(&text),
+        Cpu::Huc6280 => flow_huc6280(&text),
     };
     Some(Insn {
         text,
@@ -126,6 +128,42 @@ fn flow_6502(text: &str) -> (Flow, Option<u16>) {
         "RTS" | "RTI" | "BRK" | "JAM" => (go(false, None), None),
         _ => {
             // A memory operand: four hex digits, not an immediate.
+            let reference = if operand.starts_with('#') {
+                None
+            } else {
+                operand
+                    .trim_start_matches('(')
+                    .split([',', ')'])
+                    .next()
+                    .filter(|o| o.len() == 5 && o.starts_with('$'))
+                    .and_then(parse_hex_token)
+            };
+            (go(true, None), reference)
+        }
+    }
+}
+
+fn flow_huc6280(text: &str) -> (Flow, Option<u16>) {
+    let (mnemonic, operand) = text.split_once(' ').unwrap_or((text, ""));
+    let go = |falls_through, target| Flow {
+        falls_through,
+        target,
+    };
+    // `BBRn zp,target` and `BBSn zp,target`: the target is the last operand.
+    let last = operand.rsplit(',').next().unwrap_or("");
+    match mnemonic {
+        "JMP" if operand.starts_with('(') => (go(false, None), None),
+        "JMP" => (go(false, parse_hex_token(operand)), None),
+        "BRA" => (go(false, parse_hex_token(operand)), None),
+        "JSR" | "BSR" => (go(true, parse_hex_token(operand)), None),
+        "BPL" | "BMI" | "BVC" | "BVS" | "BCC" | "BCS" | "BNE" | "BEQ" => {
+            (go(true, parse_hex_token(operand)), None)
+        }
+        m if m.len() == 4 && (m.starts_with("BBR") || m.starts_with("BBS")) => {
+            (go(true, parse_hex_token(last)), None)
+        }
+        "RTS" | "RTI" | "BRK" => (go(false, None), None),
+        _ => {
             let reference = if operand.starts_with('#') {
                 None
             } else {
@@ -456,7 +494,7 @@ fn symbolize(
                     4 => {
                         // Only the 6502 says "absolute" by writing a small value with four digits;
                         // naming that value could shrink it to zero page.
-                        let would_shrink = opts.cpu == Cpu::Mos6502 && v <= 0xFF;
+                        let would_shrink = matches!(opts.cpu, Cpu::Mos6502 | Cpu::Huc6280) && v <= 0xFF;
                         if would_shrink {
                             None
                         } else if let Some(n) = labels.get(&v) {
@@ -470,7 +508,7 @@ fn symbolize(
                             None
                         }
                     }
-                    2 if opts.cpu == Cpu::Mos6502 && !immediate => opts.symbols.name(v).map(|n| {
+                    2 if matches!(opts.cpu, Cpu::Mos6502 | Cpu::Huc6280) && !immediate => opts.symbols.name(v).map(|n| {
                         externals.insert(v, n.to_string());
                         n.to_string()
                     }),
