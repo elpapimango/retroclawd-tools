@@ -15,5 +15,4 @@ path = "src/main.rs"
 
 [dependencies]
 chd.workspace = true
-rc-common = { path = "../rc-common", version = "0.1.0" }
 clap.workspace = true

@@ -494,7 +494,8 @@ fn symbolize(
                     4 => {
                         // Only the 6502 says "absolute" by writing a small value with four digits;
                         // naming that value could shrink it to zero page.
-                        let would_shrink = matches!(opts.cpu, Cpu::Mos6502 | Cpu::Huc6280) && v <= 0xFF;
+                        let would_shrink =
+                            matches!(opts.cpu, Cpu::Mos6502 | Cpu::Huc6280) && v <= 0xFF;
                         if would_shrink {
                             None
                         } else if let Some(n) = labels.get(&v) {
@@ -508,10 +509,12 @@ fn symbolize(
                             None
                         }
                     }
-                    2 if matches!(opts.cpu, Cpu::Mos6502 | Cpu::Huc6280) && !immediate => opts.symbols.name(v).map(|n| {
-                        externals.insert(v, n.to_string());
-                        n.to_string()
-                    }),
+                    2 if matches!(opts.cpu, Cpu::Mos6502 | Cpu::Huc6280) && !immediate => {
+                        opts.symbols.name(v).map(|n| {
+                            externals.insert(v, n.to_string());
+                            n.to_string()
+                        })
+                    }
                     _ => None,
                 });
                 if let Some(name) = replacement {

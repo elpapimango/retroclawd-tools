@@ -101,7 +101,10 @@ fn table() -> &'static HashMap<String, Template> {
         for op in 0..=255u8 {
             let bytes = [&[op][..], &FILL].concat();
             let (text, len) = huc6280::disassemble::disassemble(&bytes, 0x8000);
-            if len == 0 || text.starts_with("???") || text.starts_with("DB") || text.starts_with(".DB")
+            if len == 0
+                || text.starts_with("???")
+                || text.starts_with("DB")
+                || text.starts_with(".DB")
             {
                 continue;
             }
@@ -313,7 +316,8 @@ pub fn encode(mnemonic: &str, operand: &str, site: &Site) -> Result<Encoded, Str
     };
     let mut bytes = vec![0u8; t.len];
     bytes[0] = t.opcode;
-    for ((slot, at), (part, value)) in t.slots.iter().zip(parts.iter().zip(values.iter().copied())) {
+    for ((slot, at), (part, value)) in t.slots.iter().zip(parts.iter().zip(values.iter().copied()))
+    {
         match slot {
             Slot::Byte => {
                 if part.kind == 'N' {
@@ -333,7 +337,11 @@ pub fn encode(mnemonic: &str, operand: &str, site: &Site) -> Result<Encoded, Str
                 bytes[*at + 1] = (value >> 8) as u8;
             }
             Slot::Rel => {
-                let target = if known { value } else { site.addr as i64 + t.len as i64 };
+                let target = if known {
+                    value
+                } else {
+                    site.addr as i64 + t.len as i64
+                };
                 let offset = target - (site.addr as i64 + t.len as i64);
                 if !(-128..=127).contains(&offset) {
                     return Err(format!(

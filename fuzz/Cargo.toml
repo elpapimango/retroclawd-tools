@@ -38,5 +38,17 @@ path = "fuzz_targets/rcdis68k.rs"
 test = false
 doc = false
 
+[[bin]]
+name = "rcdis_huc6280"
+path = "fuzz_targets/rcdis_huc6280.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "rcasm_huc6280"
+path = "fuzz_targets/rcasm_huc6280.rs"
+test = false
+doc = false
+
 # Not part of the tools workspace: `cargo +nightly fuzz run prg` from this folder.
 [workspace]

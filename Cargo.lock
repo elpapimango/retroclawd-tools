@@ -434,7 +434,6 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "rc-chd",
- "rc-common",
 ]
 
 [[package]]

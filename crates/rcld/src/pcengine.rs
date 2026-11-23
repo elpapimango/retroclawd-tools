@@ -71,7 +71,10 @@ pub fn build(
         ));
     }
     if !layout.region.is_empty() || !layout.reserve.is_empty() {
-        return Err("regions and reserves are for machines with one flat memory; a HuCard is banks of ROM".to_string());
+        return Err(
+            "regions and reserves are for machines with one flat memory; a HuCard is banks of ROM"
+                .to_string(),
+        );
     }
     let mut sources = Vec::new();
     let mut pieces: Vec<Piece> = Vec::new();
@@ -151,7 +154,11 @@ pub fn build(
                 start: s.start,
             });
         }
-        symbols = asm.symbols.iter().map(|s| (s.name.clone(), s.value)).collect();
+        symbols = asm
+            .symbols
+            .iter()
+            .map(|s| (s.name.clone(), s.value))
+            .collect();
         symbols_text = rcasm::symbols_text(&asm, false, SymbolStyle::Rc);
     }
     if pieces.is_empty() {

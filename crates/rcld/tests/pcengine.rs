@@ -60,8 +60,15 @@ fn a_one_bank_program_becomes_a_128_kb_card_with_its_reset_vector() {
     // reset vector at $FFFE = file offset $1FFE, pointing at `start` ($E000)
     assert_eq!(&built.bytes[0x1FFE..0x2000], &[0x00, 0xE0]);
     // vectors without a label point at the reset code, and say so
-    assert_eq!(&built.bytes[0x1FF6..0x1FFE], &[0x00, 0xE0, 0x00, 0xE0, 0x00, 0xE0, 0x00, 0xE0]);
-    assert!(built.notes.iter().any(|n| n.contains("irq1")), "{:?}", built.notes);
+    assert_eq!(
+        &built.bytes[0x1FF6..0x1FFE],
+        &[0x00, 0xE0, 0x00, 0xE0, 0x00, 0xE0, 0x00, 0xE0]
+    );
+    assert!(
+        built.notes.iter().any(|n| n.contains("irq1")),
+        "{:?}",
+        built.notes
+    );
 }
 
 #[test]
@@ -88,7 +95,10 @@ fn sources_that_write_the_vectors_keep_them() {
         "    .org $E000\nstart:\n    nop\n    .org $FFF6\n    .word $E111,$E222,$E333,$E444,$E000\n",
     );
     let built = p.build(LAYOUT, "game.pce").unwrap();
-    assert_eq!(&built.bytes[0x1FF6..0x2000], &[0x11, 0xE1, 0x22, 0xE2, 0x33, 0xE3, 0x44, 0xE4, 0x00, 0xE0]);
+    assert_eq!(
+        &built.bytes[0x1FF6..0x2000],
+        &[0x11, 0xE1, 0x22, 0xE2, 0x33, 0xE3, 0x44, 0xE4, 0x00, 0xE0]
+    );
     assert!(built.notes.is_empty());
 }
 
@@ -141,8 +151,14 @@ fn sizes_are_checked() {
     let p = Project::new("size");
     p.file("main.asm", ONE_BANK);
     let with = |size: &str| format!("{LAYOUT}\n[options]\nsize = {size}\n");
-    assert_eq!(p.build(&with("393216"), "g.pce").unwrap().bytes.len(), 393216);
-    assert_eq!(p.build(&with("2621440"), "g.pce").unwrap().bytes.len(), 2621440);
+    assert_eq!(
+        p.build(&with("393216"), "g.pce").unwrap().bytes.len(),
+        393216
+    );
+    assert_eq!(
+        p.build(&with("2621440"), "g.pce").unwrap().bytes.len(),
+        2621440
+    );
     assert!(p.build(&with("100000"), "g.pce").is_err());
     assert!(p.build(&with("8192"), "g.pce").is_ok());
     assert!(p.build(&with("65536"), "g.pce").is_ok());
@@ -155,7 +171,9 @@ fn a_program_larger_than_the_size_says_so() {
         "main.asm",
         "    .org $E000\nstart:\n    nop\n    .bank 40\n    .org $6000\n    nop\n",
     );
-    let err = p.build(&format!("{LAYOUT}\n[options]\nsize = 131072\n"), "g.pce").unwrap_err();
+    let err = p
+        .build(&format!("{LAYOUT}\n[options]\nsize = 131072\n"), "g.pce")
+        .unwrap_err();
     assert!(err.contains("options.size"), "{err}");
 }
 
@@ -170,6 +188,11 @@ fn the_extension_must_be_pce() {
 fn no_reset_label_is_an_error() {
     let p = Project::new("noreset");
     p.file("main.asm", "    .org $E000\nfoo:\n    nop\n");
-    let err = p.build("machine = \"pcengine\"\n[[input]]\nasm = [\"main.asm\"]\n", "g.pce").unwrap_err();
+    let err = p
+        .build(
+            "machine = \"pcengine\"\n[[input]]\nasm = [\"main.asm\"]\n",
+            "g.pce",
+        )
+        .unwrap_err();
     assert!(err.contains("reset"), "{err}");
 }

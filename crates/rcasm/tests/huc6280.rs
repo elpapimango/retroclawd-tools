@@ -45,7 +45,9 @@ fn every_opcode_assembles_back() {
                 Ok(again) => {
                     let (text2, len2) = huc6280::disassemble::disassemble(&again, addr);
                     if text2 != text || len2 != len || again.len() != len {
-                        failures.push(format!("{bytes:02X?}: \"{text}\" -> {again:02X?} \"{text2}\""));
+                        failures.push(format!(
+                            "{bytes:02X?}: \"{text}\" -> {again:02X?} \"{text2}\""
+                        ));
                     }
                 }
             }
@@ -56,7 +58,12 @@ fn every_opcode_assembles_back() {
         failures.is_empty(),
         "{} of {checked} failed:\n{}",
         failures.len(),
-        failures.iter().take(20).cloned().collect::<Vec<_>>().join("\n")
+        failures
+            .iter()
+            .take(20)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("\n")
     );
 }
 
@@ -80,17 +87,35 @@ fn mapper_and_register_instructions() {
 
 #[test]
 fn block_transfers_take_three_words() {
-    assert_eq!(at("tii $4000,$5000,$0100"), [0x73, 0x00, 0x40, 0x00, 0x50, 0x00, 0x01]);
-    assert_eq!(at("tdd $4000,$5000,$0100"), [0xC3, 0x00, 0x40, 0x00, 0x50, 0x00, 0x01]);
-    assert_eq!(at("tin $4000,$5000,$0100"), [0xD3, 0x00, 0x40, 0x00, 0x50, 0x00, 0x01]);
-    assert_eq!(at("tia $4000,$5000,$0100"), [0xE3, 0x00, 0x40, 0x00, 0x50, 0x00, 0x01]);
-    assert_eq!(at("tai $4000,$5000,$0100"), [0xF3, 0x00, 0x40, 0x00, 0x50, 0x00, 0x01]);
+    assert_eq!(
+        at("tii $4000,$5000,$0100"),
+        [0x73, 0x00, 0x40, 0x00, 0x50, 0x00, 0x01]
+    );
+    assert_eq!(
+        at("tdd $4000,$5000,$0100"),
+        [0xC3, 0x00, 0x40, 0x00, 0x50, 0x00, 0x01]
+    );
+    assert_eq!(
+        at("tin $4000,$5000,$0100"),
+        [0xD3, 0x00, 0x40, 0x00, 0x50, 0x00, 0x01]
+    );
+    assert_eq!(
+        at("tia $4000,$5000,$0100"),
+        [0xE3, 0x00, 0x40, 0x00, 0x50, 0x00, 0x01]
+    );
+    assert_eq!(
+        at("tai $4000,$5000,$0100"),
+        [0xF3, 0x00, 0x40, 0x00, 0x50, 0x00, 0x01]
+    );
 }
 
 #[test]
 fn block_transfer_with_later_symbols_keeps_its_size() {
     let src = ".org $E000\n tii src,dst,len\n nop\nsrc = $10\ndst = $20\nlen = $30\n";
-    assert_eq!(asm(src).unwrap(), [0x73, 0x10, 0x00, 0x20, 0x00, 0x30, 0x00, 0xEA]);
+    assert_eq!(
+        asm(src).unwrap(),
+        [0x73, 0x10, 0x00, 0x20, 0x00, 0x30, 0x00, 0xEA]
+    );
 }
 
 #[test]
@@ -98,8 +123,14 @@ fn bit_instructions_and_branches() {
     assert_eq!(at("smb0 $20"), [0x87, 0x20]);
     assert_eq!(at("rmb4 $20"), [0x47, 0x20]);
     // BBR3 at $E000: opcode $3F, zero page, offset to $E010 is $E010-$E003.
-    assert_eq!(asm(".org $E000\n bbr3 $20,there\n.org $E010\nthere: nop\n").unwrap()[..3], [0x3F, 0x20, 0x0D]);
-    assert_eq!(asm(".org $E000\n bbs7 $20,$E000\n").unwrap(), [0xFF, 0x20, 0xFD]);
+    assert_eq!(
+        asm(".org $E000\n bbr3 $20,there\n.org $E010\nthere: nop\n").unwrap()[..3],
+        [0x3F, 0x20, 0x0D]
+    );
+    assert_eq!(
+        asm(".org $E000\n bbs7 $20,$E000\n").unwrap(),
+        [0xFF, 0x20, 0xFD]
+    );
     assert_eq!(at("tsb $20"), [0x04, 0x20]);
     assert_eq!(at("trb $2000"), [0x1C, 0x00, 0x20]);
 }
@@ -112,8 +143,14 @@ fn a_bit_branch_out_of_range_names_the_distance() {
 
 #[test]
 fn branches_and_calls() {
-    assert_eq!(asm(".org $E000\n bra there\n nop\nthere: nop\n").unwrap()[..2], [0x80, 0x01]);
-    assert_eq!(asm(".org $E000\n bsr there\n nop\nthere: rts\n").unwrap()[..2], [0x44, 0x01]);
+    assert_eq!(
+        asm(".org $E000\n bra there\n nop\nthere: nop\n").unwrap()[..2],
+        [0x80, 0x01]
+    );
+    assert_eq!(
+        asm(".org $E000\n bsr there\n nop\nthere: rts\n").unwrap()[..2],
+        [0x44, 0x01]
+    );
     assert_eq!(at("jsr $E100"), [0x20, 0x00, 0xE1]);
     assert_eq!(at("jmp ($E100,x)"), [0x7C, 0x00, 0xE1]);
     assert_eq!(at("stz $2000,x"), [0x9E, 0x00, 0x20]);
@@ -159,7 +196,8 @@ fn banked(source: &str) -> Vec<(u16, u16, Vec<u8>)> {
 
 #[test]
 fn banks_keep_same_addresses_apart() {
-    let segs = banked(".bank 0\n.org $E000\n nop\n.bank 1\n.org $6000\n clx\n.bank 2\n.org $6000\n cly\n");
+    let segs =
+        banked(".bank 0\n.org $E000\n nop\n.bank 1\n.org $6000\n clx\n.bank 2\n.org $6000\n cly\n");
     assert_eq!(
         segs,
         vec![
