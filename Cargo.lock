@@ -59,17 +59,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "atari-media"
-version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-atari?rev=04a2108d3eabb33a2c39a04adae058c99afffa53#04a2108d3eabb33a2c39a04adae058c99afffa53"
-
-[[package]]
-name = "bitflags"
-version = "2.13.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ded4057c258ba199e2d26386d3af3780957ecaee6c4ef4041c6b4b8b97c0b06"
-
-[[package]]
 name = "block-buffer"
 version = "0.10.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -79,24 +68,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "c64-cartridge"
-version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-commodore?rev=8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7#8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7"
-
-[[package]]
-name = "c64-tape"
-version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-commodore?rev=8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7#8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7"
-dependencies = [
- "serde",
-]
-
-[[package]]
-name = "cbm-dos"
-version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-commodore?rev=8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7#8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7"
-
-[[package]]
 name = "cfg-if"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -104,9 +75,9 @@ checksum = "4e7648175b45a9a48536d676f68d918270699102aa8dab5496df06904c914600"
 
 [[package]]
 name = "clap"
-version = "4.6.7"
+version = "4.6.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aa8876b300ab35ba921adea3dfd70157a46249b33f95c9084ae5709785478946"
+checksum = "844c5c0b65be192cb68d570cca1b21a6444431d24e39c084dc0336177015337c"
 dependencies = [
  "clap_builder",
  "clap_derive",
@@ -126,9 +97,9 @@ dependencies = [
 
 [[package]]
 name = "clap_derive"
-version = "4.6.7"
+version = "4.6.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f9c751b79415d4e559e3d1fcf128e09e720eb673a06d26cf6f392d37d75b66e0"
+checksum = "b4c174f11f949b9ca8c60580925e282b9cbd5454750e506f08648b2038080cd7"
 dependencies = [
  "heck",
  "proc-macro2",
@@ -138,28 +109,21 @@ dependencies = [
 
 [[package]]
 name = "clap_lex"
-version = "1.1.1"
+version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
+checksum = "e0921b3876b3a1df8a1c9f912e7f94342458022c2e84288015893d83c4d62a79"
+
+[[package]]
+name = "claxon"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4bfbf56724aa9eca8afa4fcfadeb479e722935bb2a0900c2d37e0cc477af0688"
 
 [[package]]
 name = "colorchoice"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d07550c9036bf2ae0c684c4297d503f838287c83c53686d05370d0e139ae570"
-
-[[package]]
-name = "cpc-cartridge"
-version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-amstrad?rev=34461e3e1faa6931b405b3b7896c3cbda71ce96a#34461e3e1faa6931b405b3b7896c3cbda71ce96a"
-
-[[package]]
-name = "cpc-snapshot"
-version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-amstrad?rev=34461e3e1faa6931b405b3b7896c3cbda71ce96a#34461e3e1faa6931b405b3b7896c3cbda71ce96a"
-dependencies = [
- "z80",
-]
 
 [[package]]
 name = "cpufeatures"
@@ -172,9 +136,9 @@ dependencies = [
 
 [[package]]
 name = "crc32fast"
-version = "1.5.2"
+version = "1.5.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "01a7799fd6b852db0e61728dde9a204c423b44d689dbd432522543614b490e78"
+checksum = "2b929dd2a135771f40afabd1073f85eed59c800b7c61901e5c254270497dad64"
 dependencies = [
  "cfg-if",
 ]
@@ -190,30 +154,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "d64"
-version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-commodore?rev=8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7#8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7"
-dependencies = [
- "cbm-dos",
-]
-
-[[package]]
-name = "d71"
-version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-commodore?rev=8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7#8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7"
-dependencies = [
- "cbm-dos",
-]
-
-[[package]]
-name = "d81"
-version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-commodore?rev=8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7#8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7"
-dependencies = [
- "cbm-dos",
-]
-
-[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -224,42 +164,20 @@ dependencies = [
 ]
 
 [[package]]
-name = "dsk"
-version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-crates?rev=a8cfb2ef44aef943d6900c98bce02758acf926eb#a8cfb2ef44aef943d6900c98bce02758acf926eb"
-
-[[package]]
 name = "equivalent"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "00d174d5400e5e8fd687ad1049e2f578285fa914201b1af7e8b112a4546bd826"
 
 [[package]]
-name = "fdeflate"
-version = "0.3.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e6853b52649d4ac5c0bd02320cddc5ba956bdb407c4b75a2c6b75bf51500f8c"
-dependencies = [
- "simd-adler32",
-]
-
-[[package]]
 name = "flate2"
-version = "1.1.10"
+version = "1.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e634e2e0ebac1ee034020da1ca582e17ffe4e0f5e985823721e168928136dcb"
+checksum = "626d4928326b646e70f65ed36fc7cf9f206bdb68a0019ee7c6b4709da4e084c4"
 dependencies = [
  "crc32fast",
- "miniz_oxide 0.9.1",
+ "miniz_oxide",
  "zlib-rs",
-]
-
-[[package]]
-name = "g64"
-version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-commodore?rev=8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7#8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7"
-dependencies = [
- "d64",
 ]
 
 [[package]]
@@ -274,9 +192,9 @@ dependencies = [
 
 [[package]]
 name = "hashbrown"
-version = "0.17.1"
+version = "0.17.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
+checksum = "735eaa21a6a5ffb2e84362faaeb90c05ba8e19797ca30428478cb6ea3a4921bc"
 
 [[package]]
 name = "heck"
@@ -307,33 +225,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "65cd87c9a6d60536580b316ad985726104730a5151c99845f2490428ef91240a"
 
 [[package]]
-name = "machine"
-version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-crates?rev=a8cfb2ef44aef943d6900c98bce02758acf926eb#a8cfb2ef44aef943d6900c98bce02758acf926eb"
-
-[[package]]
-name = "mc68000"
-version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-crates?rev=cdc441725cce3ae9771876eede52023f71f6edcd#cdc441725cce3ae9771876eede52023f71f6edcd"
-dependencies = [
- "serde",
-]
+name = "lzma-rust2"
+version = "0.24.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "490750560fa7851fbbf5d3ab1a8750f09350ed361ed8aed85b1e1e40587812ee"
 
 [[package]]
 name = "memchr"
 version = "2.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
-
-[[package]]
-name = "miniz_oxide"
-version = "0.8.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1fa76a2c86f704bdb222d66965fb3d63269ce38518b83cb0575fca855ebb6316"
-dependencies = [
- "adler2",
- "simd-adler32",
-]
 
 [[package]]
 name = "miniz_oxide"
@@ -346,32 +247,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "mos6502"
-version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-crates?rev=a8cfb2ef44aef943d6900c98bce02758acf926eb#a8cfb2ef44aef943d6900c98bce02758acf926eb"
-dependencies = [
- "machine",
- "serde",
-]
-
-[[package]]
 name = "once_cell_polyfill"
 version = "1.70.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
-
-[[package]]
-name = "png"
-version = "0.18.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "60769b8b31b2a9f263dae2776c37b1b28ae246943cf719eb6946a1db05128a61"
-dependencies = [
- "bitflags",
- "crc32fast",
- "fdeflate",
- "flate2",
- "miniz_oxide 0.8.9",
-]
 
 [[package]]
 name = "proc-macro2"
@@ -392,36 +271,162 @@ dependencies = [
 ]
 
 [[package]]
+name = "rc-atari-media"
+version = "0.1.0"
+
+[[package]]
+name = "rc-c64-cartridge"
+version = "0.1.0"
+
+[[package]]
+name = "rc-c64-tape"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "rc-cbm-dos"
+version = "0.1.0"
+
+[[package]]
+name = "rc-chd"
+version = "0.1.0"
+dependencies = [
+ "claxon",
+ "flate2",
+ "lzma-rust2",
+ "ruzstd",
+ "sha1",
+]
+
+[[package]]
 name = "rc-common"
 version = "0.1.0"
 
 [[package]]
-name = "rc-suite"
+name = "rc-cpc-cartridge"
+version = "0.1.0"
+
+[[package]]
+name = "rc-cpc-snapshot"
 version = "0.1.0"
 dependencies = [
- "clap",
- "cpc-snapshot",
- "png",
- "rcasm",
- "rcdisk",
- "rcld",
- "rcsnap",
- "serde",
- "sha2",
- "toml",
- "zx-tape",
+ "rc-z80",
 ]
+
+[[package]]
+name = "rc-d64"
+version = "0.1.0"
+dependencies = [
+ "rc-cbm-dos",
+]
+
+[[package]]
+name = "rc-d71"
+version = "0.1.0"
+dependencies = [
+ "rc-cbm-dos",
+]
+
+[[package]]
+name = "rc-d81"
+version = "0.1.0"
+dependencies = [
+ "rc-cbm-dos",
+]
+
+[[package]]
+name = "rc-dsk"
+version = "0.1.0"
+
+[[package]]
+name = "rc-g64"
+version = "0.1.0"
+dependencies = [
+ "rc-d64",
+]
+
+[[package]]
+name = "rc-machine"
+version = "0.1.0"
+
+[[package]]
+name = "rc-mc68000"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "rc-mos6502"
+version = "0.1.0"
+dependencies = [
+ "rc-machine",
+ "serde",
+]
+
+[[package]]
+name = "rc-sna-snapshot"
+version = "0.1.0"
+dependencies = [
+ "rc-z80",
+]
+
+[[package]]
+name = "rc-szx-snapshot"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "rc-z80",
+]
+
+[[package]]
+name = "rc-z80"
+version = "0.1.0"
+dependencies = [
+ "rc-machine",
+ "serde",
+]
+
+[[package]]
+name = "rc-z80-snapshot"
+version = "0.1.0"
+dependencies = [
+ "rc-z80",
+]
+
+[[package]]
+name = "rc-zx-tape"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "serde",
+]
+
+[[package]]
+name = "rc-zx81-snapshot"
+version = "0.1.0"
 
 [[package]]
 name = "rcasm"
 version = "0.1.0"
 dependencies = [
  "clap",
- "machine",
- "mc68000",
- "mos6502",
  "rc-common",
- "z80",
+ "rc-machine",
+ "rc-mc68000",
+ "rc-mos6502",
+ "rc-z80",
+]
+
+[[package]]
+name = "rcchd"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "rc-chd",
+ "rc-common",
 ]
 
 [[package]]
@@ -429,27 +434,27 @@ name = "rcdis"
 version = "0.1.0"
 dependencies = [
  "clap",
- "machine",
- "mc68000",
- "mos6502",
  "rc-common",
+ "rc-machine",
+ "rc-mc68000",
+ "rc-mos6502",
+ "rc-z80",
  "rcasm",
- "z80",
 ]
 
 [[package]]
 name = "rcdisk"
 version = "0.1.0"
 dependencies = [
- "atari-media",
- "cbm-dos",
  "clap",
- "d64",
- "d71",
- "d81",
- "dsk",
- "g64",
+ "rc-atari-media",
+ "rc-cbm-dos",
  "rc-common",
+ "rc-d64",
+ "rc-d71",
+ "rc-d81",
+ "rc-dsk",
+ "rc-g64",
  "rcasm",
 ]
 
@@ -457,9 +462,9 @@ dependencies = [
 name = "rcld"
 version = "0.1.0"
 dependencies = [
- "atari-media",
- "c64-cartridge",
  "clap",
+ "rc-atari-media",
+ "rc-c64-cartridge",
  "rc-common",
  "rcasm",
  "rcdisk",
@@ -473,29 +478,35 @@ dependencies = [
 name = "rcsnap"
 version = "0.1.0"
 dependencies = [
- "c64-cartridge",
  "clap",
- "cpc-cartridge",
- "cpc-snapshot",
+ "rc-c64-cartridge",
  "rc-common",
+ "rc-cpc-cartridge",
+ "rc-cpc-snapshot",
+ "rc-sna-snapshot",
+ "rc-szx-snapshot",
+ "rc-z80",
+ "rc-z80-snapshot",
+ "rc-zx81-snapshot",
  "rcasm",
- "sna-snapshot",
- "szx-snapshot",
- "z80",
- "z80-snapshot",
- "zx81-snapshot",
 ]
 
 [[package]]
 name = "rctape"
 version = "0.1.0"
 dependencies = [
- "c64-tape",
  "clap",
+ "rc-c64-tape",
  "rc-common",
+ "rc-zx-tape",
  "rcasm",
- "zx-tape",
 ]
+
+[[package]]
+name = "ruzstd"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "69e4ce4a039f42bf25920b95667e4d789e98749ab11bbb8d2c2936f788421bb5"
 
 [[package]]
 name = "serde"
@@ -537,10 +548,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "sha2"
-version = "0.10.9"
+name = "sha1"
+version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a7507d819769d01a365ab707794a4084392c824f54a7a6a7862f8c3d0892b283"
+checksum = "a978451301f4db1d02937a4ab3ccce137717b81826e79b7d49ffe3244a13c3b8"
 dependencies = [
  "cfg-if",
  "cpufeatures",
@@ -554,14 +565,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3a219298ac11a56ea9a6d2120044824d6f01aeb034955e7af7bc16858527deea"
 
 [[package]]
-name = "sna-snapshot"
-version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-sinclair?rev=93fa593f6150c101fc3d6ab83e46916cbbb50dcb#93fa593f6150c101fc3d6ab83e46916cbbb50dcb"
-dependencies = [
- "z80",
-]
-
-[[package]]
 name = "strsim"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -569,22 +572,13 @@ checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 
 [[package]]
 name = "syn"
-version = "3.0.9"
+version = "3.0.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d78c8dee4c7bf0e14673097256fed6142ce9d3b85a408189d07482442145823b"
+checksum = "4ae9ccbea3a7b0b09443036490c8f34a8b1b760fd345e5c0dae0aac718faea79"
 dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
-]
-
-[[package]]
-name = "szx-snapshot"
-version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-sinclair?rev=93fa593f6150c101fc3d6ab83e46916cbbb50dcb#93fa593f6150c101fc3d6ab83e46916cbbb50dcb"
-dependencies = [
- "flate2",
- "z80",
 ]
 
 [[package]]
@@ -677,38 +671,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "z80"
-version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-crates?rev=a8cfb2ef44aef943d6900c98bce02758acf926eb#a8cfb2ef44aef943d6900c98bce02758acf926eb"
-dependencies = [
- "machine",
- "serde",
-]
-
-[[package]]
-name = "z80-snapshot"
-version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-sinclair?rev=93fa593f6150c101fc3d6ab83e46916cbbb50dcb#93fa593f6150c101fc3d6ab83e46916cbbb50dcb"
-dependencies = [
- "z80",
-]
-
-[[package]]
 name = "zlib-rs"
 version = "0.6.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b268e58e7c693d7c271f93ffc4ba3b380412554231c85bf61ca7af91042a4112"
-
-[[package]]
-name = "zx-tape"
-version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-crates?rev=a8cfb2ef44aef943d6900c98bce02758acf926eb#a8cfb2ef44aef943d6900c98bce02758acf926eb"
-dependencies = [
- "flate2",
- "serde",
-]
-
-[[package]]
-name = "zx81-snapshot"
-version = "0.1.0"
-source = "git+https://github.com/elpapimango/retroclawd-sinclair?rev=93fa593f6150c101fc3d6ab83e46916cbbb50dcb#93fa593f6150c101fc3d6ab83e46916cbbb50dcb"

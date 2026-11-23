@@ -1,5 +1,5 @@
 [package]
-name = "retroclawd-tools-fuzz"
+name = "rctools-fuzz"
 version = "0.0.0"
 publish = false
 edition = "2024"

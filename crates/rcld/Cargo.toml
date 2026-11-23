@@ -4,7 +4,7 @@ description = "Place assembled programs and emit a runnable image (retroclawd to
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-publish.workspace = true
+repository.workspace = true
 
 [lib]
 name = "rcld"
@@ -15,11 +15,11 @@ path = "src/main.rs"
 
 [dependencies]
 atari-media.workspace = true
-rc-common = { path = "../rc-common" }
-rcasm = { path = "../rcasm" }
-rcdisk = { path = "../rcdisk" }
-rctape = { path = "../rctape" }
-rcsnap = { path = "../rcsnap" }
+rc-common = { path = "../rc-common", version = "0.1.0" }
+rcasm = { path = "../rcasm", version = "0.1.0" }
+rcdisk = { path = "../rcdisk", version = "0.1.0" }
+rctape = { path = "../rctape", version = "0.1.0" }
+rcsnap = { path = "../rcsnap", version = "0.1.0" }
 c64-cartridge.workspace = true
 serde.workspace = true
 toml.workspace = true

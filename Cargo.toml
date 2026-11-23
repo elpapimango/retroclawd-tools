@@ -1,43 +1,41 @@
 [workspace]
 resolver = "2"
-members = ["crates/rc-common", "crates/rcasm", "crates/rcdis", "crates/rcdisk", "crates/rctape", "crates/rcsnap", "crates/rcld", "crates/rc-suite"]
+exclude = ["fuzz"]
+members = ["crates/rc-common", "crates/rcasm", "crates/rcdis", "crates/rcdisk", "crates/rcchd", "crates/rctape", "crates/rcsnap", "crates/rcld"]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
 license = "GPL-3.0-or-later"
-publish = false
+repository = "https://github.com/elpapimango/retroclawd-tools"
 
 [workspace.dependencies]
-atari-media = { git = "https://github.com/elpapimango/retroclawd-atari", rev = "04a2108d3eabb33a2c39a04adae058c99afffa53" }
-# The retroclawd crates, by git revision (public repositories).
-machine = { git = "https://github.com/elpapimango/retroclawd-crates", rev = "a8cfb2ef44aef943d6900c98bce02758acf926eb" }
-z80 = { git = "https://github.com/elpapimango/retroclawd-crates", rev = "a8cfb2ef44aef943d6900c98bce02758acf926eb" }
-mos6502 = { git = "https://github.com/elpapimango/retroclawd-crates", rev = "a8cfb2ef44aef943d6900c98bce02758acf926eb" }
-# The 68000 core: the assembler checks what it produces with its disassembler, `rcdis` prints with it.
-mc68000 = { git = "https://github.com/elpapimango/retroclawd-crates", rev = "cdc441725cce3ae9771876eede52023f71f6edcd" }
-# The Commodore format crates (retroclawd-commodore), by revision.
-cbm-dos = { git = "https://github.com/elpapimango/retroclawd-commodore", rev = "8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7" }
-d64 = { git = "https://github.com/elpapimango/retroclawd-commodore", rev = "8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7" }
-d71 = { git = "https://github.com/elpapimango/retroclawd-commodore", rev = "8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7" }
-d81 = { git = "https://github.com/elpapimango/retroclawd-commodore", rev = "8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7" }
-g64 = { git = "https://github.com/elpapimango/retroclawd-commodore", rev = "8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7" }
-c64-tape = { git = "https://github.com/elpapimango/retroclawd-commodore", rev = "8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7" }
-dsk = { git = "https://github.com/elpapimango/retroclawd-crates", rev = "a8cfb2ef44aef943d6900c98bce02758acf926eb" }
-zx-tape = { git = "https://github.com/elpapimango/retroclawd-crates", rev = "a8cfb2ef44aef943d6900c98bce02758acf926eb" }
-# Snapshot and cartridge formats of the machine families (by revision). Their Z80 snapshot types use the
-# `retroclawd-crates` revision the families pin; keep it equal to the one above so there is one `z80` in the graph.
-z80-snapshot = { git = "https://github.com/elpapimango/retroclawd-sinclair", rev = "93fa593f6150c101fc3d6ab83e46916cbbb50dcb" }
-sna-snapshot = { git = "https://github.com/elpapimango/retroclawd-sinclair", rev = "93fa593f6150c101fc3d6ab83e46916cbbb50dcb" }
-szx-snapshot = { git = "https://github.com/elpapimango/retroclawd-sinclair", rev = "93fa593f6150c101fc3d6ab83e46916cbbb50dcb" }
-zx81-snapshot = { git = "https://github.com/elpapimango/retroclawd-sinclair", rev = "93fa593f6150c101fc3d6ab83e46916cbbb50dcb" }
-cpc-snapshot = { git = "https://github.com/elpapimango/retroclawd-amstrad", rev = "34461e3e1faa6931b405b3b7896c3cbda71ce96a" }
-cpc-cartridge = { git = "https://github.com/elpapimango/retroclawd-amstrad", rev = "34461e3e1faa6931b405b3b7896c3cbda71ce96a" }
-c64-cartridge = { git = "https://github.com/elpapimango/retroclawd-commodore", rev = "8224b27cbfb97cb8ff4ceda90d192ec2215c4bd7" }
+# The CPU cores and file formats: retroclawd-core, published as rc-*; the source keeps the short names.
+atari-media = { package = "rc-atari-media", version = "0.1" }
+c64-cartridge = { package = "rc-c64-cartridge", version = "0.1" }
+c64-tape = { package = "rc-c64-tape", version = "0.1" }
+cbm-dos = { package = "rc-cbm-dos", version = "0.1" }
+chd = { package = "rc-chd", version = "0.1" }
+cpc-cartridge = { package = "rc-cpc-cartridge", version = "0.1" }
+cpc-snapshot = { package = "rc-cpc-snapshot", version = "0.1" }
+d64 = { package = "rc-d64", version = "0.1" }
+d71 = { package = "rc-d71", version = "0.1" }
+d81 = { package = "rc-d81", version = "0.1" }
+dsk = { package = "rc-dsk", version = "0.1" }
+g64 = { package = "rc-g64", version = "0.1" }
+machine = { package = "rc-machine", version = "0.1" }
+mc68000 = { package = "rc-mc68000", version = "0.1" }
+mos6502 = { package = "rc-mos6502", version = "0.1" }
+sna-snapshot = { package = "rc-sna-snapshot", version = "0.1" }
+szx-snapshot = { package = "rc-szx-snapshot", version = "0.1" }
+z80 = { package = "rc-z80", version = "0.1" }
+z80-snapshot = { package = "rc-z80-snapshot", version = "0.1" }
+zx-tape = { package = "rc-zx-tape", version = "0.1" }
+zx81-snapshot = { package = "rc-zx81-snapshot", version = "0.1" }
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 clap = { version = "4", features = ["derive"] }
 
 [profile.release]
 strip = true
-opt-level = 3
+opt-level = "s"

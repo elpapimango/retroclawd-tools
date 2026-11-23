@@ -1,4 +1,4 @@
-# retroclawd-tools
+# rctools
 
 Command-line tools for the machines [retroclawd](https://github.com/elpapimango/retroclawd) emulates (ZX81, ZX
 Spectrum, Amstrad CPC, Commodore 64/128): assemble, disassemble, and -- as they arrive -- open, create and
@@ -11,6 +11,7 @@ tools. The tools build **on their own**; the emulator application does not build
 | [`rcdis`](docs/rcdis.md) | disassembler for the 6502 and the Z80 that writes source `rcasm` assembles back to the same bytes | works |
 | [`rcdisk`](docs/rcdisk.md) | list, info, validate, extract, add, rm, rename, create and convert disk images: Commodore `.d64`/`.x64`/`.d71`/`.d81` (`.g64` read), CPC / +3 `.dsk` with AMSDOS and +3DOS headers; Atari `.atr` info, blank creation and raw sectors (no filesystem) | works |
 | [`rctape`](docs/rctape.md) | inspect/edit Spectrum `.tzx`/`.tap`, extract Commodore `.t64`, inspect C64 `.tap`, validate/normalize VIC-20 TAP-v0/v1 and C16/Plus4 TAP-v2; `from-prg` creates VIC-20 KERNAL tapes | works |
+| [`rcchd`](docs/rcchd.md) | make, extract, inspect, verify and edit CHD files like `chdman`: CD (cue/bin, iso, gdi), hard disk, DVD and raw images; `copy`, parent (delta) files, metadata commands; checked against chdman 0.289 | works |
 | [`rcsnap`](docs/rcsnap.md) | info, convert, dump, extract and create: ZX Spectrum `.z80`/`.sna`/`.szx` into each other, ZX81 `.p`/`.p81`, CPC `.sna`, C64 `.crt`, CPC Plus `.cpr` | works |
 | [`rcld`](docs/rcld.md) | place assembled programs (sources, binaries, `.prg`), check overlaps and regions, and write a runnable image: C64 `.prg`/`.d64`/`.d81`/`.crt` (with a `SYS` line), Spectrum `.tap`/`.tzx` (with a BASIC loader) and snapshots, CPC `.dsk`, Atari `.xex` build/inspect and standard `.car` creation | works |
 
@@ -35,9 +36,8 @@ cargo build --release --workspace      # target/release/rcasm, target/release/rc
 cargo test --workspace
 ```
 
-The instruction knowledge comes from the retroclawd crates (`z80`, `mos6502`, `machine`), pinned by git
-revision in the root `Cargo.toml`. Those repositories are public; cargo fetches them from GitHub (set
-`CARGO_NET_GIT_FETCH_WITH_CLI=true` in CI if your git setup needs it).
+The instruction knowledge comes from the [retroclawd-core](https://github.com/elpapimango/retroclawd-core) crates (`rc-z80`, `rc-mos6502`, `rc-mc68000`, `rc-machine`), taken from crates.io
+as `rc-*` packages (renamed back to the short names in the root `Cargo.toml`).
 
 ## A taste
 
@@ -113,18 +113,9 @@ need the ROM images and a built emulator, so they run only when told where they 
 
 See `CLAUDE.md` for the layout and conventions, `CREDITS.md` for the references.
 
-## Machine scenarios
+## The emulator's test suite
 
-`rc-scenarios check <machine>.manifest.toml` validates a scenario manifest without
-firmware. `rc-scenarios run <manifest>` runs it with `RETROCLAWD_BIN`, the machine
-plugin directory, `RC_ROMS` and `RC_GOLDENS` configured (see `CLAUDE.md`).
-
-Every captured golden requires its real SHA-256. Before a reference capture is
-available, a `screen` or `memory` scenario may use `status = "known-gap"` with a
-nonempty `gap.reason` and `gap.evidence`, omitting the golden and hash together.
-The report explicitly says the comparison was not run; it is never counted as
-passed. Memory ranges remain required. Adding a golden restores the normal
-comparison rules, including failure when a known gap starts passing.
+`rc-scenarios` (scenario manifests and the integration suites that run the emulator) lives in the [retroclawd](https://github.com/elpapimango/retroclawd) repository, not here; it uses these tools as crates.
 
 ## License
 
