@@ -566,7 +566,7 @@ impl Asm<'_> {
                     width as u8,
                     obj::Kind::Abs,
                     0,
-                    0,
+                    first_byte as u32,
                     op.expr.clone(),
                 ));
             }
@@ -613,7 +613,7 @@ impl Asm<'_> {
                 width,
                 kind: obj::Kind::Abs,
                 bias: 0,
-                back: 0,
+                back: at as u32,
                 expr: named,
                 file: self.file_name(src),
                 line: src.line,

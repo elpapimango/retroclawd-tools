@@ -436,6 +436,24 @@ impl Op {
     }
 }
 
+/// An object's expression as an assembler expression; symbol `n` of the object is named `#n`.
+pub fn from_object(e: &rc_common::obj::Expr) -> Result<Expr, String> {
+    use rc_common::obj::Expr as O;
+    Ok(match e {
+        O::Num(n) => Expr::Num(*n),
+        O::Sym(i) => Expr::Sym(format!("#{i}")),
+        O::Pc => Expr::Pc,
+        O::Unary(op, a) => Expr::Unary(*op as char, Box::new(from_object(a)?)),
+        O::Binary(op, a, b) => Expr::Binary(
+            *Op::ALL
+                .get(*op as usize)
+                .ok_or_else(|| format!("unknown operator {op}"))?,
+            Box::new(from_object(a)?),
+            Box::new(from_object(b)?),
+        ),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

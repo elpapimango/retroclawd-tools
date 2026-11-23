@@ -118,8 +118,9 @@ pub struct Reloc {
     pub width: u8,
     pub big_endian: bool,
     pub kind: Kind,
-    /// For `Rel`: the field is `value - (instruction address + bias)`, the instruction's address being the
-    /// section's address plus `offset - instr_back`.
+    /// For `Rel`: the field is `value - (instruction address + bias)`.
+    /// The instruction (or data statement) starts `instr_back` bytes before the field: its address, which `Pc` means,
+    /// is the section's address plus `offset - instr_back`.
     pub bias: i64,
     pub instr_back: u32,
     /// What the field holds; its symbols are indices into this object's symbol table.
@@ -222,8 +223,8 @@ impl Object {
             o.push(r.width | kind << 4 | (r.big_endian as u8) << 5);
             if r.kind == Kind::Rel {
                 put_i(&mut o, r.bias);
-                put_u(&mut o, r.instr_back as u64);
             }
+            put_u(&mut o, r.instr_back as u64);
             put_expr(&mut o, &r.expr);
             put_u(&mut o, r.file as u64);
             put_u(&mut o, r.line as u64);
@@ -470,11 +471,8 @@ impl Object {
             } else {
                 Kind::Abs
             };
-            let (bias, instr_back) = if kind == Kind::Rel {
-                (r.int()?, r.small("instruction offset", 64)?)
-            } else {
-                (0, 0)
-            };
+            let bias = if kind == Kind::Rel { r.int()? } else { 0 };
+            let instr_back = r.small("instruction offset", 255)?;
             let sec = &sections[section as usize];
             if sec.bss || offset as u64 + width as u64 > sec.size as u64 {
                 return r.fail(&format!(

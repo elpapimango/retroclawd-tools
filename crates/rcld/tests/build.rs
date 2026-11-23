@@ -551,7 +551,10 @@ fn layout_mistakes_are_named() {
             "x.prg",
         )
         .unwrap_err();
-    assert!(e.contains("exactly one of asm, bin, prg or symbols"), "{e}");
+    assert!(
+        e.contains("exactly one of asm, src, obj, lib, bin, prg or symbols"),
+        "{e}"
+    );
     let e = p
         .build(
             "machine = \"c64\"\n[[input]]\nbin = \"main.asm\"\n",

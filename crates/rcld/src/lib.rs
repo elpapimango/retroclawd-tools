@@ -9,6 +9,7 @@ pub mod atari;
 pub mod basic;
 pub mod emit;
 pub mod layout;
+pub mod link;
 pub mod pcengine;
 pub mod place;
 pub mod templates;
@@ -104,6 +105,98 @@ fn cpu_of(layout: &Layout) -> Result<rcasm::Cpu, String> {
     }
 }
 
+/// An input that goes through the linker.
+enum Item {
+    Src(PathBuf),
+    Obj(PathBuf),
+    Lib(PathBuf),
+}
+
+/// Assembles the `src` files to objects, reads the `obj` and `lib` files and links them by the layout's rules.
+fn link_inputs(
+    layout: &Layout,
+    base: &Path,
+    items: &[Item],
+    defines: &[(String, i64)],
+) -> Result<link::Linked, String> {
+    let cpu = cpu_of(layout)?;
+    let mut objects = Vec::new();
+    let mut libs = Vec::new();
+    for item in items {
+        match item {
+            Item::Src(path) => {
+                let text = std::fs::read(path)
+                    .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+                let text = String::from_utf8_lossy(&text).into_owned();
+                let opts = rcasm::Options {
+                    cpu: Some(cpu),
+                    defines: defines.to_vec(),
+                    include_dirs: vec![base.to_path_buf()],
+                    ..rcasm::Options::default()
+                };
+                let name = path.to_string_lossy().into_owned();
+                let object = rcasm::assemble_object(&name, &text, &opts, &rcasm::DiskFiles)
+                    .map_err(|diags| {
+                        diags
+                            .iter()
+                            .map(|d| d.to_string())
+                            .collect::<Vec<_>>()
+                            .join(
+                                "
+",
+                            )
+                    })?;
+                objects.push(link::LinkObject { file: name, object });
+            }
+            Item::Obj(path) => {
+                let bytes = std::fs::read(path)
+                    .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+                let object = rc_common::obj::Object::decode(&bytes)
+                    .map_err(|e| format!("{}: {e}", path.display()))?;
+                objects.push(link::LinkObject {
+                    file: path.to_string_lossy().into_owned(),
+                    object,
+                });
+            }
+            Item::Lib(path) => {
+                let bytes = std::fs::read(path)
+                    .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+                let lib = rc_common::obj::Archive::decode(&bytes)
+                    .map_err(|e| format!("{}: {e}", path.display()))?;
+                libs.push((path.to_string_lossy().into_owned(), lib));
+            }
+        }
+    }
+    let mut rules = Vec::new();
+    for r in &layout.segment {
+        rules.push(link::Rule {
+            name: r.name.clone(),
+            region: r.region.clone(),
+            start: match &r.start {
+                Some(v) => {
+                    Some(layout::address(v, &format!("segment \"{}\" start", r.name))? as u32)
+                }
+                None => None,
+            },
+            align: r.align,
+        });
+    }
+    let regions: Vec<link::RegionSpec> = place::regions(layout)?
+        .into_iter()
+        .map(|r| link::RegionSpec {
+            name: r.name,
+            start: r.start as u32,
+            end: r.end as u32,
+        })
+        .collect();
+    link::link(objects, &libs, &rules, &regions).map_err(|e| {
+        e.join(
+            "
+",
+        )
+    })
+}
+
 /// Reads and assembles the inputs.
 pub fn load(
     layout: &Layout,
@@ -116,18 +209,46 @@ pub fn load(
     let mut symbols: Vec<(String, i64)> = Vec::new();
     let mut symbols_text = String::new();
     let mut sources: Vec<PathBuf> = Vec::new();
+    let mut linked: Vec<Item> = Vec::new();
     for (n, input) in layout.input.iter().enumerate() {
         let kinds = [
             input.asm.is_some(),
             input.bin.is_some(),
             input.prg.is_some(),
             input.symbols.is_some(),
+            input.src.is_some(),
+            input.obj.is_some(),
+            input.lib.is_some(),
         ];
         if kinds.iter().filter(|&&k| k).count() != 1 {
             return Err(format!(
-                "input {}: give exactly one of asm, bin, prg or symbols",
+                "input {}: give exactly one of asm, src, obj, lib, bin, prg or symbols",
                 n + 1
             ));
+        }
+        if let Some(list) = &input.src {
+            linked.extend(
+                list.list()
+                    .into_iter()
+                    .map(|p| Item::Src(resolve(base, &p))),
+            );
+            continue;
+        }
+        if let Some(list) = &input.obj {
+            linked.extend(
+                list.list()
+                    .into_iter()
+                    .map(|p| Item::Obj(resolve(base, &p))),
+            );
+            continue;
+        }
+        if let Some(list) = &input.lib {
+            linked.extend(
+                list.list()
+                    .into_iter()
+                    .map(|p| Item::Lib(resolve(base, &p))),
+            );
+            continue;
         }
         if input.at.is_some() && input.bin.is_none() {
             return Err(format!("input {}: \"at\" goes with \"bin\"", n + 1));
@@ -180,6 +301,13 @@ pub fn load(
     }
     defines.extend(cli_defines.iter().cloned());
     let mut notes = Vec::new();
+    if !linked.is_empty() {
+        let l = link_inputs(layout, base, &linked, &defines)?;
+        pieces.extend(l.pieces);
+        symbols.extend(l.symbols);
+        symbols_text.push_str(&l.symbols_text);
+        notes.extend(l.notes);
+    }
     if !sources.is_empty() {
         // A Windows path has backslashes, which are escapes in an assembler string.
         let quote = |p: &Path| {

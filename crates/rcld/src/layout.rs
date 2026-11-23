@@ -78,6 +78,12 @@ pub enum Gaps {
 pub struct Input {
     /// Assembler sources, assembled together in this order as one program.
     pub asm: Option<OneOrMany>,
+    /// Assembler sources, each assembled to its own object and linked (separate compilation).
+    pub src: Option<OneOrMany>,
+    /// Objects (`.rco`) to link.
+    pub obj: Option<OneOrMany>,
+    /// Libraries (`.rca`): members are linked in when something needs a name they define.
+    pub lib: Option<OneOrMany>,
     /// A raw binary, placed at `at`.
     pub bin: Option<String>,
     pub at: Option<Value>,
@@ -112,6 +118,18 @@ pub struct Region {
     pub name: String,
     pub start: Value,
     pub end: Value,
+}
+
+/// Where the segments (sections) called `name` go when objects are linked.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SegmentRule {
+    pub name: String,
+    /// The region they must lie in (they start at its first free address).
+    pub region: Option<String>,
+    /// Or an address to start at.
+    pub start: Option<Value>,
+    pub align: Option<u32>,
 }
 
 /// A range nothing may occupy (the system's own use of memory).
@@ -182,6 +200,8 @@ pub struct Layout {
     pub input: Vec<Input>,
     #[serde(default)]
     pub region: Vec<Region>,
+    #[serde(default)]
+    pub segment: Vec<SegmentRule>,
     #[serde(default)]
     pub reserve: Vec<Reserve>,
     #[serde(default)]
