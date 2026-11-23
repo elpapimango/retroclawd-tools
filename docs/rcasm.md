@@ -147,3 +147,14 @@ Branches stay in their bank. In object mode 3-byte (long) address fields relocat
 **SPC700.** `mov a,#$12`, `mov a,$12` (direct page), `mov a,!$1234` (absolute; a plain operand above `$FF` is absolute too), `mov a,$12+x`, `mov a,[$12+x]`, `mov a,[$12]+y`,
 `mov a,(x)+`, `mov $22,$11` (destination first), `mov $12,#$34`, `set1 $12.3`, `bbs $12.3,target`, `or1 c,/$1234.5` (a 13-bit address and a bit number),
 `tcall 5`, `pcall $f0`, `movw ya,$12`. The direct page flag is the program's business: the assembler writes the byte.
+
+## ca65-style source (scopes, unnamed labels, `.repeat`)
+
+Enough of ca65's language to assemble typical cc65-era projects as they are:
+- `.proc name` ... `.endproc` (a label, then a scope) and `.scope name` ... `.endscope`; inside, names are `scope::name`; a reference finds the innermost scope that has the name, then the global one; `outer::inner` and `::global` name a scope explicitly. Scoped names are objects' symbols (`util::run`).
+- Unnamed labels: a line starting with `:` defines one; `:+`, `:++` mean the next ones, `:-`, `:--` the previous ones.
+- `.repeat COUNT[, VAR]` ... `.endrep` (nestable; VAR counts from 0).
+- `.addr` (= `.word`), `.dbyt` (a big-endian word), `.setcpu "65816"`, `.p02`, `.pc02`, `.psc02`, `.p816`, and the housekeeping directives `.feature`, `.list`, `.nolist`, `.macpack`, `.listbytes`, `.autoimport`, `.case` (accepted, no effect).
+- Together with `.segment`, `.import`/`.export`/`.global`, `.importzp`/`.exportzp`, `.res`, `.macro`/`.endmacro`, `.if`/`.ifdef`, `.include`, `.incbin` and `@cheap` locals, which were there already.
+
+Not done: `.define`, `.struct`/`.enum`, `.local`, `.charmap`, `.ifblank` and the other conditionals of ca65, `.mac` tricks with `.concat`; and the `vasm` syntaxes beyond what the 68000 assembler's Motorola style already takes.

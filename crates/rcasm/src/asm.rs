@@ -133,6 +133,10 @@ struct Asm<'f> {
     pc: Option<u32>,
     /// The bank `.bank` selected (0 until then).
     bank: u16,
+    /// `.proc` / `.scope` nesting.
+    scopes: Vec<String>,
+    /// How many unnamed labels (`:`) this pass has defined.
+    anon: i64,
     /// 65816: register widths (`.a16`, `.i16`, `REP`/`SEP` in smart mode).
     m16: bool,
     x16: bool,
@@ -153,17 +157,14 @@ struct View<'a> {
     ob: Option<&'a ObjState>,
     symbols: &'a HashMap<String, Sym>,
     scope_prefix: String,
+    /// The names of the `.proc`/`.scope` blocks around the statement, outermost first.
+    scopes: &'a [String],
     pc: i64,
 }
 
 impl Scope for View<'_> {
     fn symbol(&self, name: &str) -> Option<i64> {
-        let key = if name.starts_with('@') {
-            format!("{}{name}", self.scope_prefix)
-        } else {
-            name.to_string()
-        };
-        self.symbols.get(&key).map(|s| s.value)
+        self.symbols.get(&self.key_of(name)).map(|s| s.value)
     }
     fn pc(&self) -> i64 {
         self.pc
@@ -216,6 +217,8 @@ fn run_passes<'f>(
         wide: HashMap::new(),
         pc: None,
         bank: 0,
+        scopes: Vec::new(),
+        anon: 0,
         m16: false,
         x16: false,
         smart: true,
@@ -306,11 +309,72 @@ fn take_word(text: &str) -> (&str, &str) {
 }
 
 const DIRECTIVES: &[&str] = &[
-    "org", "byte", "db", "defb", "byt", "word", "dw", "defw", "text", "ascii", "asciiz", "str",
-    "fill", "ds", "defs", "res", "align", "equ", "set", "include", "incbin", "macro", "endm",
-    "endmacro", "if", "ifdef", "ifndef", "else", "endif", "cpu", "illegal", "error", "assert",
-    "end", "bank", "segment", "import", "importzp", "export", "exportzp", "global", "a8", "a16",
-    "i8", "i16", "smart",
+    "org",
+    "byte",
+    "db",
+    "defb",
+    "byt",
+    "word",
+    "dw",
+    "defw",
+    "text",
+    "ascii",
+    "asciiz",
+    "str",
+    "fill",
+    "ds",
+    "defs",
+    "res",
+    "align",
+    "equ",
+    "set",
+    "include",
+    "incbin",
+    "macro",
+    "endm",
+    "endmacro",
+    "if",
+    "ifdef",
+    "ifndef",
+    "else",
+    "endif",
+    "cpu",
+    "illegal",
+    "error",
+    "assert",
+    "end",
+    "bank",
+    "segment",
+    "import",
+    "importzp",
+    "export",
+    "exportzp",
+    "global",
+    "a8",
+    "a16",
+    "i8",
+    "i16",
+    "smart",
+    "proc",
+    "endproc",
+    "scope",
+    "endscope",
+    "addr",
+    "dbyt",
+    "setcpu",
+    "p02",
+    "pc02",
+    "psc02",
+    "p816",
+    "feature",
+    "list",
+    "nolist",
+    "macpack",
+    "listbytes",
+    "autoimport",
+    "case",
+    "repeat",
+    "endrep",
 ];
 
 /// Names that are directives even without a leading dot (Z80 assemblers write them bare).
@@ -331,6 +395,8 @@ impl<'f> Asm<'f> {
         self.pass = pass;
         self.pc = None;
         self.bank = 0;
+        self.scopes.clear();
+        self.anon = 0;
         self.m16 = false;
         self.x16 = false;
         self.smart = true;
@@ -378,15 +444,19 @@ impl<'f> Asm<'f> {
             ob: self.ob.on.then_some(&self.ob),
             symbols: &self.symbols,
             scope_prefix: self.scope_prefix(),
+            scopes: &self.scopes,
             pc: self.pc.unwrap_or(0) as i64,
         }
     }
 
+    /// The key a definition of `name` has here: inside `.proc a` / `.scope b` it is `a::b::name`.
     fn key(&self, name: &str) -> String {
         if name.starts_with('@') {
             format!("{}{name}", self.scope_prefix())
+        } else if self.scopes.is_empty() || name.contains("::") {
+            name.strip_prefix("::").unwrap_or(name).to_string()
         } else {
-            name.to_string()
+            format!("{}::{name}", self.scopes.join("::"))
         }
     }
 
@@ -466,7 +536,7 @@ impl<'f> Asm<'f> {
             }
             let src = lines[i].clone();
             i += 1;
-            let stripped = strip_comment(&src.text).to_string();
+            let stripped = self.anonymous_labels(strip_comment(&src.text));
             let stmt = self.parse(&stripped);
             let (labels, kind) = match stmt {
                 Stmt::Empty => {
@@ -509,6 +579,14 @@ impl<'f> Asm<'f> {
                         if self.conds.pop().is_none() {
                             self.error(&src, ".endif without .if");
                         }
+                        continue;
+                    }
+                    Some("repeat") => {
+                        let (body, next) = self.collect_block(&lines, i, "repeat", "endrep");
+                        if self.active() {
+                            self.do_repeat(&src, operand, body, depth);
+                        }
+                        i = next;
                         continue;
                     }
                     Some("macro") => {
@@ -961,7 +1039,44 @@ impl<'f> Asm<'f> {
                 }
                 self.emit(src, &out);
             }
-            "word" | "dw" | "defw" => {
+            "dbyt" => {
+                let mut out = Vec::new();
+                for part in split_top(operand) {
+                    match self.eval_data(part) {
+                        Ok(v) if (-32768..=65535).contains(&v) => {
+                            out.extend_from_slice(&((v & 0xFFFF) as u16).to_be_bytes())
+                        }
+                        Ok(v) => {
+                            self.error(src, format!("{v} does not fit in 16 bits"));
+                            return;
+                        }
+                        Err(e) => {
+                            self.error(src, e);
+                            return;
+                        }
+                    }
+                }
+                self.emit(src, &out);
+            }
+            "setcpu" | "p02" | "pc02" | "psc02" | "p816" => {
+                let name = match dir {
+                    "setcpu" => as_string_literal(operand)
+                        .and_then(|r| r.ok())
+                        .map(|b| String::from_utf8_lossy(&b).into_owned())
+                        .unwrap_or_else(|| operand.trim().to_string()),
+                    "p816" => "65816".to_string(),
+                    _ => "6502".to_string(),
+                };
+                match Cpu::parse(&name) {
+                    Some(c) => {
+                        self.cpu = Some(c);
+                    }
+                    None => self.error(src, format!("unknown CPU \"{name}\"")),
+                }
+            }
+            // listing and ca65 housekeeping directives that change nothing here
+            "feature" | "list" | "nolist" | "macpack" | "listbytes" | "autoimport" | "case" => {}
+            "word" | "dw" | "defw" | "addr" => {
                 let mut out = Vec::new();
                 let parts = split_top(operand);
                 if parts.is_empty() {
@@ -1092,6 +1207,25 @@ impl<'f> Asm<'f> {
                     "a16" => self.m16 = true,
                     "i8" => self.x16 = false,
                     _ => self.x16 = true,
+                }
+            }
+            "proc" | "scope" => {
+                let name = operand.trim();
+                if name.is_empty()
+                    || !name.chars().all(expr::is_symbol_char)
+                    || name.starts_with('@')
+                {
+                    self.error(src, format!(".{dir} needs a name"));
+                    return;
+                }
+                if dir == "proc" {
+                    self.define_label(src, name);
+                }
+                self.scopes.push(name.to_string());
+            }
+            "endproc" | "endscope" => {
+                if self.scopes.pop().is_none() {
+                    self.error(src, format!(".{dir} without .proc or .scope"));
                 }
             }
             "smart" => match operand.trim().to_ascii_lowercase().as_str() {
@@ -1280,6 +1414,122 @@ impl<'f> Asm<'f> {
     // ---- macros ----
 
     /// Collects a macro body: the lines after the `.macro` line up to its matching `.endm`.
+    /// Like `collect_macro` for any `.open` ... `.close` block.
+    fn collect_block(
+        &mut self,
+        lines: &[LineSrc],
+        mut i: usize,
+        open: &str,
+        close: &str,
+    ) -> (Vec<LineSrc>, usize) {
+        let mut depth = 1;
+        let mut body = Vec::new();
+        while i < lines.len() {
+            let stripped = strip_comment(&lines[i].text);
+            let word = stripped.split_whitespace().next().unwrap_or("");
+            match directive_name(word).as_deref() {
+                Some(w) if w == open => depth += 1,
+                Some(w) if w == close => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return (body, i + 1);
+                    }
+                }
+                _ => {}
+            }
+            body.push(lines[i].clone());
+            i += 1;
+        }
+        if let Some(last) = lines.last() {
+            let l = last.clone();
+            self.error(&l, format!(".{open} without .{close}"));
+        }
+        (body, i)
+    }
+
+    /// `.repeat COUNT [, VAR]` ... `.endrep`: the body COUNT times, VAR counting from 0.
+    fn do_repeat(&mut self, src: &LineSrc, operand: &str, body: Vec<LineSrc>, depth: usize) {
+        let parts = split_top(operand);
+        let Some(count) = parts.first() else {
+            self.error(src, ".repeat needs a count");
+            return;
+        };
+        let n = match self.eval_now(count) {
+            Ok(n) if (0..=65536).contains(&n) => n,
+            Ok(n) => {
+                self.error(src, format!(".repeat {n} is outside 0..65536"));
+                return;
+            }
+            Err(e) => {
+                self.error(src, e);
+                return;
+            }
+        };
+        let var: Vec<String> = parts
+            .get(1)
+            .map(|v| vec![v.trim().to_string()])
+            .unwrap_or_default();
+        for k in 0..n {
+            let lines: Vec<LineSrc> = body
+                .iter()
+                .map(|l| LineSrc {
+                    text: if var.is_empty() {
+                        l.text.clone()
+                    } else {
+                        substitute(&l.text, &var, &[k.to_string()])
+                    },
+                    file: Rc::clone(&l.file),
+                    line: l.line,
+                })
+                .collect();
+            self.run(lines, depth + 1);
+        }
+    }
+
+    /// ca65's unnamed labels: a line that starts with `:` defines one; `:+`, `:++` the next ones, `:-`, `:--` the
+    /// previous ones, written as names that cannot clash.
+    fn anonymous_labels(&mut self, line: &str) -> String {
+        let t = line.trim_start();
+        let mut text = line.to_string();
+        if t.starts_with(':') && !t.starts_with("::") && !t[1..].starts_with(['+', '-']) {
+            self.anon += 1;
+            let indent = line.len() - t.len();
+            text = format!("{}__anon_{}:{}", &line[..indent], self.anon, &t[1..]);
+        }
+        if !text.contains(":+") && !text.contains(":-") {
+            return text;
+        }
+        let chars: Vec<char> = text.chars().collect();
+        let mut out = String::new();
+        let mut i = 0;
+        while i < chars.len() {
+            let prev_ok = i == 0
+                || !(chars[i - 1].is_alphanumeric() || chars[i - 1] == '_' || chars[i - 1] == ':');
+            if chars[i] == ':'
+                && prev_ok
+                && i + 1 < chars.len()
+                && (chars[i + 1] == '+' || chars[i + 1] == '-')
+            {
+                let sign = chars[i + 1];
+                let mut n = 0;
+                while i + 1 + n < chars.len() && chars[i + 1 + n] == sign {
+                    n += 1;
+                }
+                let target = if sign == '+' {
+                    self.anon + n as i64
+                } else {
+                    self.anon - n as i64 + 1
+                };
+                out.push_str(&format!("__anon_{target}"));
+                i += 1 + n;
+                continue;
+            }
+            out.push(chars[i]);
+            i += 1;
+        }
+        out
+    }
+
     fn collect_macro(&mut self, lines: &[LineSrc], mut i: usize) -> (Vec<LineSrc>, usize) {
         let mut depth = 1;
         let mut body = Vec::new();

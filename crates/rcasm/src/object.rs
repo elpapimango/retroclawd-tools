@@ -95,12 +95,21 @@ impl ObjState {
 }
 
 impl View<'_> {
+    /// The key of the symbol `name` names here: a local `@x`, or the innermost scope that has it, outward, then global.
     pub(super) fn key_of(&self, name: &str) -> String {
         if name.starts_with('@') {
-            format!("{}{name}", self.scope_prefix)
-        } else {
-            name.to_string()
+            return format!("{}{name}", self.scope_prefix);
         }
+        if let Some(global) = name.strip_prefix("::") {
+            return global.to_string();
+        }
+        for depth in (1..=self.scopes.len()).rev() {
+            let key = format!("{}::{name}", self.scopes[..depth].join("::"));
+            if self.symbols.contains_key(&key) {
+                return key;
+            }
+        }
+        name.to_string()
     }
 
     fn group_of(&self, name: &str) -> Option<Group> {

@@ -8,6 +8,7 @@
 pub mod amiga;
 pub mod atari;
 pub mod basic;
+pub mod cfg;
 pub mod emit;
 pub mod genesis;
 pub mod layout;
@@ -401,6 +402,17 @@ pub fn build(
     output: &Path,
     cli_defines: &[(String, i64)],
 ) -> Result<Build, String> {
+    if let Some(path) = &layout.cfg {
+        let full = resolve(base, path);
+        let text = std::fs::read_to_string(&full)
+            .map_err(|e| format!("cannot read {}: {e}", full.display()))?;
+        let cfg = cfg::parse(&text).map_err(|e| format!("{}: {e}", full.display()))?;
+        let mut merged = layout.clone();
+        merged.cfg = None;
+        merged.region.extend(cfg.regions);
+        merged.segment.extend(cfg.segments);
+        return build(&merged, base, output, cli_defines);
+    }
     if layout.machine == Machine::AtariSt {
         return atari::build(layout, base, output, cli_defines);
     }

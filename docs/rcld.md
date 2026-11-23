@@ -259,3 +259,7 @@ written (`fix_checksum = false` stops that) and the image is padded to a power o
 68000 sources at absolute addresses (the image starts at `$000000`; pad with `ds.b`) and `bin` inputs at `at`, output `.zip`: a cartridge set with the names the emulator reads: `NNN-p1.p1` (a program above 1 MB continues in
 `-p2.p2`), and from `[options]` files: `s` (fix layer, `-s1.s1`), `c` (the byte-interleaved sprite region, split into `-c1.c1` even bytes and `-c2.c2` odd bytes), `m` (Z80, `-m1.m1`), `v1`/`v2` (`-v1.v11`, `-v2.v21`);
 `ngh` is `NNN` (default 999). The header at `$100` (`NEO-GEO`, the jump table, the security pointer) is the program's own to write; rcld notes when it is missing [H?]. Files are stored, not compressed.
+
+## ld65 configuration files
+
+`cfg = "c64.cfg"` (top level of the layout) reads an ld65 `.cfg`: each `MEMORY` area becomes a region (`start`, `size`), each `SEGMENTS` entry a placement rule (`load` the region, `start`, `align`). `file`, `fill`, `type`, `define`, `run`, `offset`, and the `FILES`, `FORMATS`, `SYMBOLS`, `FEATURES` blocks are accepted and ignored: the layout's `output`, `fill` and machine decide those. Values are numbers with `+ - *`; a linker symbol such as `__STACKSIZE__` is an error. Use it with `src = [...]` inputs (separate compilation): the sources' `.segment "CODE"` / `"RODATA"` / `"BSS"` ... land where the config says.

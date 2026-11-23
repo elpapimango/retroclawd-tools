@@ -257,6 +257,8 @@ pub struct Layout {
     /// Where the program starts: an address or a symbol.
     pub entry: Option<Value>,
     pub fill: Option<u8>,
+    /// An ld65 `.cfg` file: its MEMORY areas become regions and its SEGMENTS placement rules.
+    pub cfg: Option<String>,
     #[serde(default)]
     pub gaps: Gaps,
     #[serde(default)]

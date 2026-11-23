@@ -325,15 +325,34 @@ impl Parser {
                     .map_err(|_| format!("binary number %{bin} is too large"))
             }
             c if c.is_ascii_digit() => self.number(),
-            c if is_symbol_start(c) => {
+            c if is_symbol_start(c) || self.at_scope_sep() && c == ':' => {
                 let start = self.pos;
-                while self.pos < self.chars.len() && is_symbol_char(self.chars[self.pos]) {
-                    self.pos += 1;
+                if self.chars[self.pos] == ':' {
+                    self.pos += 2; // a leading :: names the global scope
+                }
+                while self.pos < self.chars.len() {
+                    if is_symbol_char(self.chars[self.pos]) {
+                        self.pos += 1;
+                    } else if self.at_scope_sep() {
+                        self.pos += 2;
+                    } else {
+                        break;
+                    }
                 }
                 Ok(Expr::Sym(self.chars[start..self.pos].iter().collect()))
             }
             other => Err(format!("unexpected \"{other}\" in expression")),
         }
+    }
+
+    /// `::` followed by the start of a name (a scope separator, as in `lib::init`).
+    fn at_scope_sep(&self) -> bool {
+        self.chars.get(self.pos) == Some(&':')
+            && self.chars.get(self.pos + 1) == Some(&':')
+            && self
+                .chars
+                .get(self.pos + 2)
+                .is_some_and(|c| is_symbol_start(*c))
     }
 
     /// A number must not run into letters (`12abc`).
