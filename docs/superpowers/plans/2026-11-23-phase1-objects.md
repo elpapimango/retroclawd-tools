@@ -69,7 +69,7 @@ object bytes) and an index (export name -> member number) that readers verify ag
 
 **Interfaces:** `Options.object: bool`; `pub fn assemble_object(name, source, &Options, &dyn Files) -> Result<rc_common::obj::Object, Vec<Diag>>`;
 directives `.segment "NAME"[, zeropage|bss]`, `.export a, b`, `.import a, b`, `.importzp`, `.exportzp`, `.global a` (import if undefined, export if defined),
-`.scope NAME`/`.endscope` and `.proc NAME`/`.endproc` (a scope is a prefix `NAME::`; `NAME::sym` reaches into it); `.org` is an error in object mode
+`.org` is an error in object mode
 ("the linker places sections").  Consumes `Eval` from `cpu.rs`.
 
 - [ ] Tests (6502, Z80, HuC6280 each): two sections get their own bytes and sizes; `jmp label` yields an `abs` 2-byte reloc against the expression `label`; `lda import`/`lda <import`/`lda #>label+1`; `bne far_label` in another section yields `rel` with the right bias; `tii a,b,c` with three relocatable words yields three relocs at offsets 1, 3, 5; `.word label2-label1` in one section is a constant; undefined symbol without `.import` is an error; `.import` of a defined label is an error; `.exportzp` keeps zero page addressing.
@@ -98,7 +98,7 @@ with `Linked { pieces: Vec<Piece>, symbols: Vec<(String, i64)>, map: String }`.
 - [ ] Algorithm: collect objects, pull library members by undefined globals to a fixed point, place sections (rule order, then input order), compute symbol addresses, apply relocations by evaluating the stored expression with `rcasm::expr`, writing the field (range-checked, error names symbol, file, line), emit pieces.
 - [ ] `load` handles `obj`/`lib`; existing layouts unchanged; docs/rcld.md "Objects and libraries"; commit.
 
-### Task 5: 68000 objects
+### Task 5: 68000 objects (deferred to phase 3, where the Genesis and Neo Geo writers need them)
 
 **Files:** modify `rcasm/src/m68k.rs`, `rcasm/src/object.rs`; tests `rcasm/tests/object68k.rs`.
 
@@ -114,3 +114,9 @@ with `Linked { pieces: Vec<Piece>, symbols: Vec<(String, i64)>, map: String }`.
 
 Spec coverage: objects, archives, relocatable rcasm, linker over objects with TOML layouts (tasks 1-4), 68000 objects for Genesis/Neo Geo use (5). Not here
 on purpose: ld65 `.cfg` (phase 4), banked-card linking for the PC Engine (phase 3), debug info (phase 7). Names are consistent across tasks.
+
+## Status (2026-11-23)
+
+Tasks 1-4 and 6 done (formats, object mode for the 6502, Z80 and HuC6280, `rcar`, the linker, docs, fuzz targets, a mutation test that found and fixed a HuC6280 panic).
+Scopes (`.scope`/`.proc`, `NAME::sym`) move to phase 4 with the ca65 dialect, which needs them. Task 5 (68000 objects) moves to phase 3: the 68000 assembler is
+a separate module with its own sections, so it gets its own plan when the Genesis writer needs separately assembled files.
