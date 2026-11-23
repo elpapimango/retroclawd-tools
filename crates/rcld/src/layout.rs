@@ -42,6 +42,9 @@ pub enum Machine {
     /// The Atari ST: one 68000 program, written as a GEMDOS `.PRG`.
     #[serde(rename = "atari-st")]
     AtariSt,
+    /// The PC Engine / TurboGrafx-16: banked HuC6280 code, written as a HuCard `.pce`.
+    #[serde(rename = "pcengine")]
+    PcEngine,
     /// No machine: raw images only, and the CPU has to be named.
     Generic,
 }
@@ -54,6 +57,7 @@ impl Machine {
             Machine::Spectrum => "spectrum",
             Machine::Cpc => "cpc",
             Machine::AtariSt => "atari-st",
+            Machine::PcEngine => "pcengine",
             Machine::Generic => "generic",
         }
     }
@@ -77,6 +81,8 @@ pub struct Input {
     /// A raw binary, placed at `at`.
     pub bin: Option<String>,
     pub at: Option<Value>,
+    /// PC Engine `bin`: the 8 KB ROM bank the binary starts in (default 0).
+    pub bank: Option<u16>,
     /// A `.prg`: its first two bytes are the load address.
     pub prg: Option<String>,
     /// A symbol file whose names the sources can use (`NAME = $1234` or VICE `al C:1234 .NAME`).
@@ -153,6 +159,8 @@ pub struct Options {
     pub pause: Option<u16>,
     /// Name of the program file on a disk (default: `name`; on a CPC disk `.BIN` is added if there is no extension).
     pub file_name: Option<String>,
+    /// PC Engine: the card size in bytes (default: the next power of two, at least 128 KB).
+    pub size: Option<Value>,
 }
 
 #[derive(Clone, Debug, Deserialize)]

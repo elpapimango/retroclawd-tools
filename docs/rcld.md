@@ -15,7 +15,7 @@ A layout is a TOML file; every path in it is relative to the layout file, and `r
 point. Nothing overwrites an existing file without `--force`.
 
 ```toml
-machine = "c64"                  # c64 | spectrum | cpc | atari | generic (needs cpu = "6502" or "z80")
+machine = "c64"                  # c64 | spectrum | cpc | atari | atari-st | pcengine | generic (needs cpu = "6502", "z80" or "huc6280")
 name = "MYGAME"                  # program name on the medium (tape header, disk file, cartridge)
 entry = "start"                  # a symbol of the inputs, or an address
 output = "mygame.d64"            # the extension chooses the image; `rcld build -o` overrides
@@ -146,3 +146,32 @@ the loader's `CLEAR`, `LOAD ""CODE` and `RANDOMIZE USR` into the program, and a 
 * Sources are assembled as one program, so there are no separately assembled modules to link; `asm` pieces are all
   named "assembled code" in messages and the map.
 * A `.prg` input's BASIC stub is not parsed; a `.tap` on the Spectrum has one program.
+
+## PC Engine / TurboGrafx-16 (`machine = "pcengine"`)
+
+Writes a HuCard `.pce` (or `.tg16`) from HuC6280 sources and raw binaries. `.bank n` before an `.org` in the source puts the code in the
+8 KB ROM bank `n`; bank 0 is what the CPU sees at `$E000-$FFFF` after reset, so bank 0 code is assembled there. A piece in bank `n` sits at file offset
+`n * 8192 + (address & $1FFF)` and may run on into the next banks. A `bin` input takes `at` and `bank` (default 0).
+
+```toml
+machine = "pcengine"
+entry = "start"
+output = "game.pce"
+
+[[input]]
+asm = ["main.asm"]
+
+[[input]]
+bin = "graphics.bin"
+bank = 1
+at = 0x6000
+
+[options]
+size = 262144                    # default: the next power of two, at least 128 KB
+```
+
+The last ten bytes of bank 0 are the vectors (`$FFF6` IRQ2/BRK, `$FFF8` IRQ1, `$FFFA` timer, `$FFFC` NMI, `$FFFE` reset). Unless the
+sources write them, they come from the labels `irq2`, `irq1`, `timer`, `nmi` and `reset` (or `entry`, or `start`); a vector without a label
+points at the reset code and `rcld` says so. Sizes are a multiple of 8 KB that is a power of two, 384 KB or 2.5 MB (the card reader mirrors a
+power of two and maps the others). Overlaps in the file are errors naming both pieces.
+

@@ -42,6 +42,8 @@ pub struct Options {
 pub struct Segment {
     pub start: u16,
     pub bytes: Vec<u8>,
+    /// The ROM bank (`.bank n`, HuC6280): segments of different banks may use the same addresses. 0 elsewhere.
+    pub bank: u16,
 }
 
 impl Segment {
@@ -121,6 +123,8 @@ struct Asm<'f> {
     wide: HashMap<usize, bool>,
     // per pass
     pc: Option<u32>,
+    /// The bank `.bank` selected (0 until then).
+    bank: u16,
     segments: Vec<Segment>,
     global_scope: String,
     macro_scope: Vec<usize>,
@@ -169,6 +173,7 @@ pub fn assemble(
         macros: HashMap::new(),
         wide: HashMap::new(),
         pc: None,
+        bank: 0,
         segments: Vec::new(),
         global_scope: String::new(),
         macro_scope: Vec::new(),
@@ -253,7 +258,7 @@ const DIRECTIVES: &[&str] = &[
     "org", "byte", "db", "defb", "byt", "word", "dw", "defw", "text", "ascii", "asciiz", "str",
     "fill", "ds", "defs", "res", "align", "equ", "set", "include", "incbin", "macro", "endm",
     "endmacro", "if", "ifdef", "ifndef", "else", "endif", "cpu", "illegal", "error", "assert",
-    "end",
+    "end", "bank",
 ];
 
 /// Names that are directives even without a leading dot (Z80 assemblers write them bare).
@@ -273,6 +278,7 @@ impl<'f> Asm<'f> {
     fn begin_pass(&mut self, pass: u8) {
         self.pass = pass;
         self.pc = None;
+        self.bank = 0;
         self.segments.clear();
         self.global_scope.clear();
         self.macro_scope.clear();
@@ -601,17 +607,37 @@ impl<'f> Asm<'f> {
         match self.eval_now(value) {
             Ok(v) if (0..=0xFFFF).contains(&v) => {
                 // A new segment, unless this continues exactly where the last one ended.
-                let continues = self.segments.last().is_some_and(|s| s.end() == v as u32)
+                let continues = self
+                    .segments
+                    .last()
+                    .is_some_and(|s| s.end() == v as u32 && s.bank == self.bank)
                     && self.pc == Some(v as u32);
                 self.pc = Some(v as u32);
                 if !continues {
                     self.segments.push(Segment {
                         start: v as u16,
                         bytes: Vec::new(),
+                        bank: self.bank,
                     });
                 }
             }
             Ok(v) => self.error(src, format!(".org {v} is outside 0..65535")),
+            Err(e) => self.error(src, e),
+        }
+    }
+
+    /// `.bank n`: the following `.org` starts a segment in ROM bank n (HuC6280 only).
+    fn do_bank(&mut self, src: &LineSrc, value: &str) {
+        if self.cpu != Some(Cpu::Huc6280) {
+            self.error(src, ".bank is for the HuC6280 (.cpu huc6280)");
+            return;
+        }
+        match self.eval_now(value) {
+            Ok(v) if (0..=0xFFF).contains(&v) => {
+                self.bank = v as u16;
+                self.pc = None; // an `.org` has to follow
+            }
+            Ok(v) => self.error(src, format!(".bank {v} is outside 0..4095")),
             Err(e) => self.error(src, e),
         }
     }
@@ -665,6 +691,7 @@ impl<'f> Asm<'f> {
             self.segments.push(Segment {
                 start: pc as u16,
                 bytes: Vec::new(),
+                bank: self.bank,
             });
         }
         self.segments
@@ -726,6 +753,7 @@ impl<'f> Asm<'f> {
     fn directive(&mut self, src: &LineSrc, dir: &str, operand: &str) {
         match dir {
             "org" => self.do_org(src, operand),
+            "bank" => self.do_bank(src, operand),
             "end" => self.stop = true,
             "byte" | "db" | "defb" | "byt" | "text" | "ascii" | "str" | "asciiz" => {
                 let mut out = Vec::new();
@@ -1131,11 +1159,11 @@ impl<'f> Asm<'f> {
             .into_iter()
             .filter(|s| !s.bytes.is_empty())
             .collect();
-        segments.sort_by_key(|s| s.start);
+        segments.sort_by_key(|s| (s.bank, s.start));
         let mut merged: Vec<Segment> = Vec::new();
         for seg in segments {
             if let Some(last) = merged.last_mut() {
-                if (seg.start as u32) < last.end() {
+                if seg.bank == last.bank && (seg.start as u32) < last.end() {
                     return Err(vec![Diag::new(
                         name,
                         0,
@@ -1148,7 +1176,7 @@ impl<'f> Asm<'f> {
                         ),
                     )]);
                 }
-                if seg.start as u32 == last.end() {
+                if seg.bank == last.bank && seg.start as u32 == last.end() {
                     last.bytes.extend(seg.bytes);
                     continue;
                 }

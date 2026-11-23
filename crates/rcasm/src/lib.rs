@@ -21,6 +21,9 @@ pub fn flat_image(asm: &Assembly, fill: u8) -> Result<(u16, Vec<u8>), String> {
     let (Some(first), Some(last)) = (asm.segments.first(), asm.segments.last()) else {
         return Err("the program produced no bytes".to_string());
     };
+    if asm.segments.iter().any(|s| s.bank != 0) {
+        return Err("the program uses ROM banks (.bank); build it with rcld".to_string());
+    }
     let start = first.start;
     let end = last.end();
     let mut image = vec![fill; (end - start as u32) as usize];

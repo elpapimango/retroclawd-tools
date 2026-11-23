@@ -143,3 +143,39 @@ fn unknown_instructions_are_errors() {
     assert!(asm(".org $E000\n tya x\n").is_err());
     assert!(asm(".org $E000\n xyzzy\n").is_err());
 }
+
+fn banked(source: &str) -> Vec<(u16, u16, Vec<u8>)> {
+    let opts = Options {
+        cpu: Some(Cpu::Huc6280),
+        ..Options::default()
+    };
+    assemble("t.asm", source, &opts, &DiskFiles)
+        .unwrap_or_else(|e| panic!("{e:?}"))
+        .segments
+        .into_iter()
+        .map(|s| (s.bank, s.start, s.bytes))
+        .collect()
+}
+
+#[test]
+fn banks_keep_same_addresses_apart() {
+    let segs = banked(".bank 0\n.org $E000\n nop\n.bank 1\n.org $6000\n clx\n.bank 2\n.org $6000\n cly\n");
+    assert_eq!(
+        segs,
+        vec![
+            (0, 0xE000, vec![0xEA]),
+            (1, 0x6000, vec![0x82]),
+            (2, 0x6000, vec![0xC2]),
+        ]
+    );
+}
+
+#[test]
+fn overlap_is_per_bank_and_bank_needs_the_huc6280() {
+    assert!(asm(".bank 1\n.org $6000\n nop\n.bank 1\n.org $6000\n nop\n").is_err());
+    let z80 = Options {
+        cpu: Some(Cpu::Z80),
+        ..Options::default()
+    };
+    assert!(assemble("t.asm", ".bank 1\n", &z80, &DiskFiles).is_err());
+}

@@ -6,6 +6,7 @@ pub fn template(machine: &str) -> Option<&'static str> {
         "spectrum" => SPECTRUM,
         "cpc" => CPC,
         "atari-st" => ATARI_ST,
+        "pcengine" => PCENGINE,
         _ => return None,
     })
 }
@@ -109,4 +110,24 @@ asm = ["hello.s"]                # assembled together, in this order, as one rel
 
 [define]
 # NAME = 1                       # constants for the sources, like rcasm -D
+"#;
+
+const PCENGINE: &str = r#"# rcld layout for the PC Engine / TurboGrafx-16 (a HuCard).  rcld build this-file.toml
+machine = "pcengine"
+name = "MYGAME"
+entry = "start"                  # the reset code, in bank 0 ($E000-$FFFF)
+output = "mygame.pce"            # .pce or .tg16 (rcld build -o overrides)
+
+[[input]]
+asm = ["main.asm"]               # HuC6280 source; `.bank n` then `.org` puts code in 8 KB bank n
+
+# [[input]]
+# bin = "graphics.bin"           # a raw binary ...
+# bank = 1                       # ... in this bank (default 0)
+# at = 0x6000                    # ... at this logical address (only the low 13 bits place it in the bank)
+
+[options]
+# size = 262144                  # card size in bytes: default the next power of two (at least 128 KB)
+
+# Vectors: labels irq2, irq1, timer, nmi and reset/start fill $FFF6-$FFFF unless the sources write them.
 "#;

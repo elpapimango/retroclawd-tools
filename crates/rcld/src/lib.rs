@@ -9,6 +9,7 @@ pub mod atari;
 pub mod basic;
 pub mod emit;
 pub mod layout;
+pub mod pcengine;
 pub mod place;
 pub mod templates;
 pub mod xex;
@@ -89,11 +90,13 @@ fn cpu_of(layout: &Layout) -> Result<rcasm::Cpu, String> {
     match (layout.machine, layout.cpu.as_deref()) {
         (Machine::C64 | Machine::Atari, _) => Ok(rcasm::Cpu::Mos6502),
         (Machine::Spectrum | Machine::Cpc, _) => Ok(rcasm::Cpu::Z80),
+        (Machine::PcEngine, _) => Ok(rcasm::Cpu::Huc6280),
         (Machine::AtariSt, _) => {
             Err("the Atari ST is a 68000: it is built by `rcld::atari`".to_string())
         }
         (Machine::Generic, Some("6502" | "6510" | "8502")) => Ok(rcasm::Cpu::Mos6502),
         (Machine::Generic, Some("z80")) => Ok(rcasm::Cpu::Z80),
+        (Machine::Generic, Some("huc6280")) => Ok(rcasm::Cpu::Huc6280),
         (Machine::Generic, Some(other)) => Err(format!("cpu \"{other}\": 6502 or z80")),
         (Machine::Generic, None) => {
             Err("machine = \"generic\" needs cpu = \"6502\" or \"z80\"".to_string())
@@ -260,6 +263,9 @@ pub fn build(
 ) -> Result<Build, String> {
     if layout.machine == Machine::AtariSt {
         return atari::build(layout, base, output, cli_defines);
+    }
+    if layout.machine == Machine::PcEngine {
+        return pcengine::build(layout, base, output, cli_defines);
     }
     let program = load(layout, base, cli_defines)?;
     emit::emit(layout, base, output, program)
