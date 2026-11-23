@@ -430,6 +430,8 @@ fn can_make(machine: Machine) -> &'static str {
         Machine::Cpc => ".dsk .bin",
         Machine::AtariSt => ".prg",
         Machine::PcEngine => ".pce",
+        Machine::Nes => ".nes",
+        Machine::Snes => ".sfc",
         Machine::Generic => ".bin",
     }
 }

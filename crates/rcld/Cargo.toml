@@ -21,6 +21,8 @@ rcdisk = { path = "../rcdisk", version = "0.2.0" }
 rctape = { path = "../rctape", version = "0.2.0" }
 rcsnap = { path = "../rcsnap", version = "0.2.0" }
 c64-cartridge.workspace = true
+ines.workspace = true
+sfc.workspace = true
 serde.workspace = true
 toml.workspace = true
 clap.workspace = true

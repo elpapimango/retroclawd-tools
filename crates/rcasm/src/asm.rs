@@ -724,8 +724,11 @@ impl<'f> Asm<'f> {
 
     /// `.bank n`: the following `.org` starts a segment in ROM bank n (HuC6280 only).
     fn do_bank(&mut self, src: &LineSrc, value: &str) {
-        if self.cpu != Some(Cpu::Huc6280) {
-            self.error(src, ".bank is for the HuC6280 (.cpu huc6280)");
+        if !matches!(self.cpu, Some(Cpu::Huc6280 | Cpu::Mos6502)) {
+            self.error(
+                src,
+                ".bank is for the HuC6280 and the NES (.cpu huc6280, or 6502 for a NES cartridge)",
+            );
             return;
         }
         match self.eval_now(value) {

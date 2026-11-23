@@ -10,8 +10,10 @@ pub mod basic;
 pub mod emit;
 pub mod layout;
 pub mod link;
+pub mod nes;
 pub mod pcengine;
 pub mod place;
+pub mod snes;
 pub mod templates;
 pub mod xex;
 
@@ -92,6 +94,8 @@ fn cpu_of(layout: &Layout) -> Result<rcasm::Cpu, String> {
         (Machine::C64 | Machine::Atari, _) => Ok(rcasm::Cpu::Mos6502),
         (Machine::Spectrum | Machine::Cpc, _) => Ok(rcasm::Cpu::Z80),
         (Machine::PcEngine, _) => Ok(rcasm::Cpu::Huc6280),
+        (Machine::Nes, _) => Ok(rcasm::Cpu::Mos6502),
+        (Machine::Snes, _) => Ok(rcasm::Cpu::W65816),
         (Machine::AtariSt, _) => {
             Err("the Atari ST is a 68000: it is built by `rcld::atari`".to_string())
         }
@@ -394,6 +398,12 @@ pub fn build(
     }
     if layout.machine == Machine::PcEngine {
         return pcengine::build(layout, base, output, cli_defines);
+    }
+    if layout.machine == Machine::Nes {
+        return nes::build(layout, base, output, cli_defines);
+    }
+    if layout.machine == Machine::Snes {
+        return snes::build(layout, base, output, cli_defines);
     }
     let program = load(layout, base, cli_defines)?;
     emit::emit(layout, base, output, program)

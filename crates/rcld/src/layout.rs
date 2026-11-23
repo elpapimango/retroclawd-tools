@@ -45,6 +45,10 @@ pub enum Machine {
     /// The PC Engine / TurboGrafx-16: banked HuC6280 code, written as a HuCard `.pce`.
     #[serde(rename = "pcengine")]
     PcEngine,
+    /// The NES / Famicom: 6502 code in PRG banks, written as an iNES `.nes`.
+    Nes,
+    /// The Super Nintendo / Super Famicom: 65816 code placed by 24-bit address, written as a `.sfc`.
+    Snes,
     /// No machine: raw images only, and the CPU has to be named.
     Generic,
 }
@@ -58,6 +62,8 @@ impl Machine {
             Machine::Cpc => "cpc",
             Machine::AtariSt => "atari-st",
             Machine::PcEngine => "pcengine",
+            Machine::Nes => "nes",
+            Machine::Snes => "snes",
             Machine::Generic => "generic",
         }
     }
@@ -177,8 +183,30 @@ pub struct Options {
     pub pause: Option<u16>,
     /// Name of the program file on a disk (default: `name`; on a CPC disk `.BIN` is added if there is no extension).
     pub file_name: Option<String>,
-    /// PC Engine: the card size in bytes (default: the next power of two, at least 128 KB).
+    /// PC Engine, NES, SNES: the size of the ROM in bytes (default: the next power of two).
     pub size: Option<Value>,
+    /// NES: the mapper number, submapper, mirroring (`horizontal`, `vertical`, `four`), battery, a `.chr` file for the
+    /// CHR ROM (or `chr_ram` bytes of CHR RAM), PRG RAM bytes, whether to write NES 2.0, whether the PRG is banked.
+    pub mapper: Option<u16>,
+    pub submapper: Option<u8>,
+    pub mirroring: Option<String>,
+    pub battery: Option<bool>,
+    pub chr: Option<String>,
+    pub chr_ram: Option<Value>,
+    pub prg_ram: Option<Value>,
+    pub nes2: Option<bool>,
+    pub banked: Option<bool>,
+    /// SNES: `lorom`, `hirom` or `exhirom`; FastROM; the title (21 characters); the cartridge type byte; the RAM size
+    /// (a power-of-two exponent in KB); the country code; the version; whether to fix the checksum of a header the
+    /// sources wrote themselves (default true).
+    pub mapping: Option<String>,
+    pub fast: Option<bool>,
+    pub title: Option<String>,
+    pub cart_type: Option<u8>,
+    pub ram_size: Option<u8>,
+    pub country: Option<u8>,
+    pub version: Option<u8>,
+    pub fix_checksum: Option<bool>,
 }
 
 #[derive(Clone, Debug, Deserialize)]

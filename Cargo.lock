@@ -381,6 +381,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "rc-ines"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4036af247183945e11e500e11b63c1c911769e433495ae83f052982694b3f547"
+
+[[package]]
 name = "rc-machine"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -404,6 +410,12 @@ dependencies = [
  "rc-machine",
  "serde",
 ]
+
+[[package]]
+name = "rc-sfc"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b51472bfad5fdd4647d490f9327df5e35f139f6ab34bec993eadc6769f06e071"
 
 [[package]]
 name = "rc-sna-snapshot"
@@ -549,6 +561,8 @@ dependencies = [
  "rc-atari-media",
  "rc-c64-cartridge",
  "rc-common",
+ "rc-ines",
+ "rc-sfc",
  "rcasm",
  "rcdisk",
  "rcsnap",

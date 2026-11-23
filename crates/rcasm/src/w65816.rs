@@ -166,10 +166,12 @@ fn split_suffix(word: &str) -> (String, Option<char>) {
     let upper = word.to_ascii_uppercase();
     if upper.len() > 2
         && let Some((mn, sfx)) = upper.split_at_checked(upper.len() - 2)
-            && let Some(c) = sfx.strip_prefix('.').and_then(|s| s.chars().next())
-                && matches!(c, 'B' | 'W' | 'L') && table().mnemonics.contains(mn) {
-                    return (mn.to_string(), Some(c.to_ascii_lowercase()));
-                }
+        && let Some(c) = sfx.strip_prefix('.').and_then(|s| s.chars().next())
+        && matches!(c, 'B' | 'W' | 'L')
+        && table().mnemonics.contains(mn)
+    {
+        return (mn.to_string(), Some(c.to_ascii_lowercase()));
+    }
     (upper, None)
 }
 
@@ -314,11 +316,16 @@ pub fn encode(mnemonic: &str, operand: &str, site: &Site) -> Result<Encoded, Str
     }
     let known = !ev.unresolved.get();
     // `jmp`/`jsr` take a 16-bit address in the program bank: a label of this very bank is written without it
-    if matches!(mn.as_str(), "JMP" | "JSR") && template != "JMP ({})" && suffix.is_none()
+    if matches!(mn.as_str(), "JMP" | "JSR")
+        && template != "JMP ({})"
+        && suffix.is_none()
         && let Some(v) = values.first_mut()
-            && known && *v > 0xFFFF && (*v >> 16) == (site.addr as i64 >> 16) {
-                *v &= 0xFFFF;
-            }
+        && known
+        && *v > 0xFFFF
+        && (*v >> 16) == (site.addr as i64 >> 16)
+    {
+        *v &= 0xFFFF;
+    }
 
     // sizes to try for each address part, best first
     let candidates = |idx: usize| -> Vec<char> {
