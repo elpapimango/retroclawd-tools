@@ -175,3 +175,48 @@ sources write them, they come from the labels `irq2`, `irq1`, `timer`, `nmi` and
 points at the reset code and `rcld` says so. Sizes are a multiple of 8 KB that is a power of two, 384 KB or 2.5 MB (the card reader mirrors a
 power of two and maps the others). Overlaps in the file are errors naming both pieces.
 
+
+## Objects and libraries
+
+Besides `asm` (one program assembled whole, as above), a layout can link separately assembled code:
+
+```toml
+machine = "c64"
+entry = "start"
+
+[[input]]
+src = ["main.asm", "player.asm"]      # each assembled to its own object (rcasm object mode), then linked
+
+[[input]]
+obj = "music.rco"                      # an object made earlier with rcasm -f object
+
+[[input]]
+lib = "lib/c64.rca"                    # a library made with rcar: members are linked when a name they define is needed
+
+[[segment]]
+name = "CODE"
+start = 0x0801                         # or: region = "ram"
+
+[[segment]]
+name = "BSS"
+start = 0xC000
+
+[[segment]]
+name = "ZP"
+start = 0x02
+```
+
+`rcld` takes the objects as given and pulls library members in for the names still undefined (repeatedly: a member that needs
+another member works, in any order). Segments of one name are placed one after another in input order; a segment with no rule
+continues after the previous one; the first needs a rule (`start`, or `region` with the layout's regions). A `region` that
+a segment does not fit is an error naming both; so is a zero-page segment without a rule. Every relocation is evaluated with the
+final addresses and checked for fit; the message names the source line, the expression, the value and the segment:
+
+```
+main.asm:12: far = branch distance 310 (the target is $1136) does not fit in 1 byte(s) (segment "CODE" of main.asm)
+undefined symbol "putc" (wanted by main.asm)
+"putc" is defined in both a.asm and lib.rca(lib.rco)
+```
+
+Inputs of the other kinds (`bin`, `prg`, `symbols`, `asm`) can be mixed in. Machines with their own writers (Atari ST, PC Engine)
+do not take objects yet.

@@ -179,6 +179,9 @@ pub fn encode(mnemonic: &str, operand: &str, site: &Site) -> Result<Encoded, Str
         format!("{mn} Z,R")
     } else if let Some(rest) = op.strip_prefix('#') {
         let p = split_top(rest);
+        if p.is_empty() {
+            return Err(format!("bad operand \"{op}\""));
+        }
         parts.push(Part {
             expr: p[0].to_string(),
             kind: 'N',

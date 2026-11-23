@@ -217,3 +217,9 @@ fn overlap_is_per_bank_and_bank_needs_the_huc6280() {
     };
     assert!(assemble("t.asm", ".bank 1\n", &z80, &DiskFiles).is_err());
 }
+
+#[test]
+fn an_immediate_without_a_value_is_an_error_not_a_panic() {
+    assert!(asm(".org $E000\n lda #\n").is_err());
+    assert!(asm(".org $E000\n tst #\n").is_err());
+}

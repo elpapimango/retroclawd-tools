@@ -97,3 +97,37 @@ through X), `CLA`/`CLX`/`CLY`, `SAX`/`SAY`/`SXY`, `ST0`/`ST1`/`ST2 #n` (video re
 (or less than three hex digits written) uses the zero-page form, which the CPU maps to logical `$2000-$20FF`. `BBRn zp,target` and the
 branches take the target address and are range checked (-128 to 127 from the next instruction).
 
+
+## Objects (`-f object`)
+
+`rcasm -f object -c 6502 main.asm -o main.rco` writes a relocatable object instead of an image (6502, Z80, HuC6280; the 68000
+follows). Code goes into named **segments**; the linker (`rcld`) places them, so `.org` is an error here. A label is an offset into
+its segment. Everything the linker has to decide is written into the object as a relocation: an operand that depends on a label of
+a placed segment, on an import, or on `$`. The difference of two labels of one segment, and a branch inside one segment, are
+constants and need none.
+
+| Directive | Meaning |
+|---|---|
+| `.segment "NAME"` | switch to (or start) the segment `NAME`; the first one is `CODE`. Options: `bss` (space only, no bytes: `.res n`), `zeropage`, `align=N`, `at=ADDR` (a fixed address) |
+| `.import a, b` / `.importzp a` | names defined in other objects; `importzp` ones are zero page, so `lda a` is the two-byte form |
+| `.export a, b` / `.exportzp a` | names other objects may use |
+| `.global a, b` | an export if this object defines the name, an import if not |
+
+A name must be defined, imported or exported explicitly; an undefined name is an error. A constant (`NAME = 40`) may be exported
+but not computed from addresses of different segments (`size = end - start` is fine inside one segment). Instructions whose size
+depends on an address use the 16-bit form unless the symbol is zero page. The bytes of a relocated field in the object hold the value
+assembled with the segment starting at 0; the linker overwrites them. The format is in `docs/formats.md`.
+
+```
+.import putc
+.export start
+start:  ldx #0
+loop:   lda msg,x
+        beq done
+        jsr putc
+        inx
+        bne loop
+done:   rts
+.segment "RODATA"
+msg:    .byte "HI", 0
+```

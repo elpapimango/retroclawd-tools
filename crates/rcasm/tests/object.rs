@@ -254,3 +254,51 @@ fn an_object_survives_encoding() {
     let o = obj(".import f\n.export main\nmain: jsr f\n bne main\n rts\n");
     assert_eq!(Object::decode(&o.encode()).unwrap(), o);
 }
+
+/// Mangled sources never panic in object mode; whatever assembles gives an object the reader accepts.
+#[test]
+fn mutated_sources_never_panic() {
+    let seeds = [
+        ".import putc\n.export start\nstart: jsr putc\n bne start\n lda #<start\n.word start, putc+2\n.segment \"V\", bss\nx: .res 4\n",
+        ".importzp t\n lda t\n sta t+1\n.byte >here, <here\nhere: rts\n",
+    ];
+    let alphabet = b" \n\t.,:;@#$()<>+-*/\"'abcxyz019";
+    let mut state = 0x1234_5678_9ABC_DEF0u64;
+    let mut next = move || {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        state
+    };
+    let mut accepted = 0;
+    for round in 0..4000 {
+        let mut text = seeds[round % seeds.len()].as_bytes().to_vec();
+        for _ in 0..(1 + next() % 4) {
+            let at = (next() as usize) % text.len();
+            match next() % 3 {
+                0 => text[at] = alphabet[(next() as usize) % alphabet.len()],
+                1 => {
+                    text.remove(at);
+                }
+                _ => text.insert(at, alphabet[(next() as usize) % alphabet.len()]),
+            }
+            if text.is_empty() {
+                text.push(b'\n');
+            }
+        }
+        let Ok(source) = String::from_utf8(text) else {
+            continue;
+        };
+        for cpu in [Cpu::Mos6502, Cpu::Z80, Cpu::Huc6280] {
+            let opts = Options {
+                cpu: Some(cpu),
+                ..Options::default()
+            };
+            if let Ok(o) = assemble_object("m.asm", &source, &opts, &DiskFiles) {
+                accepted += 1;
+                assert!(Object::decode(&o.encode()).is_ok(), "{source}");
+            }
+        }
+    }
+    assert!(accepted > 100, "only {accepted} mutants assembled");
+}

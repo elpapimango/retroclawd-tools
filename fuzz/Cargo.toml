@@ -52,3 +52,21 @@ doc = false
 
 # Not part of the tools workspace: `cargo +nightly fuzz run prg` from this folder.
 [workspace]
+
+[[bin]]
+name = "rco_decode"
+path = "fuzz_targets/rco_decode.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "rca_decode"
+path = "fuzz_targets/rca_decode.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "rcasm_object"
+path = "fuzz_targets/rcasm_object.rs"
+test = false
+doc = false
