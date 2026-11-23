@@ -37,12 +37,34 @@ pub enum Op {
     LOr,
 }
 
+/// What an address-dependent value moves with: a section (every label in it) or an imported symbol.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum Group {
+    Section(usize),
+    Import(String),
+}
+
+/// An expression that is not a constant: the groups its value depends on and whether it may use zero page.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Dep {
+    pub groups: Vec<Group>,
+    pub zeropage: bool,
+}
+
 /// Where symbol values come from while evaluating.
 pub trait Scope {
     /// The value of a symbol, `None` if it is not defined (yet).
     fn symbol(&self, name: &str) -> Option<i64>;
     /// The address of the current instruction.
     fn pc(&self) -> i64;
+    /// Object mode: what `e` depends on that the linker decides; `None` for a constant (the default).
+    fn dependency(&self, _e: &Expr) -> Option<Dep> {
+        None
+    }
+    /// Object mode: the symbol-table name `name` stands for here (local labels are prefixed by their scope).
+    fn canonical(&self, name: &str) -> String {
+        name.to_string()
+    }
 }
 
 /// How an evaluation went.
@@ -120,6 +142,27 @@ impl Expr {
                 }
             }
         })
+    }
+
+    /// The same expression with every symbol name passed through `f`.
+    pub fn map_names(&self, f: &dyn Fn(&str) -> String) -> Expr {
+        match self {
+            Expr::Sym(n) => Expr::Sym(f(n)),
+            Expr::Unary(op, e) => Expr::Unary(*op, Box::new(e.map_names(f))),
+            Expr::Binary(op, l, r) => {
+                Expr::Binary(*op, Box::new(l.map_names(f)), Box::new(r.map_names(f)))
+            }
+            Expr::Num(_) | Expr::Pc => self.clone(),
+        }
+    }
+
+    pub fn has_pc(&self) -> bool {
+        match self {
+            Expr::Pc => true,
+            Expr::Unary(_, e) => e.has_pc(),
+            Expr::Binary(_, l, r) => l.has_pc() || r.has_pc(),
+            Expr::Num(_) | Expr::Sym(_) => false,
+        }
     }
 
     /// Every symbol name the expression mentions.
@@ -363,6 +406,34 @@ pub fn is_symbol_start(c: char) -> bool {
 
 pub fn is_symbol_char(c: char) -> bool {
     c.is_ascii_alphanumeric() || c == '_' || c == '@' || c == '.'
+}
+
+impl Op {
+    /// The operator codes of `rc_common::obj::Expr`.
+    pub const ALL: [Op; 18] = [
+        Op::Mul,
+        Op::Div,
+        Op::Rem,
+        Op::Add,
+        Op::Sub,
+        Op::Shl,
+        Op::Shr,
+        Op::Lt,
+        Op::Le,
+        Op::Gt,
+        Op::Ge,
+        Op::Eq,
+        Op::Ne,
+        Op::And,
+        Op::Xor,
+        Op::Or,
+        Op::LAnd,
+        Op::LOr,
+    ];
+
+    pub fn code(self) -> u8 {
+        Op::ALL.iter().position(|o| *o == self).unwrap_or(0) as u8
+    }
 }
 
 #[cfg(test)]

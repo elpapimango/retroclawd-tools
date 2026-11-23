@@ -215,6 +215,8 @@ fn assembles_back(cpu: Cpu, text: &str, addr: u16, bytes: &[u8]) -> bool {
         strict: true,
         illegal: true,
         force_wide: false,
+        rec: None,
+        probe: Default::default(),
     };
     encode(cpu, mnemonic, operand, &site).is_ok_and(|e| e.bytes == bytes)
 }

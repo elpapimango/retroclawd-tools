@@ -81,6 +81,8 @@ enum Format {
     Gemdos,
     /// One file per segment: `<output>.<address>.bin`.
     Segments,
+    /// A relocatable object (`.rco`) for `rcld` and `rcar`.
+    Object,
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -134,8 +136,12 @@ fn main() -> ExitCode {
         illegal: cli.illegal,
         include_dirs: cli.include.clone(),
         defines,
+        object: false,
     };
     let name = cli.source.to_string_lossy().into_owned();
+    if matches!(cli.format, Format::Object) {
+        return run_object(&cli, &name, &source, &opts);
+    }
     let asm = match rcasm::assemble(&name, &source, &opts, &DiskFiles) {
         Ok(a) => a,
         Err(errors) => {
@@ -164,7 +170,7 @@ fn main() -> ExitCode {
                 let image = rcasm::prg_image(&asm, cli.fill)?;
                 write_file(output, &image, cli.force)?;
             }
-            Format::Gemdos => unreachable!("checked above"),
+            Format::Gemdos | Format::Object => unreachable!("handled above"),
             Format::Segments => {
                 if asm.segments.is_empty() {
                     return Err("the program produced no bytes".to_string());
@@ -201,6 +207,35 @@ fn main() -> ExitCode {
     ExitCode::SUCCESS
 }
 
+/// `--format object`: a relocatable `.rco`.
+fn run_object(cli: &Cli, name: &str, source: &str, opts: &Options) -> ExitCode {
+    let object = match rcasm::assemble_object(name, source, opts, &DiskFiles) {
+        Ok(o) => o,
+        Err(errors) => {
+            report(&errors);
+            return ExitCode::from(1);
+        }
+    };
+    let summary = format!(
+        "{} section(s), {} symbol(s), {} relocation(s)",
+        object.sections.len(),
+        object.symbols.len(),
+        object.relocs.len()
+    );
+    if cli.check {
+        eprintln!("rcasm: ok, {summary}");
+        return ExitCode::SUCCESS;
+    }
+    let Some(output) = cli.output.as_ref() else {
+        return fail("no output file: give -o <file> (or --check)");
+    };
+    if let Err(e) = write_file(output, &object.encode(), cli.force) {
+        return fail(e);
+    }
+    eprintln!("rcasm: {summary}");
+    ExitCode::SUCCESS
+}
+
 fn is_68000(name: &str) -> bool {
     matches!(
         name.trim().to_ascii_lowercase().as_str(),
@@ -227,6 +262,9 @@ fn run_68000(cli: &Cli) -> ExitCode {
         Err(e) => return fail(format!("cannot read {}: {e}", cli.source.display())),
     };
     let relocatable = matches!(cli.format, Format::Gemdos);
+    if matches!(cli.format, Format::Object) {
+        return fail("objects for the 68000 are not available yet");
+    }
     if matches!(cli.format, Format::Prg | Format::Segments) {
         return fail(
             "for the 68000 the formats are bin (a flat image at .org) and gemdos (a relocatable .PRG)",

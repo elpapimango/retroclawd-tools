@@ -9,6 +9,7 @@
 use crate::expr::{self, EvalError, Scope};
 use crate::text::{matching_paren, split_top};
 use std::cell::Cell;
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::sync::OnceLock;
 
@@ -58,6 +59,30 @@ pub struct Site<'a> {
     pub illegal: bool,
     /// The first pass decided this operand had to be 16 bits wide (6502 only).
     pub force_wide: bool,
+    /// Object mode: every operand value evaluated is recorded here.
+    pub rec: Option<&'a RefCell<Vec<Operand>>>,
+    /// Object mode: how to alter the values to find which bytes of the instruction they land in.
+    pub probe: Probe,
+}
+
+/// One operand expression an encoder evaluated.
+#[derive(Clone, Debug)]
+pub struct Operand {
+    /// With symbol names as symbol-table names.
+    pub expr: expr::Expr,
+    /// The value the encoder was given.
+    pub value: i64,
+    /// `Some` when the linker decides the value.
+    pub dep: Option<expr::Dep>,
+}
+
+/// Probing: the encoder is run again with some values changed; the bytes that differ are the relocation fields.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Probe {
+    /// Every address-dependent operand evaluates to this (a value near the instruction, so a relative branch is in range).
+    pub near: Option<i64>,
+    /// Add `delta` to the operand with this index (in evaluation order).
+    pub shift: Option<(usize, i64)>,
 }
 
 /// What came out of encoding one instruction.
@@ -116,10 +141,30 @@ impl<'a> Eval<'a> {
                 flag: &self.unresolved,
             })
         };
-        result.map_err(|e| match e {
+        let mut value = result.map_err(|e| match e {
             EvalError::Undefined(name) => format!("undefined symbol \"{name}\""),
             EvalError::Other(m) => m,
-        })
+        })?;
+        if let Some(rec) = self.site.rec {
+            let dep = self.site.scope.dependency(&expr);
+            let index = rec.borrow().len();
+            if dep.is_some()
+                && let Some(near) = self.site.probe.near
+            {
+                value = near;
+            }
+            if let Some((k, delta)) = self.site.probe.shift
+                && k == index
+            {
+                value += delta;
+            }
+            rec.borrow_mut().push(Operand {
+                expr: expr.map_names(&|n| self.site.scope.canonical(n)),
+                value,
+                dep,
+            });
+        }
+        Ok(value)
     }
 }
 

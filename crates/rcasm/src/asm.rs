@@ -14,6 +14,10 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
+#[path = "object.rs"]
+mod object;
+use object::{ObjState, SymKind};
+
 /// Where the assembler reads files from (`.include`, `.incbin`).
 pub trait Files {
     fn read(&self, path: &Path) -> Result<Vec<u8>, String>;
@@ -35,6 +39,8 @@ pub struct Options {
     pub include_dirs: Vec<PathBuf>,
     /// `-D NAME=VALUE`
     pub defines: Vec<(String, i64)>,
+    /// Write a relocatable object (use [`assemble_object`]).
+    pub object: bool,
 }
 
 /// A run of bytes at an address.
@@ -96,6 +102,8 @@ struct Macro {
 struct Sym {
     value: i64,
     label: bool,
+    kind: SymKind,
+    zp: bool,
 }
 
 struct Cond {
@@ -134,9 +142,11 @@ struct Asm<'f> {
     listing: Vec<ListEntry>,
     errors: Vec<Diag>,
     stop: bool,
+    ob: ObjState,
 }
 
 struct View<'a> {
+    ob: Option<&'a ObjState>,
     symbols: &'a HashMap<String, Sym>,
     scope_prefix: String,
     pc: i64,
@@ -154,6 +164,12 @@ impl Scope for View<'_> {
     fn pc(&self) -> i64 {
         self.pc
     }
+    fn dependency(&self, e: &expr::Expr) -> Option<expr::Dep> {
+        self.dependency_of(e)
+    }
+    fn canonical(&self, name: &str) -> String {
+        self.key_of(name)
+    }
 }
 
 /// Assembles `source` (named `name` in messages).
@@ -163,6 +179,28 @@ pub fn assemble(
     opts: &Options,
     files: &dyn Files,
 ) -> Result<Assembly, Vec<Diag>> {
+    let asm = run_passes(name, source, opts, files, false)?;
+    asm.finish(name)
+}
+
+/// Assembles `source` into a relocatable object (sections, imports, exports, relocations).
+pub fn assemble_object(
+    name: &str,
+    source: &str,
+    opts: &Options,
+    files: &dyn Files,
+) -> Result<rc_common::obj::Object, Vec<Diag>> {
+    let asm = run_passes(name, source, opts, files, true)?;
+    asm.finish_object(name)
+}
+
+fn run_passes<'f>(
+    name: &str,
+    source: &str,
+    opts: &Options,
+    files: &'f dyn Files,
+    object: bool,
+) -> Result<Asm<'f>, Vec<Diag>> {
     let mut asm = Asm {
         opts: opts.clone(),
         files,
@@ -183,6 +221,7 @@ pub fn assemble(
         listing: Vec::new(),
         errors: Vec::new(),
         stop: false,
+        ob: ObjState::new(object || opts.object),
     };
     for (n, v) in &opts.defines {
         asm.symbols.insert(
@@ -190,6 +229,8 @@ pub fn assemble(
             Sym {
                 value: *v,
                 label: false,
+                kind: SymKind::Const,
+                zp: false,
             },
         );
     }
@@ -205,8 +246,11 @@ pub fn assemble(
         if !asm.errors.is_empty() {
             return Err(asm.errors);
         }
+        if pass == 1 {
+            asm.settle_links();
+        }
     }
-    asm.finish(name)
+    Ok(asm)
 }
 
 fn split_lines(source: &str, file: &Rc<str>) -> Vec<LineSrc> {
@@ -258,7 +302,7 @@ const DIRECTIVES: &[&str] = &[
     "org", "byte", "db", "defb", "byt", "word", "dw", "defw", "text", "ascii", "asciiz", "str",
     "fill", "ds", "defs", "res", "align", "equ", "set", "include", "incbin", "macro", "endm",
     "endmacro", "if", "ifdef", "ifndef", "else", "endif", "cpu", "illegal", "error", "assert",
-    "end", "bank",
+    "end", "bank", "segment", "import", "importzp", "export", "exportzp", "global",
 ];
 
 /// Names that are directives even without a leading dot (Z80 assemblers write them bare).
@@ -289,6 +333,10 @@ impl<'f> Asm<'f> {
         self.stop = false;
         self.illegal = self.opts.illegal;
         self.cpu = self.opts.cpu;
+        if self.ob.on {
+            self.ob.begin_pass();
+            self.pc = Some(0);
+        }
     }
 
     fn error(&mut self, src: &LineSrc, message: impl Into<String>) {
@@ -311,6 +359,7 @@ impl<'f> Asm<'f> {
 
     fn view(&self) -> View<'_> {
         View {
+            ob: self.ob.on.then_some(&self.ob),
             symbols: &self.symbols,
             scope_prefix: self.scope_prefix(),
             pc: self.pc.unwrap_or(0) as i64,
@@ -328,6 +377,11 @@ impl<'f> Asm<'f> {
     /// Evaluates an expression that must be fully known right now, in either pass.
     fn eval_now(&self, text: &str) -> Result<i64, String> {
         let e = expr::parse(text)?;
+        if self.ob.on && self.view().dependency_of(&e).is_some() {
+            return Err(format!(
+                "\"{text}\" depends on an address the linker chooses; it cannot decide sizes or flow here"
+            ));
+        }
         e.eval(&self.view()).map_err(|err| match err {
             EvalError::Undefined(n) => {
                 format!(
@@ -365,7 +419,19 @@ impl<'f> Asm<'f> {
                 self.error(src, msg);
             }
             _ => {
-                self.symbols.insert(key, Sym { value, label });
+                let kind = match (label && self.ob.on).then_some(self.ob.cur) {
+                    Some(i) => SymKind::Label(i),
+                    None => SymKind::Const,
+                };
+                self.symbols.insert(
+                    key,
+                    Sym {
+                        value,
+                        label,
+                        kind,
+                        zp: false,
+                    },
+                );
             }
         }
     }
@@ -490,6 +556,9 @@ impl<'f> Asm<'f> {
     }
 
     fn current_len(&self) -> usize {
+        if self.ob.on {
+            return self.ob.sections.iter().map(|s| s.bytes.len()).sum();
+        }
         self.segments.iter().map(|s| s.bytes.len()).sum()
     }
 
@@ -498,6 +567,10 @@ impl<'f> Asm<'f> {
         let now = self.current_len();
         if now <= before_len {
             return Vec::new();
+        }
+        if self.ob.on {
+            let bytes = &self.ob.sections[self.ob.cur].bytes;
+            return bytes[bytes.len().saturating_sub(now - before_len)..].to_vec();
         }
         let (Some(start), Some(seg)) = (start_pc, self.segments.last()) else {
             return Vec::new();
@@ -604,6 +677,10 @@ impl<'f> Asm<'f> {
     }
 
     fn do_org(&mut self, src: &LineSrc, value: &str) {
+        if self.ob.on {
+            self.error(src, ".org is not used in object mode: the linker places sections (a fixed address: .segment \"NAME\", at=ADDR)");
+            return;
+        }
         match self.eval_now(value) {
             Ok(v) if (0..=0xFFFF).contains(&v) => {
                 // A new segment, unless this continues exactly where the last one ended.
@@ -643,6 +720,18 @@ impl<'f> Asm<'f> {
     }
 
     fn do_assign(&mut self, src: &LineSrc, name: &str, value: &str) {
+        if self.ob.on
+            && let Ok(e) = expr::parse(value)
+            && self.view().dependency_of(&e).is_some()
+        {
+            self.error(
+                        src,
+                        format!(
+                            "\"{name}\" would depend on an address the linker chooses; define a label instead"
+                        ),
+                    );
+            return;
+        }
         if self.pass == 1 {
             // A constant may refer to something defined later; then it is defined in the second pass.
             match self.eval_data(value) {
@@ -683,6 +772,27 @@ impl<'f> Asm<'f> {
         let Some(pc) = self.ensure_pc(src) else {
             return;
         };
+        if self.ob.on {
+            let cur = self.ob.cur;
+            let sec = &mut self.ob.sections[cur];
+            if sec.bss {
+                let name = sec.name.clone();
+                self.error(
+                    src,
+                    format!("segment \"{name}\" is uninitialised (bss): reserve space with .res"),
+                );
+                return;
+            }
+            if sec.size as usize + bytes.len() > 0x10000 {
+                let name = sec.name.clone();
+                self.error(src, format!("segment \"{name}\" is larger than 64 KB"));
+                return;
+            }
+            sec.bytes.extend_from_slice(bytes);
+            sec.size += bytes.len() as u32;
+            self.pc = Some(sec.end());
+            return;
+        }
         if pc as usize + bytes.len() > 0x10000 {
             self.error(src, "the program counter would pass $FFFF");
             return;
@@ -723,6 +833,10 @@ impl<'f> Asm<'f> {
             self.error(src, "the program counter passed $FFFF");
             return;
         }
+        if self.ob.on {
+            self.object_instruction(src, cpu, word, operand);
+            return;
+        }
         self.instr_seq += 1;
         let id = self.instr_seq;
         let force_wide = self.wide.get(&id).copied().unwrap_or(false);
@@ -733,6 +847,8 @@ impl<'f> Asm<'f> {
             strict: self.pass == 2,
             illegal: self.illegal,
             force_wide,
+            rec: None,
+            probe: Default::default(),
         };
         let result = cpu::encode(cpu, word, operand, &site);
         match result {
@@ -754,6 +870,10 @@ impl<'f> Asm<'f> {
         match dir {
             "org" => self.do_org(src, operand),
             "bank" => self.do_bank(src, operand),
+            "segment" => self.do_segment(src, operand),
+            "import" | "importzp" | "export" | "exportzp" | "global" => {
+                self.do_linkage(src, dir, operand)
+            }
             "end" => self.stop = true,
             "byte" | "db" | "defb" | "byt" | "text" | "ascii" | "str" | "asciiz" => {
                 let mut out = Vec::new();
@@ -768,7 +888,12 @@ impl<'f> Asm<'f> {
                         }
                         continue;
                     }
-                    match self.eval_data(part) {
+                    let value = if self.ob.on {
+                        self.object_data(src, part, 1, out.len())
+                    } else {
+                        self.eval_data(part)
+                    };
+                    match value {
                         Ok(v) if (-128..=255).contains(&v) => out.push((v & 0xFF) as u8),
                         Ok(v) => {
                             self.error(src, format!("{v} does not fit in a byte"));
@@ -797,7 +922,12 @@ impl<'f> Asm<'f> {
                     return;
                 }
                 for part in parts {
-                    match self.eval_data(part) {
+                    let value = if self.ob.on {
+                        self.object_data(src, part, 2, out.len())
+                    } else {
+                        self.eval_data(part)
+                    };
+                    match value {
                         Ok(v) if (-32768..=65535).contains(&v) => {
                             out.extend_from_slice(&((v & 0xFFFF) as u16).to_le_bytes())
                         }
@@ -842,6 +972,17 @@ impl<'f> Asm<'f> {
                         return;
                     }
                 };
+                if self.ob.on && self.ob.sections[self.ob.cur].bss {
+                    let cur = self.ob.cur;
+                    let sec = &mut self.ob.sections[cur];
+                    if sec.size as usize + count > 0x10000 {
+                        self.error(src, "the segment would be larger than 64 KB");
+                        return;
+                    }
+                    sec.size += count as u32;
+                    self.pc = Some(sec.end());
+                    return;
+                }
                 self.emit(src, &vec![value; count]);
             }
             "align" => {
