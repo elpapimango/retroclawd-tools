@@ -50,6 +50,10 @@ struct Cli {
     #[arg(long, short = 'l')]
     listing: Option<PathBuf>,
 
+    /// Write debug information (`.rcdbg`: source line to address, labels) here.
+    #[arg(long)]
+    debug_info: Option<PathBuf>,
+
     /// Allow the undocumented 6502 opcodes.
     #[arg(long)]
     illegal: bool,
@@ -192,6 +196,9 @@ fn main() -> ExitCode {
         }
         if let Some(path) = &cli.listing {
             write_file(path, rcasm::listing_text(&asm).as_bytes(), cli.force)?;
+        }
+        if let Some(path) = &cli.debug_info {
+            write_file(path, rcasm::debug_info(&asm).to_text().as_bytes(), cli.force)?;
         }
         Ok(())
     })();

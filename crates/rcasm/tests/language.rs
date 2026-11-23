@@ -527,3 +527,23 @@ fn an_address_beyond_the_cpus_space_is_an_error() {
     let e = assemble("t", ".org $12345\n nop\n", &opts, &DiskFiles).unwrap_err();
     assert!(e[0].message.contains("outside 0..65535"), "{e:?}");
 }
+
+#[test]
+fn debug_info_maps_addresses_to_lines_and_back() {
+    let src = ".org $1000\nstart: lda #1\n nop\nend: rts\n";
+    let opts = Options {
+        cpu: Some(Cpu::Mos6502),
+        ..Options::default()
+    };
+    let asm = assemble("main.asm", src, &opts, &DiskFiles).unwrap();
+    let info = rcasm::debug_info(&asm);
+    assert_eq!(info.line_at(0x1000), Some(("main.asm", 2)));
+    assert_eq!(info.line_at(0x1001), Some(("main.asm", 2)));
+    assert_eq!(info.line_at(0x1002), Some(("main.asm", 3)));
+    assert_eq!(info.address_of("main.asm", 4), Some(0x1003));
+    assert!(info.symbols.contains(&("end".to_string(), 0x1003)));
+    let again = rc_common::dbg::DebugInfo::parse(&info.to_text()).unwrap();
+    assert_eq!(again, info);
+    assert!(rc_common::dbg::DebugInfo::parse("nothing").is_err());
+    assert!(rc_common::dbg::DebugInfo::parse("rcdbg 1\nline 0 1 2 3\n").is_err());
+}

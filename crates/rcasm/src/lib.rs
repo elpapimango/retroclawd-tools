@@ -100,3 +100,17 @@ pub fn listing_text(asm: &Assembly) -> String {
     }
     out
 }
+
+/// Debug information of an assembly: every statement that made bytes (file, line, address, length) and the labels.
+pub fn debug_info(asm: &Assembly) -> rc_common::dbg::DebugInfo {
+    let mut info = rc_common::dbg::DebugInfo::default();
+    for e in &asm.listing {
+        if let (Some(addr), false) = (e.addr, e.bytes.is_empty()) {
+            info.add_line(&e.file, e.line as u32, addr, e.bytes.len() as u32);
+        }
+    }
+    for s in asm.symbols.iter().filter(|s| s.label && s.value >= 0) {
+        info.symbols.push((s.name.clone(), s.value as u32));
+    }
+    info
+}

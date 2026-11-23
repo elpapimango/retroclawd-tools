@@ -1,6 +1,7 @@
 //! Pieces every retroclawd tool shares: how numbers are written on a command line, how a problem in a
 //! source file is reported, and the "never overwrite without `--force`" rule for output files.
 
+pub mod dbg;
 pub mod json;
 pub mod obj;
 pub mod prg;
