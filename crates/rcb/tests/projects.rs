@@ -128,3 +128,22 @@ fn run_arguments_come_from_the_table_or_the_machine() {
     assert!(a[1].ends_with("x.sfc"), "{a:?}");
     let _ = std::fs::remove_dir_all(&d);
 }
+
+/// Every project under `examples/` builds (so the examples cannot rot).
+#[test]
+fn the_examples_build() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples");
+    let mut built = 0;
+    for entry in std::fs::read_dir(&root).unwrap().flatten() {
+        let dir = entry.path();
+        if !dir.join("rcb.toml").exists() {
+            continue;
+        }
+        let p = Project::load(&dir).unwrap_or_else(|e| panic!("{}: {e}", dir.display()));
+        // build in memory: the folders stay clean
+        let b = p.build().unwrap_or_else(|e| panic!("{}: {e}", dir.display()));
+        assert!(!b.bytes.is_empty(), "{}", dir.display());
+        built += 1;
+    }
+    assert!(built >= 12, "{built} examples");
+}
