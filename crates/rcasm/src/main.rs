@@ -198,7 +198,11 @@ fn main() -> ExitCode {
             write_file(path, rcasm::listing_text(&asm).as_bytes(), cli.force)?;
         }
         if let Some(path) = &cli.debug_info {
-            write_file(path, rcasm::debug_info(&asm).to_text().as_bytes(), cli.force)?;
+            write_file(
+                path,
+                rcasm::debug_info(&asm).to_text().as_bytes(),
+                cli.force,
+            )?;
         }
         Ok(())
     })();
