@@ -253,3 +253,9 @@ The same relocatable 68000 program as a Human68k `.x` executable (`entry` is the
 vector table and the header are generated: the vectors from the labels `reset`/`start`/`entry`, `hint`, `vint`, `ext` and the exception names (`bus_error`, `address_error`, `illegal`, `div_zero`, `chk`, `trapv`,
 `privilege`, `trace`, `line_a`, `line_f`), the rest pointing at `error` or the reset code; the header from `console`, `title`, `serial`, `copyright`, `region`, `devices`, `stack`. The ROM end and the checksum are always
 written (`fix_checksum = false` stops that) and the image is padded to a power of two of at least 128 KB. Not done yet: the Neo Geo cartridge set and the Mega-CD disc.
+
+## Neo Geo (`machine = "neogeo"`)
+
+68000 sources at absolute addresses (the image starts at `$000000`; pad with `ds.b`) and `bin` inputs at `at`, output `.zip`: a cartridge set with the names the emulator reads: `NNN-p1.p1` (a program above 1 MB continues in
+`-p2.p2`), and from `[options]` files: `s` (fix layer, `-s1.s1`), `c` (the byte-interleaved sprite region, split into `-c1.c1` even bytes and `-c2.c2` odd bytes), `m` (Z80, `-m1.m1`), `v1`/`v2` (`-v1.v11`, `-v2.v21`);
+`ngh` is `NNN` (default 999). The header at `$100` (`NEO-GEO`, the jump table, the security pointer) is the program's own to write; rcld notes when it is missing [H?]. Files are stored, not compressed.

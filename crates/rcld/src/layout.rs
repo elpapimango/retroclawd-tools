@@ -55,6 +55,8 @@ pub enum Machine {
     X68000,
     /// The Sega Mega Drive / Genesis: a 68000 program at `$000000`, written as a ROM image.
     Genesis,
+    /// The SNK Neo Geo: a 68000 program and region files, written as a cartridge set (a zip).
+    NeoGeo,
     /// No machine: raw images only, and the CPU has to be named.
     Generic,
 }
@@ -73,6 +75,7 @@ impl Machine {
             Machine::Amiga => "amiga",
             Machine::X68000 => "x68000",
             Machine::Genesis => "genesis",
+            Machine::NeoGeo => "neogeo",
             Machine::Generic => "generic",
         }
     }
@@ -232,6 +235,13 @@ pub struct Options {
     pub devices: Option<String>,
     pub console: Option<String>,
     pub stack: Option<Value>,
+    /// Neo Geo: the game number and the files of the other regions (`s` fix, `c` interleaved sprites, `m` Z80, `v1`/`v2` samples).
+    pub ngh: Option<u32>,
+    pub s: Option<String>,
+    pub c: Option<String>,
+    pub m: Option<String>,
+    pub v1: Option<String>,
+    pub v2: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]

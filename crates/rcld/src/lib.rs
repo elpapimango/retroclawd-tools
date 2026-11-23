@@ -12,6 +12,7 @@ pub mod emit;
 pub mod genesis;
 pub mod layout;
 pub mod link;
+pub mod neogeo;
 pub mod nes;
 pub mod pcengine;
 pub mod place;
@@ -99,7 +100,7 @@ fn cpu_of(layout: &Layout) -> Result<rcasm::Cpu, String> {
         (Machine::PcEngine, _) => Ok(rcasm::Cpu::Huc6280),
         (Machine::Nes, _) => Ok(rcasm::Cpu::Mos6502),
         (Machine::Snes, _) => Ok(rcasm::Cpu::W65816),
-        (Machine::Amiga | Machine::X68000 | Machine::Genesis, _) => Err(
+        (Machine::Amiga | Machine::X68000 | Machine::Genesis | Machine::NeoGeo, _) => Err(
             "the Amiga and the X68000 are 68000 machines: they are built by their own modules"
                 .to_string(),
         ),
@@ -405,6 +406,9 @@ pub fn build(
     }
     if layout.machine == Machine::PcEngine {
         return pcengine::build(layout, base, output, cli_defines);
+    }
+    if layout.machine == Machine::NeoGeo {
+        return neogeo::build(layout, base, output, cli_defines);
     }
     if layout.machine == Machine::Genesis {
         return genesis::build(layout, base, output, cli_defines);
