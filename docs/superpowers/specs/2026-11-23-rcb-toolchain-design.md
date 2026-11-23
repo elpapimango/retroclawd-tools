@@ -21,7 +21,11 @@ formats. Building those, with a good workflow, is what is missing.
    including a Neo Geo ROM set and a Mega-CD disc.
 5. **One driver, `rcb`**: `new`, `build`, `run`, `debug`, `clean`, `check`, described by a project file `rcb.toml`.
 6. **Source-level debugging** in `rcdd`: breakpoints by `file:line`, stepping by source line, symbols by name.
-7. CPUs: 6502 family (6502, 65C02, 6510/8502, undocumented opcodes), Z80, 68000, HuC6280.
+7. CPUs, each as an assembler/disassembler target **and** a tested emulation core in retroclawd-core (owner's decision, 2026-11-23): 6502 family
+   (6502, 65C02, 6510/8502, 2A03 without decimal mode, undocumented opcodes), 65816, SPC700, Z80, HuC6280, and the 68000 family (68000, 68010, 68020, 68030
+   with the 68881/68882 FPU and the 68030 PMMU). SNES enhancement chips: SA-1 (a 65816 with its own bus and extras) and Super FX (GSU).
+   The emulator machines for NES, SNES, X68000 and Amiga come later and are built on these cores; the video, sound and I/O chips of those machines
+   are not part of this work.
 8. **Basic asset converters** (owner's decision): `rcb asset` turns pictures into each machine's native graphics data (C64 charsets, sprites and
    bitmaps; Spectrum attribute screens; CPC modes 0-2; Atari 8-bit and ST planes; Genesis, PC Engine and Neo Geo tiles, sprites and palettes) and WAV
    samples into the machines' sample formats (Genesis and Mega-CD PCM, Neo Geo ADPCM-A/B, ST DMA sound). Converters are small, deterministic and
@@ -30,7 +34,8 @@ formats. Building those, with a good workflow, is what is missing.
 ## Non-goals
 
 - No C compiler (decided: assembly only). The object and project formats must not prevent adding a compiler front end later.
-- No 65816, ARM, PowerPC, x86, 6800/6809 or other vasm CPUs: no emulated machine uses them.
+- No ARM, PowerPC, x86, 6800/6809 or other vasm CPUs: no planned machine uses them.
+- No video, sound or I/O chips of the new machines (PPU, APU, S-PPU, S-DSP, OPM, CRTC, Paula, Agnus...) and no emulator machine for them yet: the owner adds those with each machine.
 - No byte-exact copy of cc65's or vasm's object formats; ld65 `.cfg` files are read, ca65 `.o` / `.lib` files and vasm objects are not.
 - No emulator inside the toolchain; `rcb run` starts retroclawd.
 
@@ -77,6 +82,13 @@ The owner picked A.
 
 The HuC6280 core moves to `retroclawd-core` (`rc-huc6280`) first so `rcasm`, `rcdis` and the emulator share it.
 
+**New in retroclawd-core:** `rc-w65c816` (65816, with the 6502 family variants), `rc-spc700`, `rc-sa1`, `rc-superfx`, `rc-mc68000` extended to
+68010/68020/68030 plus `rc-mc68881` and `rc-mc68030-mmu` (FPU and PMMU instruction sets as extensions of the core), the 2A03 variant of `rc-mos6502`,
+and format crates `rc-ines`, `rc-sfc`, `rc-x68k-exe`, `rc-x68k-disk` (XDF/DIM/D88/HDF with Human68k FAT), `rc-amiga-hunk`, `rc-amiga-adf`. The
+instruction tables live in the core crates and are used by the core, the disassembler and the assembler, so there is one source of truth (as for the Z80).
+Cores expose per-cycle bus activity where a test suite checks it; they are tested against public instruction-level suites (SingleStepTests where
+they exist for the CPU) and, as black boxes, the libretro cores in the owner's RetroArch install. Suites are fetched, never committed.
+
 ### Formats (specified in `docs/formats.md` in this repository)
 
 - `.rco` object: header, sections (named segments with size, alignment, content, type), symbol table (global, local, scope tree), relocations
@@ -99,6 +111,10 @@ The HuC6280 core moves to `retroclawd-core` (`rc-huc6280`) first so `rcasm`, `rc
 
 | Machine | CPU | Outputs |
 |---|---|---|
+| NES / Famicom | 2A03 (6502) | `.nes` iNES and NES 2.0: NROM, MMC1, UxROM, CNROM, MMC3 first; CHR ROM or RAM, battery, mirroring, trainer |
+| SNES / Super Famicom | 65816 + SPC700 (+ SA-1, Super FX) | `.sfc`: LoROM, HiROM, ExHiROM, SA-1 and Super FX map modes, header, checksum, SRAM size; `.spc` sound files |
+| Sharp X68000 | 68000 / 68030 | Human68k `.X`/`.R` executables, `.XDF`/`.DIM`/`.D88` floppies, `.HDF` hard disk with a Human68k FAT file system |
+| Commodore Amiga | 68000 to 68030 (+ FPU) | hunk executables, `.ADF` floppies (boot block, OFS/FFS), `.HDF` hard-disk images |
 | ZX81 | Z80 | `.p` program, `.p81` tape |
 | ZX Spectrum 48K/128K/+2/+2A/+3 | Z80 | `.tap`/`.tzx` (BASIC loader + code), `.z80`/`.sna`/`.szx` snapshot, `.dsk` (+3) |
 | Amstrad CPC 464/664/6128, CPC+/GX4000 | Z80 | `.cdt`/`.tzx`, `.dsk` (AMSDOS), `.sna`, `.cpr` cartridge |
@@ -134,6 +150,8 @@ change there, reviewed separately.
 
 ## Phases (each ends with tests, docs and a release of the tools)
 
+0a. Cores and formats of the new CPUs in retroclawd-core (can run in parallel with phases 1 onwards): 65816 and 2A03, SPC700, 68010/20/30 with FPU and
+    PMMU, SA-1 and Super FX, then the format crates; each core with its tests before the tools use it.
 0. HuC6280 in the tools (owner's request, first, after the 0.1 crates are published): move the core to `retroclawd-core` as `rc-huc6280`;
    `rcasm`/`rcdis` get `--cpu huc6280`; `rcld` gets `machine = "pcengine"` and writes `.pce`; the PC Engine test cards are built with the tools instead
    of `build.py`.
@@ -161,7 +179,8 @@ the order of machines inside phase 2; hardware-kit contents beyond the minimum (
 ## Calls made without being asked (check these)
 
 - Driver name `rcb`; extensions `.rco`, `.rca`, `.rcdbg`; project file `rcb.toml`.
-- CPU list limited to the four families above, plus 65C02 for ca65 compatibility.
+- Core accuracy: instruction-exact with per-cycle bus access where the public suites check it; no cycle-exact peripheral timing in the cores.
+- Order inside the new work: 65816/2A03 (NES, SNES), then 68010-30, then SPC700, SA-1, Super FX, then X68000 and Amiga formats.
 - vasm dialects: `std`, `mot`, `oldstyle` only; `madmac` and others are out.
 - Phase order (HuC6280, objects, formats, dialects, driver, debug).
 - Asset converters are basic by design: no animation or music tools, no editors; formats in, native data out.
