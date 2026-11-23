@@ -460,6 +460,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "acdc748316044913fa9d97c98772e4c21ef9a166a0bc14511a840fb6bb1bb463"
 
 [[package]]
+name = "rcar"
+version = "0.2.0"
+dependencies = [
+ "clap",
+ "rc-common",
+ "rcasm",
+]
+
+[[package]]
 name = "rcasm"
 version = "0.2.0"
 dependencies = [

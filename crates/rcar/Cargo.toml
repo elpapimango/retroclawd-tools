@@ -1,0 +1,21 @@
+[package]
+name = "rcar"
+description = "Create, list, extract and edit rcasm object libraries (.rca) (retroclawd tools)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "rcar"
+
+[[bin]]
+name = "rcar"
+path = "src/main.rs"
+
+[dependencies]
+rc-common = { path = "../rc-common", version = "0.2.0" }
+clap.workspace = true
+
+[dev-dependencies]
+rcasm = { path = "../rcasm", version = "0.2.0" }
