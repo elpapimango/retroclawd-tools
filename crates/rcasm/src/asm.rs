@@ -1366,7 +1366,7 @@ impl<'f> Asm<'f> {
         let mut merged: Vec<Segment> = Vec::new();
         for seg in segments {
             if let Some(last) = merged.last_mut() {
-                if seg.bank == last.bank && (seg.start as u32) < last.end() {
+                if seg.bank == last.bank && seg.start < last.end() {
                     return Err(vec![Diag::new(
                         name,
                         0,
@@ -1379,7 +1379,7 @@ impl<'f> Asm<'f> {
                         ),
                     )]);
                 }
-                if seg.bank == last.bank && seg.start as u32 == last.end() {
+                if seg.bank == last.bank && seg.start == last.end() {
                     last.bytes.extend(seg.bytes);
                     continue;
                 }

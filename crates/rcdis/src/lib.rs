@@ -9,6 +9,7 @@
 //! written as `.byte` instead.
 
 pub mod m68k;
+pub mod w65816;
 
 use machine::SymbolTable;
 use rcasm::Cpu;
@@ -94,6 +95,9 @@ fn decode(cpu: Cpu, image: &[u8], at: usize, addr: u16) -> Option<Insn> {
         Cpu::Mos6502 => mos6502::disassemble::disassemble(window, addr),
         Cpu::Z80 => z80::disassemble::disassemble_at(window, addr),
         Cpu::Huc6280 => huc6280::disassemble::disassemble(window, addr),
+        Cpu::Spc700 => spc700::disassemble::disassemble(window, addr),
+        // the 65816 has its own sweep (`w65816`): 24-bit addresses and the register widths
+        Cpu::W65816 => return None,
     };
     if len == 0 || at + len > image.len() {
         return None;
@@ -104,6 +108,8 @@ fn decode(cpu: Cpu, image: &[u8], at: usize, addr: u16) -> Option<Insn> {
         Cpu::Mos6502 => flow_6502(&text),
         Cpu::Z80 => flow_z80(&text),
         Cpu::Huc6280 => flow_huc6280(&text),
+        Cpu::Spc700 => flow_spc700(&text),
+        Cpu::W65816 => unreachable!("handled above"),
     };
     Some(Insn {
         text,
@@ -111,6 +117,28 @@ fn decode(cpu: Cpu, image: &[u8], at: usize, addr: u16) -> Option<Insn> {
         flow,
         reference,
     })
+}
+
+/// `BNE $8010`, `JMP !$1234`, `CALL !$1234`, `MOV A,!$1234`, `BBS $12.3,$8010`.
+fn flow_spc700(text: &str) -> (Flow, Option<u16>) {
+    let (mnemonic, operand) = text.split_once(' ').unwrap_or((text, ""));
+    let last = operand.rsplit(',').next().unwrap_or("");
+    let absolute = last.strip_prefix('!').and_then(parse_hex_token);
+    let relative = parse_hex_token(last);
+    let go = |falls_through, target| Flow {
+        falls_through,
+        target,
+    };
+    match mnemonic {
+        "BPL" | "BMI" | "BVC" | "BVS" | "BCC" | "BCS" | "BNE" | "BEQ" | "BBS" | "BBC" | "CBNE"
+        | "DBNZ" => (go(true, relative), None),
+        "BRA" => (go(false, relative), None),
+        "JMP" => (go(false, absolute), None),
+        "CALL" => (go(true, absolute), None),
+        "RET" | "RETI" | "STOP" => (go(false, None), None),
+        // a memory operand: `MOV A,!$1234` reads $1234
+        _ => (go(true, None), absolute),
+    }
 }
 
 fn flow_6502(text: &str) -> (Flow, Option<u16>) {
@@ -235,6 +263,12 @@ enum Cell {
 
 /// Disassembles `image`, which sits at `opts.org`.
 pub fn disassemble(image: &[u8], opts: &Options) -> Result<Disassembly, String> {
+    if opts.cpu == Cpu::W65816 {
+        return Err(
+            "the 65816 is disassembled by rcdis::w65816 (24-bit addresses, register widths)"
+                .to_string(),
+        );
+    }
     let org = opts.org as usize;
     let end = org + image.len();
     if end > 0x10000 {

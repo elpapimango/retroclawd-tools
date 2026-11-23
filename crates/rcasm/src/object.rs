@@ -437,8 +437,8 @@ impl Asm<'_> {
                 strict,
                 illegal,
                 force_wide: wide.get(),
-                m16: m16,
-                x16: x16,
+                m16,
+                x16,
                 rec: Some(&rec),
                 probe,
             };

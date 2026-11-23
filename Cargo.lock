@@ -519,6 +519,8 @@ dependencies = [
  "rc-machine",
  "rc-mc68000",
  "rc-mos6502",
+ "rc-spc700",
+ "rc-w65c816",
  "rc-z80",
  "rcasm",
 ]

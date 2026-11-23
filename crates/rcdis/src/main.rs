@@ -60,6 +60,14 @@ struct Cli {
     #[arg(long)]
     addresses: bool,
 
+    /// 65816: the accumulator is 16 bits wide at the start (`REP`/`SEP` are followed).
+    #[arg(long)]
+    m16: bool,
+
+    /// 65816: the index registers are 16 bits wide at the start.
+    #[arg(long)]
+    x16: bool,
+
     /// Write the source here instead of the terminal.
     #[arg(long, short = 'o')]
     output: Option<PathBuf>,
@@ -82,9 +90,15 @@ fn main() -> ExitCode {
     ) {
         return run_68000(&cli);
     }
+    if matches!(
+        cli.cpu.trim().to_ascii_lowercase().as_str(),
+        "65816" | "65c816" | "w65c816" | "wdc65816" | "snes"
+    ) {
+        return run_65816(&cli);
+    }
     let Some(cpu) = Cpu::parse(&cli.cpu) else {
         return fail(format!(
-            "unknown CPU \"{}\" (6502, z80, huc6280 or 68000)",
+            "unknown CPU \"{}\" (6502, z80, huc6280, 65816, spc700 or 68000)",
             cli.cpu
         ));
     };
@@ -224,6 +238,55 @@ fn run_68000(cli: &Cli) -> ExitCode {
             comments: cli.addresses,
         },
     ) {
+        Ok(r) => r,
+        Err(e) => return fail(e),
+    };
+    match &cli.output {
+        Some(path) => {
+            if let Err(e) = write_file(path, result.source.as_bytes(), cli.force) {
+                return fail(e);
+            }
+        }
+        None => rc_common::out(&result.source),
+    }
+    rc_common::err(&format!(
+        "rcdis: {} instructions, {} data bytes, {} labels",
+        result.instructions, result.data_bytes, result.labels
+    ));
+    ExitCode::SUCCESS
+}
+
+/// `--cpu 65816`: a linear sweep over a raw file or an `.sfc`/`.smc` ROM, with 24-bit addresses.
+fn run_65816(cli: &Cli) -> ExitCode {
+    let raw = match std::fs::read(&cli.file) {
+        Ok(b) => b,
+        Err(e) => return fail(format!("cannot read {}: {e}", cli.file.display())),
+    };
+    let Some(org) = &cli.org else {
+        return fail("a 65816 file needs --org <address> (the 24-bit address of its first byte)");
+    };
+    let org = match rc_common::parse_number(org) {
+        Ok(a) if (0..=0xFF_FFFF).contains(&a) => a as u32,
+        Ok(a) => return fail(format!("--org {a:#X} is outside 0..16777215")),
+        Err(e) => return fail(format!("--org: {e}")),
+    };
+    if cli.skip > raw.len() {
+        return fail(format!("--skip {} is past the end of the file", cli.skip));
+    }
+    let body = &raw[cli.skip..];
+    let body = &body[..cli.length.map_or(body.len(), |l| l.min(body.len()))];
+    if !cli.entry.is_empty() || cli.follow || !cli.data.is_empty() || !cli.symbols.is_empty() {
+        return fail(
+            "the 65816 disassembler is a linear sweep: --entry, --follow, --data and --symbols are not available yet",
+        );
+    }
+    let opts = rcdis::w65816::W65816Options {
+        org: org + cli.skip as u32,
+        m16: cli.m16,
+        x16: cli.x16,
+        comments: cli.addresses,
+    };
+    let result = match rcdis::w65816::disassemble(body, &opts) {
         Ok(r) => r,
         Err(e) => return fail(e),
     };

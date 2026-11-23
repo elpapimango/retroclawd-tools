@@ -1,6 +1,6 @@
 [package]
 name = "rcdis"
-description = "Disassembler for the 6502, Z80, HuC6280 and 68000 that writes source rcasm can assemble (retroclawd tools)"
+description = "Disassembler for the 6502, Z80, HuC6280, 65816, SPC700 and 68000 that writes source rcasm can assemble (retroclawd tools)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -21,4 +21,6 @@ z80.workspace = true
 mos6502.workspace = true
 mc68000.workspace = true
 huc6280.workspace = true
+w65c816.workspace = true
+spc700.workspace = true
 clap.workspace = true

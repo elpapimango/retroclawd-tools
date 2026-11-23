@@ -30,7 +30,7 @@ pub fn flat_image(asm: &Assembly, fill: u8) -> Result<(u32, Vec<u8>), String> {
     }
     let start = first.start;
     let end = last.end();
-    let mut image = vec![fill; (end - start as u32) as usize];
+    let mut image = vec![fill; (end - start) as usize];
     for seg in &asm.segments {
         let at = (seg.start - start) as usize;
         image[at..at + seg.bytes.len()].copy_from_slice(&seg.bytes);
@@ -91,7 +91,7 @@ pub fn listing_text(asm: &Assembly) -> String {
             .map(|c| c.iter().map(|b| format!("{b:02X} ")).collect())
             .unwrap_or_default();
         writeln!(out, "{addr}  {first:<12} {}", entry.source).expect("writing to a String");
-        let mut at = entry.addr.unwrap_or(0) as u32 + 4;
+        let mut at = entry.addr.unwrap_or(0) + 4;
         for chunk in rows {
             let bytes: String = chunk.iter().map(|b| format!("{b:02X} ")).collect();
             writeln!(out, "{:04X}  {bytes:<12}", at & 0xFFFF).expect("writing to a String");
