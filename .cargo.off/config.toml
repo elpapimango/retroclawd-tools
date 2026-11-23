@@ -1,0 +1,23 @@
+[patch.crates-io]
+rc-atari-media = { path = "C:/Users/matti/Workspace/retroclawd-core/crates/atari-media" }
+rc-c64-cartridge = { path = "C:/Users/matti/Workspace/retroclawd-core/crates/c64-cartridge" }
+rc-c64-tape = { path = "C:/Users/matti/Workspace/retroclawd-core/crates/c64-tape" }
+rc-cbm-dos = { path = "C:/Users/matti/Workspace/retroclawd-core/crates/cbm-dos" }
+rc-chd = { path = "C:/Users/matti/Workspace/retroclawd-core/crates/chd" }
+rc-cpc-cartridge = { path = "C:/Users/matti/Workspace/retroclawd-core/crates/cpc-cartridge" }
+rc-cpc-snapshot = { path = "C:/Users/matti/Workspace/retroclawd-core/crates/cpc-snapshot" }
+rc-d64 = { path = "C:/Users/matti/Workspace/retroclawd-core/crates/d64" }
+rc-d71 = { path = "C:/Users/matti/Workspace/retroclawd-core/crates/d71" }
+rc-d81 = { path = "C:/Users/matti/Workspace/retroclawd-core/crates/d81" }
+rc-dsk = { path = "C:/Users/matti/Workspace/retroclawd-core/crates/dsk" }
+rc-g64 = { path = "C:/Users/matti/Workspace/retroclawd-core/crates/g64" }
+rc-huc6280 = { path = "C:/Users/matti/Workspace/retroclawd-core/crates/huc6280" }
+rc-machine = { path = "C:/Users/matti/Workspace/retroclawd-core/crates/machine" }
+rc-mc68000 = { path = "C:/Users/matti/Workspace/retroclawd-core/crates/mc68000" }
+rc-mos6502 = { path = "C:/Users/matti/Workspace/retroclawd-core/crates/mos6502" }
+rc-sna-snapshot = { path = "C:/Users/matti/Workspace/retroclawd-core/crates/sna-snapshot" }
+rc-szx-snapshot = { path = "C:/Users/matti/Workspace/retroclawd-core/crates/szx-snapshot" }
+rc-z80 = { path = "C:/Users/matti/Workspace/retroclawd-core/crates/z80" }
+rc-z80-snapshot = { path = "C:/Users/matti/Workspace/retroclawd-core/crates/z80-snapshot" }
+rc-zx-tape = { path = "C:/Users/matti/Workspace/retroclawd-core/crates/zx-tape" }
+rc-zx81-snapshot = { path = "C:/Users/matti/Workspace/retroclawd-core/crates/zx81-snapshot" }
