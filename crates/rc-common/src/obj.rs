@@ -60,6 +60,47 @@ pub struct Symbol {
     pub value: i64,
 }
 
+/// An expression over an object's own symbols (an index into its symbol table), numbers and the address of the
+/// instruction (`Pc`). Operator codes: unary are the characters `- + ~ ! < >` (`<` low byte, `>` second byte);
+/// binary are 0 `*`, 1 `/`, 2 `%`, 3 `+`, 4 `-`, 5 `<<`, 6 `>>`, 7 `<`, 8 `<=`, 9 `>`, 10 `>=`, 11 `==`, 12 `!=`,
+/// 13 `&`, 14 `^`, 15 `|`, 16 `&&`, 17 `||`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Expr {
+    Num(i64),
+    Sym(u32),
+    Pc,
+    Unary(u8, Box<Expr>),
+    Binary(u8, Box<Expr>, Box<Expr>),
+}
+
+/// How deeply nested an expression a reader accepts.
+pub const MAX_EXPR_DEPTH: usize = 64;
+
+fn put_expr(out: &mut Vec<u8>, e: &Expr) {
+    match e {
+        Expr::Num(n) => {
+            out.push(0);
+            put_i(out, *n);
+        }
+        Expr::Sym(i) => {
+            out.push(1);
+            put_u(out, *i as u64);
+        }
+        Expr::Pc => out.push(2),
+        Expr::Unary(op, a) => {
+            out.push(3);
+            out.push(*op);
+            put_expr(out, a);
+        }
+        Expr::Binary(op, a, b) => {
+            out.push(4);
+            out.push(*op);
+            put_expr(out, a);
+            put_expr(out, b);
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
     /// The field holds the expression's value.
@@ -81,8 +122,8 @@ pub struct Reloc {
     /// section's address plus `offset - instr_back`.
     pub bias: i64,
     pub instr_back: u32,
-    /// The expression, in the assembler's own syntax; its symbols are this object's names.
-    pub expr: String,
+    /// What the field holds; its symbols are indices into this object's symbol table.
+    pub expr: Expr,
     /// Index into `Object::files` and a line, for messages.
     pub file: u32,
     pub line: u32,
@@ -183,7 +224,7 @@ impl Object {
                 put_i(&mut o, r.bias);
                 put_u(&mut o, r.instr_back as u64);
             }
-            put_s(&mut o, &r.expr);
+            put_expr(&mut o, &r.expr);
             put_u(&mut o, r.file as u64);
             put_u(&mut o, r.line as u64);
         }
@@ -265,6 +306,42 @@ impl<'a> Reader<'a> {
         let s = &self.data[self.at..self.at + n];
         self.at += n;
         Ok(s)
+    }
+
+    fn expr(&mut self, depth: usize, nsym: usize) -> Result<Expr, String> {
+        if depth > MAX_EXPR_DEPTH {
+            return self.fail("an expression is nested too deeply");
+        }
+        Ok(match self.byte()? {
+            0 => Expr::Num(self.int()?),
+            1 => {
+                let i = self.small("symbol index", MAX_SYMBOLS as u64)?;
+                if i as usize >= nsym {
+                    return self.fail(&format!(
+                        "an expression names symbol {i}, which does not exist"
+                    ));
+                }
+                Expr::Sym(i)
+            }
+            2 => Expr::Pc,
+            3 => {
+                let op = self.byte()?;
+                if !b"-+~!<>".contains(&op) {
+                    return self.fail("an expression has an unknown unary operator");
+                }
+                Expr::Unary(op, Box::new(self.expr(depth + 1, nsym)?))
+            }
+            4 => {
+                let op = self.byte()?;
+                if op > 17 {
+                    return self.fail("an expression has an unknown operator");
+                }
+                let a = self.expr(depth + 1, nsym)?;
+                let b = self.expr(depth + 1, nsym)?;
+                Expr::Binary(op, Box::new(a), Box::new(b))
+            }
+            _ => return self.fail("an expression has an unknown tag"),
+        })
     }
 
     fn string(&mut self) -> Result<String, String> {
@@ -405,7 +482,7 @@ impl Object {
                     sec.name
                 ));
             }
-            let expr = r.string()?;
+            let expr = r.expr(0, symbols.len())?;
             let file = r.small("file index", u32::MAX as u64)?;
             let line = r.small("line", u32::MAX as u64)?;
             relocs.push(Reloc {

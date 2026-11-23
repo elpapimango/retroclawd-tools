@@ -27,12 +27,14 @@ uint   nrelocs
   per reloc:    uint section ; uint offset
                 byte tag              low nibble width 1..4; 0x10 relative; 0x20 big endian
                 [int bias ; uint instr_back]   relative only
-                string expression ; uint file ; uint line
+                expression ; uint file ; uint line
 ```
 
 A relocation says: "the `width` bytes at `offset` of `section` hold the value of `expression`" (absolute), or "the value of `expression` minus
-(the address of the instruction plus `bias`)" (relative; the instruction starts `instr_back` bytes before the field). The expression is in the
-assembler's own syntax, its names are the object's symbols, `$` is the address of the instruction. The linker checks that the value fits.
+(the address of the instruction plus `bias`)" (relative; the instruction starts `instr_back` bytes before the field). The expression is a tree: a tag byte,
+then 0 `int` (number), 1 `uint` (an index into the object's symbol table), 2 (`$`, the address of the instruction), 3 `byte expr` (unary:
+the character `- + ~ ! < >`), 4 `byte expr expr` (binary: 0 `*`, 1 `/`, 2 `%`, 3 `+`, 4 `-`, 5 `<<`, 6 `>>`, 7 `<`, 8 `<=`, 9 `>`, 10 `>=`,
+11 `==`, 12 `!=`, 13 `&`, 14 `^`, 15 `|`, 16 `&&`, 17 `||`); at most 64 deep. The linker checks that the value fits.
 
 ## `.rca` archive
 

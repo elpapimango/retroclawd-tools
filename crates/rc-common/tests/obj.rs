@@ -77,7 +77,7 @@ fn sample() -> Object {
                 kind: Kind::Abs,
                 bias: 0,
                 instr_back: 0,
-                expr: "putc+1".into(),
+                expr: Expr::Binary(3, Box::new(Expr::Sym(2)), Box::new(Expr::Num(1))),
                 file: 0,
                 line: 3,
             },
@@ -89,7 +89,7 @@ fn sample() -> Object {
                 kind: Kind::Rel,
                 bias: 2,
                 instr_back: 1,
-                expr: "start".into(),
+                expr: Expr::Sym(0),
                 file: 1,
                 line: 9,
             },
@@ -208,4 +208,22 @@ fn archive_damage_is_an_error() {
     let at = b.windows(5).rposition(|w| w == b"start").unwrap();
     b[at] = b'X';
     assert!(Archive::decode(&b).unwrap_err().contains("index"));
+}
+
+#[test]
+fn an_expression_naming_a_missing_symbol_or_nested_too_deep_is_an_error() {
+    let mut o = sample();
+    o.relocs[0].expr = Expr::Sym(99);
+    assert!(
+        Object::decode(&o.encode())
+            .unwrap_err()
+            .contains("symbol 99")
+    );
+    let mut e = Expr::Num(1);
+    for _ in 0..200 {
+        e = Expr::Unary(b'-', Box::new(e));
+    }
+    let mut o = sample();
+    o.relocs[0].expr = e;
+    assert!(Object::decode(&o.encode()).unwrap_err().contains("nested"));
 }
