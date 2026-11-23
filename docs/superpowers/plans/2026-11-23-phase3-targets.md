@@ -74,3 +74,8 @@ Same shape: `rcasm/src/spc700.rs`, tests round-tripping every opcode through `sp
 
 Covers the machine list of the spec's matrix for the new machines. The existing machines (ZX81 `.p` writer, VIC-20, Atari 8-bit `.atr`, Atari ST `.st`) have writers or are covered by
 `rcdisk`/`rcsnap`; the ZX81 and VIC-20 targets in `rcld` are phase 5's work (the `rcb` kits), with the same layout mechanism.
+
+## Status (2026-11-23, tools 0.3.0)
+
+Done: Task 1 (32-bit addresses), 2 (65816), 3 (SPC700), 4 (rcdis for both; the 65816 sweep is linear only), 5 (NES, SNES), 6 (Amiga hunk + ADF, X68000 `.X`), and the Genesis half of 7.
+Open: Neo Geo cartridge set and Mega-CD disc (need the emulator's set and disc rules read first), the Human68k filesystem for `.xdf` (when the machine exists), object-mode 68000 (separate assembler module).
