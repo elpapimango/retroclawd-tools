@@ -18,6 +18,8 @@ pub enum Cpu {
     Mos6502,
     Z80,
     Huc6280,
+    W65816,
+    Spc700,
 }
 
 impl Cpu {
@@ -26,7 +28,17 @@ impl Cpu {
             "6502" | "6510" | "8502" | "mos6502" | "nmos6502" => Some(Cpu::Mos6502),
             "z80" | "z-80" | "zilog-z80" => Some(Cpu::Z80),
             "huc6280" | "pce" | "pcengine" | "turbografx" => Some(Cpu::Huc6280),
+            "65816" | "65c816" | "w65c816" | "wdc65816" | "snes" => Some(Cpu::W65816),
+            "spc700" | "spc" | "snes-apu" => Some(Cpu::Spc700),
             _ => None,
+        }
+    }
+
+    /// The width of the program's address space in bits.
+    pub fn addr_bits(self) -> u32 {
+        match self {
+            Cpu::W65816 => 24,
+            _ => 16,
         }
     }
 
@@ -35,6 +47,8 @@ impl Cpu {
             Cpu::Mos6502 => "6502",
             Cpu::Z80 => "z80",
             Cpu::Huc6280 => "huc6280",
+            Cpu::W65816 => "65816",
+            Cpu::Spc700 => "spc700",
         }
     }
 
@@ -45,13 +59,15 @@ impl Cpu {
             Cpu::Mos6502 => mos_mnemonics().contains(upper.as_str()),
             Cpu::Z80 => z80_mnemonics().contains(upper.as_str()),
             Cpu::Huc6280 => crate::huc6280::is_mnemonic(&upper),
+            Cpu::W65816 => crate::w65816::is_mnemonic(&upper),
+            Cpu::Spc700 => crate::spc700::is_mnemonic(&upper),
         }
     }
 }
 
 /// Where an instruction sits and what it may use.
 pub struct Site<'a> {
-    pub addr: u16,
+    pub addr: u32,
     pub scope: &'a dyn Scope,
     /// Final pass: an undefined symbol is an error. First pass: it reads as 0 and is reported back.
     pub strict: bool,
@@ -59,6 +75,9 @@ pub struct Site<'a> {
     pub illegal: bool,
     /// The first pass decided this operand had to be 16 bits wide (6502 only).
     pub force_wide: bool,
+    /// 65816: the accumulator / the index registers are 16 bits wide.
+    pub m16: bool,
+    pub x16: bool,
     /// Object mode: every operand value evaluated is recorded here.
     pub rec: Option<&'a RefCell<Vec<Operand>>>,
     /// Object mode: how to alter the values to find which bytes of the instruction they land in.
@@ -97,6 +116,8 @@ pub fn encode(cpu: Cpu, mnemonic: &str, operand: &str, site: &Site) -> Result<En
         Cpu::Mos6502 => encode_6502(mnemonic, operand, site),
         Cpu::Z80 => encode_z80(mnemonic, operand, site),
         Cpu::Huc6280 => crate::huc6280::encode(mnemonic, operand, site),
+        Cpu::W65816 => crate::w65816::encode(mnemonic, operand, site),
+        Cpu::Spc700 => crate::spc700::encode(mnemonic, operand, site),
     }
 }
 
@@ -279,7 +300,7 @@ fn encode_6502(mnemonic: &str, operand: &str, site: &Site) -> Result<Encoded, St
             }
         }
     };
-    let mut bytes = mos6502::disassemble::assemble_one(&text, site.addr)
+    let mut bytes = mos6502::disassemble::assemble_one(&text, site.addr as u16)
         .map_err(|e| format!("{mnemonic} {operand}: {e}"))?;
     if starred {
         // `*` asks for the undocumented encoding of an instruction that also has a documented one.

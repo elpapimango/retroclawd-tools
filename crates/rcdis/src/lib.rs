@@ -210,11 +210,13 @@ fn flow_z80(text: &str) -> (Flow, Option<u16>) {
 fn assembles_back(cpu: Cpu, text: &str, addr: u16, bytes: &[u8]) -> bool {
     let (mnemonic, operand) = text.split_once(' ').unwrap_or((text, ""));
     let site = Site {
-        addr,
+        addr: addr as u32,
         scope: &Empty,
         strict: true,
         illegal: true,
         force_wide: false,
+        m16: false,
+        x16: false,
         rec: None,
         probe: Default::default(),
     };

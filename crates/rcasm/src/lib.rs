@@ -9,7 +9,9 @@ pub mod cpu;
 pub mod expr;
 mod huc6280;
 pub mod m68k;
+mod spc700;
 pub mod text;
+mod w65816;
 
 pub use asm::{
     Assembly, DiskFiles, Files, ListEntry, Options, Segment, Symbol, assemble, assemble_object,
@@ -19,7 +21,7 @@ pub use cpu::Cpu;
 use std::fmt::Write;
 
 /// All segments as one image from the lowest to the highest address, gaps filled with `fill`.
-pub fn flat_image(asm: &Assembly, fill: u8) -> Result<(u16, Vec<u8>), String> {
+pub fn flat_image(asm: &Assembly, fill: u8) -> Result<(u32, Vec<u8>), String> {
     let (Some(first), Some(last)) = (asm.segments.first(), asm.segments.last()) else {
         return Err("the program produced no bytes".to_string());
     };

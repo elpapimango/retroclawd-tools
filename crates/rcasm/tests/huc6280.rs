@@ -181,7 +181,7 @@ fn unknown_instructions_are_errors() {
     assert!(asm(".org $E000\n xyzzy\n").is_err());
 }
 
-fn banked(source: &str) -> Vec<(u16, u16, Vec<u8>)> {
+fn banked(source: &str) -> Vec<(u16, u32, Vec<u8>)> {
     let opts = Options {
         cpu: Some(Cpu::Huc6280),
         ..Options::default()

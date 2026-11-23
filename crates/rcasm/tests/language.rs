@@ -1,6 +1,6 @@
 //! The assembler language, end to end: source text in, bytes and symbols out.
 
-use rcasm::{Assembly, Cpu, Files, Options, assemble};
+use rcasm::{Assembly, Cpu, DiskFiles, Files, Options, assemble};
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -516,4 +516,14 @@ fn symbol_and_listing_output() {
 fn symbols_listing_and_cpu() {
     symbol_and_listing_output();
     the_cpu_can_come_from_the_source();
+}
+
+#[test]
+fn an_address_beyond_the_cpus_space_is_an_error() {
+    let opts = Options {
+        cpu: Some(Cpu::Mos6502),
+        ..Options::default()
+    };
+    let e = assemble("t", ".org $12345\n nop\n", &opts, &DiskFiles).unwrap_err();
+    assert!(e[0].message.contains("outside 0..65535"), "{e:?}");
 }

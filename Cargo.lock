@@ -415,6 +415,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rc-spc700"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c644428d403e796fc8fb3a965049b1a1e000878b40ba21c57793db9effe80539"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "rc-szx-snapshot"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -422,6 +431,15 @@ checksum = "b0d5c072f48925872e0e8909f8ec034d40c75305d705011e53de9af62509e2b4"
 dependencies = [
  "flate2",
  "rc-z80",
+]
+
+[[package]]
+name = "rc-w65c816"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "89e8f106f461c185fafe67f9d04ae2a0148ba2fa6a486d2bfacefe3df78485cd"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
@@ -478,6 +496,8 @@ dependencies = [
  "rc-machine",
  "rc-mc68000",
  "rc-mos6502",
+ "rc-spc700",
+ "rc-w65c816",
  "rc-z80",
 ]
 

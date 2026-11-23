@@ -425,10 +425,11 @@ impl Asm<'_> {
         let force_wide = self.wide.get(&id).copied().unwrap_or(false);
         let strict = self.pass == 2;
         let illegal = self.illegal;
+        let (m16, x16) = (self.m16, self.x16);
         let rec: RefCell<Vec<Operand>> = RefCell::new(Vec::new());
         let view = self.view();
         let wide = std::cell::Cell::new(force_wide);
-        let attempt = |addr: u16, probe: Probe| {
+        let attempt = |addr: u32, probe: Probe| {
             rec.borrow_mut().clear();
             let site = Site {
                 addr,
@@ -436,13 +437,15 @@ impl Asm<'_> {
                 strict,
                 illegal,
                 force_wide: wide.get(),
+                m16: m16,
+                x16: x16,
                 rec: Some(&rec),
                 probe,
             };
             let r = cpu::encode(cpu, word, operand, &site);
             (r, rec.borrow().clone())
         };
-        let addr = pc as u16;
+        let addr = pc;
         let (mut first, mut ops) = attempt(addr, Probe::default());
         // An address the linker decides is 16 bits wide unless it was declared zero page.
         if !wide.get()
@@ -586,6 +589,7 @@ impl Asm<'_> {
             });
         }
         self.emit(src, &enc.bytes);
+        self.track_widths(word, operand);
     }
 
     /// One `.byte` / `.word` value in object mode: the placeholder to write and, when the linker decides the

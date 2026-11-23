@@ -6,7 +6,7 @@ use machine::SymbolTable;
 use rcasm::{Cpu, DiskFiles, Options as AsmOptions, assemble};
 use rcdis::{Options, disassemble};
 
-fn assemble_source(source: &str) -> Result<(u16, Vec<u8>), String> {
+fn assemble_source(source: &str) -> Result<(u32, Vec<u8>), String> {
     let asm = assemble("out.asm", source, &AsmOptions::default(), &DiskFiles).map_err(|e| {
         e.iter()
             .map(|d| d.to_string())
@@ -21,7 +21,7 @@ fn round_trip(opts: &Options, bytes: &[u8]) -> String {
     let dis = disassemble(bytes, opts).expect("disassembles");
     let (start, again) = assemble_source(&dis.source)
         .unwrap_or_else(|e| panic!("the output does not assemble:\n{e}\n---\n{}", dis.source));
-    assert_eq!(start, opts.org, "start address");
+    assert_eq!(start, opts.org as u32, "start address");
     assert_eq!(again.len(), bytes.len(), "length");
     if again != bytes {
         let at = again.iter().zip(bytes).position(|(a, b)| a != b).unwrap();

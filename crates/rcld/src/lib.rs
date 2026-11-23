@@ -337,7 +337,7 @@ pub fn load(
         for s in &asm.segments {
             pieces.push(Piece {
                 name: "assembled code".to_string(),
-                start: s.start,
+                start: s.start as u16,
                 bytes: s.bytes.clone(),
             });
         }

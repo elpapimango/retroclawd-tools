@@ -148,10 +148,10 @@ pub fn build(
         for s in &asm.segments {
             pieces.push(Piece {
                 name: format!("code at bank {} ${:04X}", s.bank, s.start),
-                offset: offset_of(s.bank, s.start, "the program")?,
+                offset: offset_of(s.bank, s.start as u16, "the program")?,
                 bytes: s.bytes.clone(),
                 bank: s.bank,
-                start: s.start,
+                start: s.start as u16,
             });
         }
         symbols = asm

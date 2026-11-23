@@ -20,7 +20,7 @@ fn round_trip(opts: &Options, bytes: &[u8]) -> String {
     let asm = assemble("out.asm", &dis.source, &AsmOptions::default(), &DiskFiles)
         .unwrap_or_else(|e| panic!("the output does not assemble: {e:?}\n{}", dis.source));
     let (start, again) = rcasm::flat_image(&asm, 0x00).unwrap();
-    assert_eq!(start, opts.org);
+    assert_eq!(start, opts.org as u32);
     assert_eq!(again, bytes, "\n{}", dis.source);
     dis.source
 }

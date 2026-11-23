@@ -46,7 +46,7 @@ pub struct Options {
 /// A run of bytes at an address.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Segment {
-    pub start: u16,
+    pub start: u32,
     pub bytes: Vec<u8>,
     /// The ROM bank (`.bank n`, HuC6280): segments of different banks may use the same addresses. 0 elsewhere.
     pub bank: u16,
@@ -54,7 +54,7 @@ pub struct Segment {
 
 impl Segment {
     pub fn end(&self) -> u32 {
-        self.start as u32 + self.bytes.len() as u32
+        self.start + self.bytes.len() as u32
     }
 }
 
@@ -71,7 +71,7 @@ pub struct Symbol {
 pub struct ListEntry {
     pub file: String,
     pub line: usize,
-    pub addr: Option<u16>,
+    pub addr: Option<u32>,
     pub bytes: Vec<u8>,
     pub source: String,
 }
@@ -133,6 +133,10 @@ struct Asm<'f> {
     pc: Option<u32>,
     /// The bank `.bank` selected (0 until then).
     bank: u16,
+    /// 65816: register widths (`.a16`, `.i16`, `REP`/`SEP` in smart mode).
+    m16: bool,
+    x16: bool,
+    smart: bool,
     segments: Vec<Segment>,
     global_scope: String,
     macro_scope: Vec<usize>,
@@ -212,6 +216,9 @@ fn run_passes<'f>(
         wide: HashMap::new(),
         pc: None,
         bank: 0,
+        m16: false,
+        x16: false,
+        smart: true,
         segments: Vec::new(),
         global_scope: String::new(),
         macro_scope: Vec::new(),
@@ -302,7 +309,8 @@ const DIRECTIVES: &[&str] = &[
     "org", "byte", "db", "defb", "byt", "word", "dw", "defw", "text", "ascii", "asciiz", "str",
     "fill", "ds", "defs", "res", "align", "equ", "set", "include", "incbin", "macro", "endm",
     "endmacro", "if", "ifdef", "ifndef", "else", "endif", "cpu", "illegal", "error", "assert",
-    "end", "bank", "segment", "import", "importzp", "export", "exportzp", "global",
+    "end", "bank", "segment", "import", "importzp", "export", "exportzp", "global", "a8", "a16",
+    "i8", "i16", "smart",
 ];
 
 /// Names that are directives even without a leading dot (Z80 assemblers write them bare).
@@ -323,6 +331,9 @@ impl<'f> Asm<'f> {
         self.pass = pass;
         self.pc = None;
         self.bank = 0;
+        self.m16 = false;
+        self.x16 = false;
+        self.smart = true;
         self.segments.clear();
         self.global_scope.clear();
         self.macro_scope.clear();
@@ -344,6 +355,11 @@ impl<'f> Asm<'f> {
             self.errors
                 .push(Diag::new(&*src.file, src.line, message.into()));
         }
+    }
+
+    /// The size of the CPU's address space (65536 until a CPU is chosen).
+    fn limit(&self) -> u32 {
+        1 << self.cpu.map_or(16, |c| c.addr_bits())
     }
 
     fn active(&self) -> bool {
@@ -515,7 +531,7 @@ impl<'f> Asm<'f> {
             for label in &labels {
                 self.define_label(&src, label);
             }
-            let mut addr = self.pc.map(|p| p as u16);
+            let mut addr = self.pc;
             match kind {
                 None => {}
                 Some(Kind::Org(value)) => self.do_org(&src, &value),
@@ -540,11 +556,11 @@ impl<'f> Asm<'f> {
                                 self.do_include(&src, &operand, depth);
                                 continue;
                             }
-                            addr = self.pc.map(|p| p as u16);
+                            addr = self.pc;
                             self.directive(&src, &dir, &operand);
                         }
                         None => {
-                            addr = self.pc.map(|p| p as u16);
+                            addr = self.pc;
                             self.instruction(&src, &word, &operand);
                         }
                     }
@@ -580,7 +596,7 @@ impl<'f> Asm<'f> {
         seg.bytes[seg.bytes.len().saturating_sub(n)..].to_vec()
     }
 
-    fn note(&mut self, src: &LineSrc, addr: Option<u16>, bytes: &[u8]) {
+    fn note(&mut self, src: &LineSrc, addr: Option<u32>, bytes: &[u8]) {
         if self.pass == 2 {
             self.listing.push(ListEntry {
                 file: src.file.to_string(),
@@ -682,7 +698,7 @@ impl<'f> Asm<'f> {
             return;
         }
         match self.eval_now(value) {
-            Ok(v) if (0..=0xFFFF).contains(&v) => {
+            Ok(v) if (0..self.limit() as i64).contains(&v) => {
                 // A new segment, unless this continues exactly where the last one ended.
                 let continues = self
                     .segments
@@ -692,13 +708,16 @@ impl<'f> Asm<'f> {
                 self.pc = Some(v as u32);
                 if !continues {
                     self.segments.push(Segment {
-                        start: v as u16,
+                        start: v as u32,
                         bytes: Vec::new(),
                         bank: self.bank,
                     });
                 }
             }
-            Ok(v) => self.error(src, format!(".org {v} is outside 0..65535")),
+            Ok(v) => {
+                let max = self.limit() - 1;
+                self.error(src, format!(".org {v} is outside 0..{max}"))
+            }
             Err(e) => self.error(src, e),
         }
     }
@@ -774,6 +793,7 @@ impl<'f> Asm<'f> {
         };
         if self.ob.on {
             let cur = self.ob.cur;
+            let limit = self.limit() as usize;
             let sec = &mut self.ob.sections[cur];
             if sec.bss {
                 let name = sec.name.clone();
@@ -783,7 +803,7 @@ impl<'f> Asm<'f> {
                 );
                 return;
             }
-            if sec.size as usize + bytes.len() > 0x10000 {
+            if sec.size as usize + bytes.len() > limit {
                 let name = sec.name.clone();
                 self.error(src, format!("segment \"{name}\" is larger than 64 KB"));
                 return;
@@ -793,13 +813,13 @@ impl<'f> Asm<'f> {
             self.pc = Some(sec.end());
             return;
         }
-        if pc as usize + bytes.len() > 0x10000 {
+        if pc as usize + bytes.len() > self.limit() as usize {
             self.error(src, "the program counter would pass $FFFF");
             return;
         }
         if self.segments.is_empty() {
             self.segments.push(Segment {
-                start: pc as u16,
+                start: pc,
                 bytes: Vec::new(),
                 bank: self.bank,
             });
@@ -829,7 +849,7 @@ impl<'f> Asm<'f> {
         let Some(pc) = self.ensure_pc(src) else {
             return;
         };
-        if pc > 0xFFFF {
+        if pc >= self.limit() {
             self.error(src, "the program counter passed $FFFF");
             return;
         }
@@ -842,11 +862,13 @@ impl<'f> Asm<'f> {
         let force_wide = self.wide.get(&id).copied().unwrap_or(false);
         let view = self.view();
         let site = Site {
-            addr: pc as u16,
+            addr: pc,
             scope: &view,
             strict: self.pass == 2,
             illegal: self.illegal,
             force_wide,
+            m16: self.m16,
+            x16: self.x16,
             rec: None,
             probe: Default::default(),
         };
@@ -857,11 +879,33 @@ impl<'f> Asm<'f> {
                     self.wide.insert(id, enc.unresolved);
                 }
                 self.emit(src, &enc.bytes);
+                self.track_widths(word, operand);
             }
             Err(e) => {
                 self.error(src, e);
                 // Keep the addresses sane for the rest of the pass.
                 self.pc = Some(pc + 1);
+            }
+        }
+    }
+
+    /// 65816 smart mode: `REP` and `SEP` with a constant change the immediate widths that follow.
+    pub(super) fn track_widths(&mut self, word: &str, operand: &str) {
+        if self.cpu != Some(Cpu::W65816) || !self.smart {
+            return;
+        }
+        let up = word.to_ascii_uppercase();
+        let up = up.split('.').next().unwrap_or("");
+        if up != "REP" && up != "SEP" {
+            return;
+        }
+        if let Ok(v) = self.eval_now(operand.trim().trim_start_matches('#')) {
+            let set = up == "SEP";
+            if v & 0x20 != 0 {
+                self.m16 = !set;
+            }
+            if v & 0x10 != 0 {
+                self.x16 = !set;
             }
         }
     }
@@ -950,7 +994,7 @@ impl<'f> Asm<'f> {
                     return;
                 }
                 let count = match self.eval_now(parts[0]) {
-                    Ok(c) if (0..=0x10000).contains(&c) => c as usize,
+                    Ok(c) if (0..=self.limit() as i64).contains(&c) => c as usize,
                     Ok(c) => {
                         self.error(src, format!("fill count {c} is outside 0..65536"));
                         return;
@@ -974,8 +1018,9 @@ impl<'f> Asm<'f> {
                 };
                 if self.ob.on && self.ob.sections[self.ob.cur].bss {
                     let cur = self.ob.cur;
+                    let limit = self.limit() as usize;
                     let sec = &mut self.ob.sections[cur];
-                    if sec.size as usize + count > 0x10000 {
+                    if sec.size as usize + count > limit {
                         self.error(src, "the segment would be larger than 64 KB");
                         return;
                     }
@@ -1033,6 +1078,23 @@ impl<'f> Asm<'f> {
                     }
                 }
                 None => self.error(src, format!("unknown CPU \"{operand}\" (6502 or z80)")),
+            },
+            "a8" | "a16" | "i8" | "i16" => {
+                if self.cpu != Some(Cpu::W65816) {
+                    self.error(src, format!(".{dir} is for the 65816 (.cpu 65816)"));
+                    return;
+                }
+                match dir {
+                    "a8" => self.m16 = false,
+                    "a16" => self.m16 = true,
+                    "i8" => self.x16 = false,
+                    _ => self.x16 = true,
+                }
+            }
+            "smart" => match operand.trim().to_ascii_lowercase().as_str() {
+                "" | "on" => self.smart = true,
+                "off" => self.smart = false,
+                other => self.error(src, format!(".smart takes on or off, not \"{other}\"")),
             },
             "illegal" => match operand.trim().to_ascii_lowercase().as_str() {
                 "" | "on" => self.illegal = true,
