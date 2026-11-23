@@ -81,3 +81,9 @@ Same shape: `Bus` over 16-bit addresses, 256 opcodes, `SingleStepTests/spc700`; 
 
 Covers every CPU of the spec's section 2a. The machines (video/sound/IO chips) are not here. Names (`rc-w65c816`, `rc-spc700`) are used consistently; the assembler tables
 (`rcasm`) and decoders (`rcdis`) for these CPUs are phase 3/4 work that consumes the disassemblers defined here.
+
+## Status (2026-11-23)
+
+Done: Task 1 (`rc-mos6502` `Cpu::ricoh_2a03`), Task 2 (`rc-w65c816`: 5,080,400 SingleStepTests cases exact including cycle counts), Task 3 (`rc-spc700`: 256,000 cases
+exact). Order change: the formats (2b) and the image writers (3) come before Tasks 4-6 (SA-1, Super FX, 68010-30, FPU, PMMU), so that every increment of the toolchain is
+usable with what exists; Tasks 4-6 follow phase 3 and are still in scope.
