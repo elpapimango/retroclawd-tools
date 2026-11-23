@@ -231,10 +231,18 @@ impl Project {
                             self.machine.name()
                         )
                     })?;
-                let flag = match self.machine {
-                    Machine::PcEngine | Machine::Genesis | Machine::NeoGeo => "--rom",
-                    Machine::AtariSt => "--program",
-                    _ => "--program",
+                // the emulator's media options by the kind of image [H?: checked for --rom and --program only]
+                let ext = self
+                    .output
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .unwrap_or("")
+                    .to_ascii_lowercase();
+                let flag = match ext.as_str() {
+                    "tap" | "tzx" => "--tape",
+                    "dsk" | "d64" | "d81" | "adf" | "st" => "--disk",
+                    "prg" | "xex" => "--program",
+                    _ => "--rom",
                 };
                 vec![id.to_string(), flag.to_string(), out]
             }
