@@ -23,7 +23,7 @@ jobs:
         shell: bash
         run: |
           mkdir dist
-          for t in rcasm rcdis rcdisk rcchd rctape rcsnap rcld; do cp "target/release/$t${{ matrix.ext }}" dist/; done
+          for t in rcasm rcdis rcdisk rcchd rctape rcsnap rcld rcar; do cp "target/release/$t${{ matrix.ext }}" dist/; done
           cp README.md LICENSE dist/
           tar -czf "retroclawd-tools-${{ github.ref_name }}-${{ matrix.name }}.tar.gz" -C dist .
       - uses: softprops/action-gh-release@v2

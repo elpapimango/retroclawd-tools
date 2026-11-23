@@ -2,7 +2,7 @@
 
 Guidance for Claude Code working in this repository.
 
-retroclawd-tools is an independent tool suite: `rcasm` (6502, Z80, 68000 assembler), `rcdis`, `rcdisk`, `rctape`, `rcsnap`, `rcld`, `rcchd` and the
+retroclawd-tools is an independent tool suite: `rcasm` (6502, Z80, 68000 assembler), `rcdis`, `rcdisk`, `rctape`, `rcsnap`, `rcld`, `rcchd`, `rcar` (object libraries) and the
 shared `rc-common`. It is released on its own (crates.io and GitHub releases), separately from the emulator
 [retroclawd](https://github.com/elpapimango/retroclawd), which uses the tools but is not needed to build or run them.
 
@@ -12,7 +12,7 @@ shared `rc-common`. It is released on its own (crates.io and GitHub releases), s
 - The integration suite and scenario runner (`rc-scenarios`, `rc-suite`) run the emulator and stay in the retroclawd repository.
 - Test approach: a test earns its place by being judged from outside (a third-party program, a published document, another emulator read as
   a black box); a case that only checks our own plumbing does not. Fuzz targets are in `fuzz/` (cargo-fuzz, excluded from the workspace).
-- Release order (dependencies first): `rc-common`, `rcasm`, then `rcdis`, `rcdisk`, `rctape`, `rcsnap`, `rcchd`, `rcld`.
+- Release order (dependencies first): `rc-common`, `rcasm`, then `rcdis`, `rcdisk`, `rctape`, `rcsnap`, `rcchd`, `rcar`, `rcld`.
 - Commits end with `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`.
 
 ## Notes carried over from the monorepo (2026-11-23)
@@ -59,7 +59,7 @@ crates/rcsnap/      lib + bin: spectrum.rs (one model for .z80/.sna/.szx, conver
                     carts.rs (.crt / .cpr <-> raw), lib.rs (detection, info); main.rs is the CLI
 crates/rcld/        lib + bin: layout.rs (TOML layout), place.rs (pieces, overlap / region / reserve checks, map), emit.rs (what
                     each machine and extension gets), basic.rs (the C64 `SYS` line, the Spectrum loader), templates.rs
-docs/               rcasm.md, rcdis.md, rcdisk.md, rctape.md, rcchd.md, rcsnap.md, rcld.md
+docs/               rcasm.md, rcdis.md, rcdisk.md, rctape.md, rcchd.md, rcsnap.md, rcld.md, rcar.md, formats.md (.rco/.rca)
 ```
 
 Each tool is a library crate (reusable) plus its binary. Common code goes into `rc-common`.
