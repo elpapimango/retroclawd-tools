@@ -36,7 +36,7 @@ holds the assembler, linker, archiver, image writers, converters and the `rcb` d
 
 | # | Phase | Repository | Acceptance |
 |---|---|---|---|
-| 0 | HuC6280 in the tools: `rc-huc6280` published; `rcasm`/`rcdis --cpu huc6280`; `rcld` `machine = "pcengine"` writes `.pce`; test cards built by the tools | core, tools, emulator | Detailed plan: `2026-11-23-phase0-huc6280.md`. Round trip of all 256 opcodes; `pce-tone`, `pce-input`, `pce-timer*` cards built by `rcld` boot in retroclawd and match the manifest goldens |
+| 0 (DONE 2026-11-23, tools 0.2.0 published) | HuC6280 in the tools: `rc-huc6280` published; `rcasm`/`rcdis --cpu huc6280`; `rcld` `machine = "pcengine"` writes `.pce`; test cards built by the tools | core, tools, emulator | Detailed plan: `2026-11-23-phase0-huc6280.md`. Round trip of all 256 opcodes; `pce-tone`, `pce-input`, `pce-timer*` cards built by `rcld` boot in retroclawd and match the manifest goldens |
 | 1 | Object model: `.rco`, `.rca`, relocatable `rcasm`, `rcar`, linker over objects; native syntax gains `.segment`, `.import`, `.export`, scopes | tools | Every existing rcasm/rcld test passes unchanged; two-file program with a library archive links; review-focus items 1-4 pinned |
 | 2a | Cores: 65816, 2A03 variant, then 68010/20/30 + FPU + PMMU, SPC700, SA-1, Super FX | core | Each core passes its public suite (SingleStepTests where it exists: 65816, SPC700, 68000 family; otherwise differential against the RetroArch libretro cores, black box) |
 | 2b | Format crates: iNES/NES 2.0, SFC, X68000 exe and disks, Amiga hunk and ADF | core | Round trip read-write-read; reference files from the owner's RomM read correctly |
