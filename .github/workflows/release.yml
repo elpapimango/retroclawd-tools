@@ -1,0 +1,31 @@
+name: release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04, name: linux-x86_64, ext: "" }
+          - { os: windows-latest, name: windows-x86_64, ext: ".exe" }
+          - { os: macos-latest, name: macos-arm64, ext: "" }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release --workspace
+      - name: Package
+        shell: bash
+        run: |
+          mkdir dist
+          for t in rcasm rcdis rcdisk rcchd rctape rcsnap rcld; do cp "target/release/$t${{ matrix.ext }}" dist/; done
+          cp README.md LICENSE dist/
+          tar -czf "retroclawd-tools-${{ github.ref_name }}-${{ matrix.name }}.tar.gz" -C dist .
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: retroclawd-tools-*.tar.gz
