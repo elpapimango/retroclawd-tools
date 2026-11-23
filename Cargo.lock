@@ -302,7 +302,7 @@ dependencies = [
 
 [[package]]
 name = "rc-common"
-version = "0.1.0"
+version = "0.2.0"
 
 [[package]]
 name = "rc-cpc-cartridge"
@@ -417,7 +417,7 @@ version = "0.1.0"
 
 [[package]]
 name = "rcasm"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "clap",
  "rc-common",
@@ -430,7 +430,7 @@ dependencies = [
 
 [[package]]
 name = "rcchd"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "clap",
  "rc-chd",
@@ -438,7 +438,7 @@ dependencies = [
 
 [[package]]
 name = "rcdis"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "clap",
  "rc-common",
@@ -452,7 +452,7 @@ dependencies = [
 
 [[package]]
 name = "rcdisk"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "clap",
  "rc-atari-media",
@@ -468,7 +468,7 @@ dependencies = [
 
 [[package]]
 name = "rcld"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "clap",
  "rc-atari-media",
@@ -484,7 +484,7 @@ dependencies = [
 
 [[package]]
 name = "rcsnap"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "clap",
  "rc-c64-cartridge",
@@ -501,7 +501,7 @@ dependencies = [
 
 [[package]]
 name = "rctape"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "clap",
  "rc-c64-tape",

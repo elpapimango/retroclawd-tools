@@ -1,5 +1,6 @@
 [package]
 name = "rc-common"
+description = "Shared helpers of the retroclawd tools: JSON output, number parsing, the GEMDOS .prg format"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
