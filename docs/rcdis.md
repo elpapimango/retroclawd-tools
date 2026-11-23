@@ -29,3 +29,9 @@ writes `.byte` where the assembler could not reproduce an encoding (the six impl
   page).
 * Undocumented 6502 opcodes print with a `*` and a `.illegal` line is added.
 * Input: raw binaries and `.prg`. Tape, disk and snapshot input will come with `rctape` / `rcdisk` / `rcsnap`.
+
+## 65816 and SPC700
+
+`rcdis --cpu spc700 --org 0x0200 file.bin` works like the 6502 (linear, or `--entry` flow mode). `rcdis --cpu 65816 --org 0x808000 [--m16] [--x16] file.bin` is a linear sweep with
+24-bit addresses that follows `REP` and `SEP` (the starting widths are the options); branch, jump and call targets inside the image get `L_XXXXXX` labels; every instruction is
+assembled again before it is trusted, and one that would not come back identical is written as `.byte`. `--entry`, `--follow`, `--data` and `--symbols` are not available for the 65816 yet.

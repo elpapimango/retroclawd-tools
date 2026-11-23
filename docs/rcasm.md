@@ -131,3 +131,19 @@ done:   rts
 .segment "RODATA"
 msg:    .byte "HI", 0
 ```
+
+## The 65816 and the SPC700 (`--cpu 65816`, `--cpu spc700`)
+
+Both back ends take their encoding table from the CPU crates' disassemblers (`rc-w65c816`, `rc-spc700`), so every instruction the debugger shows assembles.
+Addresses are 32-bit in the assembler: a 65816 program may `.org $808000`; the other CPUs still stop at `$FFFF`.
+
+**65816.** Immediates follow the register widths: `.a8`/`.a16` (accumulator), `.i8`/`.i16` (index registers); in `.smart` mode (the default,
+`.smart off` switches it off) `REP #$30` and `SEP #$20` with a constant change them too, from the next instruction on. An 8-bit register given a 16-bit value is an
+error that says so. Address sizes: a literal's digits decide (`$12` direct page, `$1234` absolute, `$123456` long), else the value when it is known, else absolute; the
+suffixes `.b`, `.w`, `.l` decide outright (`lda.l $12`). `jmp`/`jsr` take a label of their own bank without its bank byte; another bank is an error that names `jml`/`jsl`.
+Forms: `lda ($12),y`, `lda [$12],y`, `lda $12,s`, `lda ($12,s),y`, `jmp ($1234,x)`, `jml [$1234]`, `mvn $7E,$7F` (source, destination; the bytes store the destination first), `per`, `brl`.
+Branches stay in their bank. In object mode 3-byte (long) address fields relocate like the others.
+
+**SPC700.** `mov a,#$12`, `mov a,$12` (direct page), `mov a,!$1234` (absolute; a plain operand above `$FF` is absolute too), `mov a,$12+x`, `mov a,[$12+x]`, `mov a,[$12]+y`,
+`mov a,(x)+`, `mov $22,$11` (destination first), `mov $12,#$34`, `set1 $12.3`, `bbs $12.3,target`, `or1 c,/$1234.5` (a 13-bit address and a bit number),
+`tcall 5`, `pcall $f0`, `movw ya,$12`. The direct page flag is the program's business: the assembler writes the byte.

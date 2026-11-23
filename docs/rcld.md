@@ -220,3 +220,36 @@ undefined symbol "putc" (wanted by main.asm)
 
 Inputs of the other kinds (`bin`, `prg`, `symbols`, `asm`) can be mixed in. Machines with their own writers (Atari ST, PC Engine)
 do not take objects yet.
+
+## NES (`machine = "nes"`)
+
+6502 sources and an iNES file. `[options]`: `mapper`, `submapper`, `mirroring` (`horizontal`, `vertical`, `four`), `battery`, `chr = "tiles.chr"` (the CHR ROM; without it the cartridge has CHR RAM),
+`prg_ram`, `nes2`, `banked`, `size`. Flat programs live in `$8000-$FFFF` (a 32 KB PRG; 16 KB when nothing is below `$C000`). With `.bank n` before an `.org` (or `banked = true`) the PRG is 16 KB banks,
+bank `n` at file offset `n * 16384 + (address & $3FFF)`; the last bank is the one fixed at `$C000`. The vectors at `$FFFA-$FFFF` come from the labels `nmi`, `reset` (or `start`, or `entry`) and `irq` (or `brk`)
+unless the sources write them. Output `.nes`; `rcld template nes`.
+
+## Super Nintendo (`machine = "snes"`)
+
+65816 sources placed by 24-bit `.org`, raw binaries at a 24-bit `at`, output `.sfc`/`.smc`. `[options]`: `mapping` (`lorom` default, `hirom`, `exhirom`), `fast`, `title`, `cart_type`, `ram_size`,
+`country`, `version`, `size`, `fix_checksum`. Addresses map to ROM by the mapping (LoROM: `(bank & $7F) * $8000 + (address & $7FFF)` in the `$8000-$FFFF` window; HiROM: banks `$C0-$FF` as they are, or `$00-$3F`/`$80-$BF` upper halves;
+ExHiROM as documented in `rcld::snes`); an address outside the ROM window, a piece that runs across the end of a bank window and overlaps are errors naming the piece. The internal header and the vectors
+are generated from the labels `reset`, `nmi`, `irq`, `cop`, `brk`, `abort` and the options, and the checksum is computed. If the sources write the header themselves (at `$FFC0` of the mapping's first header bank), it is
+kept and only the checksum is fixed. A missing vector label points at the reset code, with a note. `rcld template snes`.
+
+## Amiga (`machine = "amiga"`)
+
+A relocatable 68000 program (sections `.text`, `.data`, `.bss`, as for the Atari ST) written as a hunk executable (no extension or `.exe`) or on an ADF disk (`.adf`: the program, `s/startup-sequence`, the files of `[[file]]`,
+a standard boot block). The text is the `CODE` hunk, the data the `DATA` hunk, the bss the `BSS` hunk; every address in the program points into its hunk and is listed in that hunk's `RELOC32`. `[options]`: `memory`
+(`any`, `chip`, `fast`), `hunk_symbols`, `fs` (`ofs`/`ffs`), `bootable`, `disk_name`, `file_name`, `startup`. A program starts at the first byte of its first hunk, so `entry` must be the first label.
+Facts the Amiga machine has not confirmed yet (the boot block code, the hunk subset) are `[H?]` in `rc-amiga`. `rcld template amiga`.
+
+## X68000 (`machine = "x68000"`)
+
+The same relocatable 68000 program as a Human68k `.x` executable (`entry` is the execution address, default the first byte). A floppy image with a Human68k filesystem is not written yet. `rcld template x68000`.
+
+## Mega Drive / Genesis (`machine = "genesis"`)
+
+68000 sources at absolute addresses (`.org`, the ROM starts at `$000000`; one `.org` per program: pad with `ds.b`) and raw binaries at `at`; output `.md`, `.bin` or `.gen`. When the sources put nothing in `$000000-$0001FF` the
+vector table and the header are generated: the vectors from the labels `reset`/`start`/`entry`, `hint`, `vint`, `ext` and the exception names (`bus_error`, `address_error`, `illegal`, `div_zero`, `chk`, `trapv`,
+`privilege`, `trace`, `line_a`, `line_f`), the rest pointing at `error` or the reset code; the header from `console`, `title`, `serial`, `copyright`, `region`, `devices`, `stack`. The ROM end and the checksum are always
+written (`fix_checksum = false` stops that) and the image is padded to a power of two of at least 128 KB. Not done yet: the Neo Geo cartridge set and the Mega-CD disc.

@@ -53,6 +53,8 @@ pub enum Machine {
     Amiga,
     /// The Sharp X68000: a relocatable 68000 program, written as a Human68k `.X` executable.
     X68000,
+    /// The Sega Mega Drive / Genesis: a 68000 program at `$000000`, written as a ROM image.
+    Genesis,
     /// No machine: raw images only, and the CPU has to be named.
     Generic,
 }
@@ -70,6 +72,7 @@ impl Machine {
             Machine::Snes => "snes",
             Machine::Amiga => "amiga",
             Machine::X68000 => "x68000",
+            Machine::Genesis => "genesis",
             Machine::Generic => "generic",
         }
     }
@@ -221,6 +224,14 @@ pub struct Options {
     pub fs: Option<String>,
     pub bootable: Option<bool>,
     pub startup: Option<String>,
+    /// Genesis: header texts (`title` is the domestic and overseas name), `serial`, `copyright`, `region` (`JUE`), `devices`,
+    /// `console` (`megadrive` or `genesis`), `stack` (the initial stack pointer).
+    pub serial: Option<String>,
+    pub copyright: Option<String>,
+    pub region: Option<String>,
+    pub devices: Option<String>,
+    pub console: Option<String>,
+    pub stack: Option<Value>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
