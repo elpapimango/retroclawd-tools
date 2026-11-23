@@ -2,7 +2,7 @@
 
 ```
 rcasm [options] <source.asm>
-  -c, --cpu <6502|z80>        (or `.cpu` in the source; 6510 / 8502 are 6502)
+  -c, --cpu <6502|z80|huc6280>  (or `.cpu` in the source; 6510 / 8502 are 6502; `pce` is huc6280)
   -o, --output <file>         what to write ...
   -f, --format <bin|prg|segments>
       --fill <byte>           between segments in bin / prg (default 0)
@@ -86,3 +86,14 @@ first learns label addresses, the second evaluates strictly and emits. Instructi
 here: the 6502 renders the evaluated operand as text for `mos6502::disassemble::assemble_one`; the Z80 builds
 its table at start-up by *enumerating `z80::disassemble`*, so everything the debugger can display assembles, and
 `tests/roundtrip.rs` proves it for every opcode.
+
+### HuC6280 (PC Engine / TurboGrafx-16)
+
+`.cpu huc6280` (or `-c huc6280`, `pce`). The 65C02 instruction set with the Rockwell bit instructions (`RMB0-7`, `SMB0-7`, `BBR0-7`, `BBS0-7`),
+`BRA`, `TSB`, `TRB`, `STZ`, `PHX`/`PHY`/`PLX`/`PLY`, and the HuC6280's own: `CSH`/`CSL` (clock speed), `SET` (the next ALU instruction works on zero page
+through X), `CLA`/`CLX`/`CLY`, `SAX`/`SAY`/`SXY`, `ST0`/`ST1`/`ST2 #n` (video registers), `TAM #mask` / `TMA #mask` (mapper registers), the block transfers
+`TII`, `TDD`, `TIN`, `TIA`, `TAI src,dst,len` (three 16-bit values), `TST #n,addr[,X]`, `BSR`. The encodings come from the core's disassembler
+(`rc-huc6280`), so everything the debugger prints assembles. Addresses are the 16-bit logical addresses the CPU sees; a value up to `$FF`
+(or less than three hex digits written) uses the zero-page form, which the CPU maps to logical `$2000-$20FF`. `BBRn zp,target` and the
+branches take the target address and are range checked (-128 to 127 from the next instruction).
+

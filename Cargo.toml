@@ -24,6 +24,7 @@ d81 = { package = "rc-d81", version = "0.1" }
 dsk = { package = "rc-dsk", version = "0.1" }
 g64 = { package = "rc-g64", version = "0.1" }
 machine = { package = "rc-machine", version = "0.1" }
+huc6280 = { package = "rc-huc6280", version = "0.1" }
 mc68000 = { package = "rc-mc68000", version = "0.1" }
 mos6502 = { package = "rc-mos6502", version = "0.1" }
 sna-snapshot = { package = "rc-sna-snapshot", version = "0.1" }

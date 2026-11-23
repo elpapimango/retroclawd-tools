@@ -16,6 +16,7 @@ use std::sync::OnceLock;
 pub enum Cpu {
     Mos6502,
     Z80,
+    Huc6280,
 }
 
 impl Cpu {
@@ -23,6 +24,7 @@ impl Cpu {
         match name.trim().to_ascii_lowercase().as_str() {
             "6502" | "6510" | "8502" | "mos6502" | "nmos6502" => Some(Cpu::Mos6502),
             "z80" | "z-80" | "zilog-z80" => Some(Cpu::Z80),
+            "huc6280" | "pce" | "pcengine" | "turbografx" => Some(Cpu::Huc6280),
             _ => None,
         }
     }
@@ -31,6 +33,7 @@ impl Cpu {
         match self {
             Cpu::Mos6502 => "6502",
             Cpu::Z80 => "z80",
+            Cpu::Huc6280 => "huc6280",
         }
     }
 
@@ -40,6 +43,7 @@ impl Cpu {
         match self {
             Cpu::Mos6502 => mos_mnemonics().contains(upper.as_str()),
             Cpu::Z80 => z80_mnemonics().contains(upper.as_str()),
+            Cpu::Huc6280 => crate::huc6280::is_mnemonic(&upper),
         }
     }
 }
@@ -67,13 +71,14 @@ pub fn encode(cpu: Cpu, mnemonic: &str, operand: &str, site: &Site) -> Result<En
     match cpu {
         Cpu::Mos6502 => encode_6502(mnemonic, operand, site),
         Cpu::Z80 => encode_z80(mnemonic, operand, site),
+        Cpu::Huc6280 => crate::huc6280::encode(mnemonic, operand, site),
     }
 }
 
 /// Evaluates operand expressions; in the first pass unknown symbols read as 0 and set `unresolved`.
-struct Eval<'a> {
+pub(crate) struct Eval<'a> {
     site: &'a Site<'a>,
-    unresolved: Cell<bool>,
+    pub(crate) unresolved: Cell<bool>,
 }
 
 struct Lenient<'a> {
@@ -94,14 +99,14 @@ impl Scope for Lenient<'_> {
 }
 
 impl<'a> Eval<'a> {
-    fn new(site: &'a Site<'a>) -> Self {
+    pub(crate) fn new(site: &'a Site<'a>) -> Self {
         Self {
             site,
             unresolved: Cell::new(false),
         }
     }
 
-    fn value(&self, text: &str) -> Result<i64, String> {
+    pub(crate) fn value(&self, text: &str) -> Result<i64, String> {
         let expr = expr::parse(text)?;
         let result = if self.site.strict {
             expr.eval(self.site.scope)

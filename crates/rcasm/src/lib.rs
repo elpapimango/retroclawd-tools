@@ -7,6 +7,7 @@
 mod asm;
 pub mod cpu;
 pub mod expr;
+mod huc6280;
 pub mod m68k;
 pub mod text;
 
