@@ -22,6 +22,10 @@ formats. Building those, with a good workflow, is what is missing.
 5. **One driver, `rcb`**: `new`, `build`, `run`, `debug`, `clean`, `check`, described by a project file `rcb.toml`.
 6. **Source-level debugging** in `rcdd`: breakpoints by `file:line`, stepping by source line, symbols by name.
 7. CPUs: 6502 family (6502, 65C02, 6510/8502, undocumented opcodes), Z80, 68000, HuC6280.
+8. **Basic asset converters** (owner's decision): `rcb asset` turns pictures into each machine's native graphics data (C64 charsets, sprites and
+   bitmaps; Spectrum attribute screens; CPC modes 0-2; Atari 8-bit and ST planes; Genesis, PC Engine and Neo Geo tiles, sprites and palettes) and WAV
+   samples into the machines' sample formats (Genesis and Mega-CD PCM, Neo Geo ADPCM-A/B, ST DMA sound). Converters are small, deterministic and
+   configured in `rcb.toml` so a build regenerates the data from the source art.
 
 ## Non-goals
 
@@ -67,6 +71,7 @@ The owner picked A.
 | `rcld` | linker: `.rco` and `.rca` in, layout (TOML or `.cfg`) in, image out; checks overlap, regions and reserved ranges (today's behaviour) |
 | `rcar` (new) | archives: create, list, extract, add (`.rca`) |
 | `rcimg` (new library crate, used by `rcld`/`rcb`) | machine image writers (see matrix); reuses `rcdisk`/`rctape`/`rcsnap` formats |
+| `rcasset` (new library crate, used by `rcb asset`) | picture and sample converters per machine (palette quantisation, tile cutting, sprite sheets, ADPCM encoders) |
 | `rcb` (new) | driver: project file, build graph (incremental by file hash), templates, hardware kits, `run`/`debug` launching retroclawd |
 | `rcdis`, `rcdisk`, `rctape`, `rcsnap`, `rcchd` | existing; gain the new CPU and formats where relevant |
 
@@ -136,6 +141,7 @@ change there, reviewed separately.
 2. Image writers for the machines that already have loaders or images (Spectrum, CPC, C64, VIC-20, Atari 8-bit, ZX81), then Atari ST, Genesis, Mega-CD, Neo Geo.
 3. `ca65` dialect and `.cfg` layouts; then the vasm dialects.
 4. `rcb` driver, templates, hardware kits.
+4b. Asset converters (`rcasset`), machine by machine alongside its image writer where possible.
 5. Debug info: `.rcdbg` writer; `rcdd` reader and source stepping (emulator repository).
 
 ## Testing and verification
@@ -158,4 +164,5 @@ the order of machines inside phase 2; hardware-kit contents beyond the minimum (
 - CPU list limited to the four families above, plus 65C02 for ca65 compatibility.
 - vasm dialects: `std`, `mot`, `oldstyle` only; `madmac` and others are out.
 - Phase order (HuC6280, objects, formats, dialects, driver, debug).
+- Asset converters are basic by design: no animation or music tools, no editors; formats in, native data out.
 - Mega-CD discs include an ISO 9660 file system; Neo Geo sets are zipped as the emulator expects.
