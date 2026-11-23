@@ -1,130 +1,178 @@
-# rctools
+# retroclawd-tools
 
-Command-line tools for the machines [retroclawd](https://github.com/elpapimango/retroclawd) emulates (ZX81, ZX
-Spectrum, Amstrad CPC, Commodore 64/128): assemble, disassemble, and -- as they arrive -- open, create and
-convert tape and disk images. Rust, Linux / macOS / Windows, no emulation inside: these are code and file
-tools. The tools build **on their own**; the emulator application does not build or pin this repository.
+A tool suite for writing programs for retro computers and consoles: assemble, link, package, convert and inspect. It
+turns source files into the machine's own file (a tape, disk, cartridge, ROM or executable), runs it in
+[retroclawd](https://github.com/elpapimango/retroclawd) and gives the debugger its symbols. Rust; Linux, macOS and
+Windows; no emulation inside. It is released on its own: `cargo install rcb rcasm rcld ...`, or the archives of
+the [releases](https://github.com/elpapimango/retroclawd-tools/releases).
 
-| Tool | What it does | State |
-|---|---|---|
-| [`rcasm`](docs/rcasm.md) | two-pass assembler for the 6502 and the Z80, one shared syntax; flat binary, `.prg`, symbol file, listing | works |
-| [`rcdis`](docs/rcdis.md) | disassembler for the 6502 and the Z80 that writes source `rcasm` assembles back to the same bytes | works |
-| [`rcdisk`](docs/rcdisk.md) | list, info, validate, extract, add, rm, rename, create and convert disk images: Commodore `.d64`/`.x64`/`.d71`/`.d81` (`.g64` read), CPC / +3 `.dsk` with AMSDOS and +3DOS headers; Atari `.atr` info, blank creation and raw sectors (no filesystem) | works |
-| [`rctape`](docs/rctape.md) | inspect/edit Spectrum `.tzx`/`.tap`, extract Commodore `.t64`, inspect C64 `.tap`, validate/normalize VIC-20 TAP-v0/v1 and C16/Plus4 TAP-v2; `from-prg` creates VIC-20 KERNAL tapes | works |
-| [`rcchd`](docs/rcchd.md) | make, extract, inspect, verify and edit CHD files like `chdman`: CD (cue/bin, iso, gdi), hard disk, DVD and raw images; `copy`, parent (delta) files, metadata commands; checked against chdman 0.289 | works |
-| [`rcsnap`](docs/rcsnap.md) | info, convert, dump, extract and create: ZX Spectrum `.z80`/`.sna`/`.szx` into each other, ZX81 `.p`/`.p81`, CPC `.sna`, C64 `.crt`, CPC Plus `.cpr` | works |
-| [`rcld`](docs/rcld.md) | link and place programs (sources, separately assembled objects, libraries, binaries, `.prg`), check overlaps and regions, and write a runnable image: C64 `.prg`/`.d64`/`.d81`/`.crt` (with a `SYS` line), Spectrum `.tap`/`.tzx` (with a BASIC loader) and snapshots, CPC `.dsk`, Atari `.xex` build/inspect and standard `.car` creation | works |
-| [`rcar`](docs/rcar.md) | object libraries: create, list, extract, add and delete members of `.rca` files (`rcasm -f object` writes the objects, `rcld` links them) | works |
-| [`rcb`](docs/rcb.md) | the project driver: `rcb new`, `build`, `run`, `debug`, `clean`, `check` over an `rcb.toml` (an rcld layout plus the sources), for every machine the tools write | works |
+## What it can build
 
-## Build
+| Machine | CPU | `rcb new --machine` | Image |
+|---|---|---|---|
+| Commodore 64 | 6502 | `c64` | `.prg` (with a `SYS` line), `.d64`, `.d81`, `.crt` |
+| ZX Spectrum | Z80 | `spectrum` | `.tap`, `.tzx` (with a BASIC loader), `.sna`, `.z80`, `.szx` |
+| Amstrad CPC | Z80 | `cpc` | `.dsk` |
+| Atari 8-bit | 6502 | `atari` | `.xex`, `.car` |
+| Atari ST | 68000 | `atari-st` | `.prg` |
+| NEC PC Engine | HuC6280 | `pcengine` | `.pce` HuCard (banked) |
+| NES / Famicom | 6502 | `nes` | `.nes` (iNES / NES 2.0, banked) |
+| Super Nintendo | 65816 (+ SPC700 code) | `snes` | `.sfc` LoROM, HiROM, ExHiROM |
+| Sega Mega Drive | 68000 | `genesis` | `.md` ROM with vectors, header, checksum |
+| SNK Neo Geo | 68000 | `neogeo` | cartridge set `.zip` |
+| Amiga | 68000 | `amiga` | hunk executable, `.adf` disk |
+| Sharp X68000 | 68000 | `x68000` | `.x` executable |
 
-Reference capture: `scripts/capture_atari800_screen.py` drives Atari800 7.2.1
-Win64 through its monitor and native screenshot key, using explicit 800/XL/XE
-OS/BASIC replacements and no ROM patches. `--machine` selects 800, 800XL, 65XE
-(the equivalent reference 64K XL mapping), or 130XE. It supports cold boot,
-raw/XEX Programs, ATR/XFD disks and CAR cartridges, with optional memory
-goldens. It does not yet drive printable
-reference keyboard input or record reference audio. Windows/standard-library only;
-run `python scripts/capture_atari800_screen.py --help` for arguments.
+Not yet: Mega-CD discs, X68000 floppies with a Human68k filesystem, 68010-68030 / FPU / PMMU targets. See `docs/` and
+the plans under `docs/superpowers/plans/`.
 
-Scenario manifests may record missing reference audio measurements as
-`kind = "audio"`, `status = "known-gap"` with reason/evidence and no `audio`
-table. The runner reports these as not run, never as an empty successful check.
-Passing audio scenarios still require measured expectations.
+## The tools
+
+| Tool | What it does |
+|---|---|
+| [`rcb`](docs/rcb.md) | the **project driver**: `rcb new`, `build`, `check`, `run`, `debug`, `clean`, `targets` over an `rcb.toml` |
+| [`rcasm`](docs/rcasm.md) | assembler: 6502, Z80, HuC6280, 65816, SPC700, 68000. Flat images, `.prg`, relocatable objects (`.rco`), symbol files, listings, debug info; ca65-style scopes, unnamed labels, `.repeat`, macros, conditionals |
+| [`rcar`](docs/rcar.md) | object libraries (`.rca`): create, list, extract, add, delete |
+| [`rcld`](docs/rcld.md) | linker and packager: places sources, objects, libraries and binaries by a TOML layout (or an ld65 `.cfg`), checks overlaps and regions, writes every image above |
+| [`rcdis`](docs/rcdis.md) | disassembler (6502, Z80, HuC6280, 65816, SPC700, 68000) whose output assembles back to the same bytes; linear or following flow |
+| [`rcasset`](docs/rcasset.md) | PNG to NES / SNES / Mega Drive / PC Engine tiles, SNES and Mega Drive palettes, the Spectrum screen |
+| [`rcdisk`](docs/rcdisk.md) | disk images: Commodore `.d64/.d71/.d81`, CPC / +3 `.dsk`, Atari ST `.st/.msa` and hard disks, Atari `.atr` |
+| [`rctape`](docs/rctape.md) | tape images: Spectrum `.tzx/.tap`, C64 `.t64/.tap`, VIC-20, C16/Plus4 |
+| [`rcsnap`](docs/rcsnap.md) | snapshots and cartridges: Spectrum `.z80/.sna/.szx`, ZX81, CPC `.sna/.cpr`, C64 `.crt` |
+| [`rcchd`](docs/rcchd.md) | CHD files like `chdman`: CD, hard disk, DVD, raw; verified against chdman 0.289 |
+
+File formats of the objects and libraries: [`docs/formats.md`](docs/formats.md).
+
+## Install
 
 ```
-cargo build --release --workspace      # target/release/rcasm, target/release/rcdis
-cargo test --workspace
+cargo install rcb rcasm rcld rcar rcdis rcasset rcdisk rctape rcsnap rcchd
 ```
 
-The instruction knowledge comes from the [retroclawd-core](https://github.com/elpapimango/retroclawd-core) crates (`rc-z80`, `rc-mos6502`, `rc-mc68000`, `rc-machine`), taken from crates.io
-as `rc-*` packages (renamed back to the short names in the root `Cargo.toml`).
+or build from a checkout: `cargo build --release --workspace` (the programs are in `target/release/`).
+`rcb run` and `rcb debug` start `rcd` / `rcdd` from the [retroclawd](https://github.com/elpapimango/retroclawd) emulator
+(`RCB_EMULATOR` names another program).
 
-## A taste
+## Quick start: a project
+
+```
+$ rcb new hello --machine pcengine
+$ cd hello
+$ rcb build
+rcb: build\hello.pce (131072 bytes)
+$ rcb run                                  # starts the emulator on it
+```
+
+`rcb new` makes this:
+
+```
+hello/
+  rcb.toml        the project: the machine, its options, the sources
+  src/main.asm    a skeleton that builds as it is: the vectors the machine needs and a loop
+```
+
+```toml
+# rcb.toml
+machine = "pcengine"
+entry = "reset"
+
+[project]
+name = "hello"
+sources = ["src/*.asm"]
+```
+
+`rcb build` writes `build/hello.pce`, a map of what went where (`hello.map`) and a symbol file (`hello.sym`) the
+debugger reads. [`docs/rcb.md`](docs/rcb.md) lists everything an `rcb.toml` takes.
+
+## Quick start: the tools by hand
 
 ```
 $ cat hello.asm
-        .cpu 6502
-        .org $C000
+        .org $080D
 start:  ldx #0
 loop:   lda msg,x
         beq done
-        jsr $FFD2
+        jsr $FFD2           ; KERNAL: print a character
         inx
         bne loop
 done:   rts
 msg:    .text "HELLO", 13
         .byte 0
 
-$ rcasm hello.asm -f prg -o hello.prg -s hello.sym -l hello.lst
-rcasm: 21 bytes ($C000-$C014)
-
-$ rcdis hello.prg --cpu 6502 --follow -s hello.sym      # source rcasm assembles back to the same bytes
+$ rcasm -c 6502 hello.asm -f prg -o hello.prg -s hello.sym -l hello.lst
+$ rcdis -c 6502 hello.prg --follow -s hello.sym       # source that assembles back to the same bytes
+$ rcld template c64 > layout.toml                     # a starting layout, then:
+$ rcld build layout.toml --map game.map -o game.d64   # assemble, place, check, write a disk (or .crt, .prg ...)
 ```
 
-`rcasm` writes symbol files in the format the emulator's debugger reads (`retroclawd c64 --symbols hello.sym`),
-and `rcdis` reads them to name addresses.
-
-## Disks
+### Several files and a library
 
 ```
-$ rcdisk create game.dsk                                   # a CPC data disk
-$ rcdisk add game.dsk disc.bin --header amsdos --load 0x4000 --name DISC.BIN
-$ rcdisk list game.dsk
-DISC.BIN            27  BIN <load=&4000,entry=&4000>
-177 KB free.
-$ rcdisk convert game.dsk game.d64                         # file by file, between families
+$ rcasm -c 6502 -f object main.asm   -o main.rco
+$ rcasm -c 6502 -f object screen.asm -o screen.rco
+$ rcar create screen.rca screen.rco
+$ rcld build layout.toml              # layout.toml names  obj = "main.rco"  and  lib = "screen.rca"
 ```
 
-## Tapes
+`rcld` links a library member only when something needs a name it defines. Sources can also be named directly
+(`src = ["main.asm", "screen.asm"]`: each is assembled to its own object) and placed by an ld65 configuration
+(`cfg = "c64.cfg"`). Errors name the file and line, the symbol and the distance:
+`main.asm:12: far = branch distance 310 (the target is $1136) does not fit in 1 byte(s)`.
+
+### Other tools
 
 ```
+$ rcdisk create game.dsk && rcdisk add game.dsk disc.bin --header amsdos --load 0x4000 --name DISC.BIN
 $ rctape add game.tzx loader.bin --name LOADER --load 0x8000
-$ rctape list game.tzx
-  1  Standard speed data      19  Bytes: LOADER start 32768, length 300
-  2  Standard speed data     302  Data (300 bytes)
-$ rctape cleanup game.tzx --all                            # strip info blocks, fix checksums, join pauses
-$ rctape split collection.tzx -d programs                  # one file per program
-$ rctape convert game.tzx game.tap
+$ rcsnap create game.sna --load 0x8000:game.bin
+$ rcasset tiles sprites.png -f nes -o sprites.chr
+$ rcchd createcd -i game.cue -o game.chd
 ```
 
-## Snapshots and cartridges
+## Examples
 
-```
-$ rcsnap create game.sna --load 0x8000:game.bin           # a 48K snapshot that starts at 0x8000
-$ rcsnap convert game.sna game.z80                         # says what the target cannot keep
-$ rcsnap dump game.z80 --range 0x8000:0x100 -o part.bin
-$ rcsnap convert rom.bin cart.crt --name MYCART            # a plain 8K / 16K C64 cartridge
-```
+[`examples/`](examples/README.md) has a ready project for every machine (`rcb build` in each folder), a program
+in two files with a library, and CMake projects (`examples/cmake/RetroClawd.cmake` adds `retroclawd_object`,
+`retroclawd_library`, `retroclawd_image` and `retroclawd_project` to any CMake build).
 
-## Linking
-
-```
-$ rcld template c64 > layout.toml        # edit it, then:
-$ rcld build layout.toml --map game.map  # assemble, place, check, write game.d64
-$ rcld build layout.toml -o game.crt     # the same program as a cartridge
+```cmake
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/examples/cmake")
+include(RetroClawd)
+retroclawd_object(${CMAKE_BINARY_DIR}/main.rco SOURCE src/main.asm CPU 6502)
+retroclawd_image(hello LAYOUT layout.toml OUTPUT ${CMAKE_BINARY_DIR}/hello.prg
+                 DEPENDS ${CMAKE_BINARY_DIR}/main.rco)
 ```
 
-## Checked against real ROMs
+## Layout of the repository
 
-`rcdis` output reassembles byte-for-byte for the ZX Spectrum, ZX81 and CPC464 ROMs and the C64 KERNAL / BASIC and
-1541 DOS ROMs, and for random bytes on both CPUs (which reaches every opcode, undocumented ones and prefixes
-included). Programs built with `rcasm` run in the emulator and leave the expected bytes in memory, and disks made by `rcdisk` are read by the emulator's real 1541 DOS and by real AMSDOS, tapes made by `rctape` are loaded by the Spectrum ROM's own tape loader, snapshots made or converted by `rcsnap` (and a cartridge) start in the emulator, and programs linked by `rcld` start on the C64, Spectrum and CPC (through the real BASIC loaders). These tests
-need the ROM images and a built emulator, so they run only when told where they are (see `CLAUDE.md`).
+```
+crates/    rc-common (shared code, the .rco/.rca/.rcdbg formats), rcasm, rcar, rcld, rcdis, rcb, rcasset,
+           rcdisk, rctape, rcsnap, rcchd
+docs/      one page per tool, formats.md, and the design and plans under superpowers/
+examples/  projects per machine and CMake projects
+fuzz/      fuzz targets for the readers and the assembler
+```
 
-See `CLAUDE.md` for the layout and conventions, `CREDITS.md` for the references.
+The instruction knowledge and the file formats come from the crates of
+[retroclawd-core](https://github.com/elpapimango/retroclawd-core) (`rc-z80`, `rc-mos6502`, `rc-huc6280`, `rc-w65c816`,
+`rc-spc700`, `rc-mc68000`, `rc-ines`, `rc-sfc`, `rc-amiga`, `rc-x68k`, the disk, tape and CHD crates), taken from crates.io.
+The assemblers build their tables from the cores' disassemblers, so whatever the debugger shows assembles.
 
-## The emulator's test suite
+## Develop
 
-`rc-scenarios` (scenario manifests and the integration suites that run the emulator) lives in the [retroclawd](https://github.com/elpapimango/retroclawd) repository, not here; it uses these tools as crates.
+```
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+cargo fmt --all --check
+```
+
+`CLAUDE.md` describes the conventions. Tests that need ROMs or a built emulator skip unless told where they are.
 
 ## License
 
-Free software under the **GNU General Public License v3.0 or later** (see `LICENSE`). No ROM image or commercial
-software is part of this repository; the tests that need them (`RC_ROMS`) skip when it is unset.
+GNU General Public License v3.0 or later (see `LICENSE`). No ROM image or commercial software is part of this
+repository. `CREDITS.md` lists the references the work is based on.
 
-## Contributing / issues
+## Contributing
 
-Not accepted right now -- this is a personal work-in-progress project. Pull requests and issues will be closed
-unreviewed.
+Not accepted right now: this is a personal project, and pull requests and issues will be closed unreviewed.

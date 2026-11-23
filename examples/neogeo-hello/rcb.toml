@@ -1,0 +1,9 @@
+# rcb project: `rcb build`, `rcb run`, `rcb debug`
+machine = "neogeo"
+
+[options]
+ngh = 999
+
+[project]
+name = "neogeo-hello"
+sources = ["src/main.s"]

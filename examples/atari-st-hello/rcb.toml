@@ -1,0 +1,6 @@
+# rcb project: `rcb build`, `rcb run`, `rcb debug`
+machine = "atari-st"
+
+[project]
+name = "atari-st-hello"
+sources = ["src/main.s"]

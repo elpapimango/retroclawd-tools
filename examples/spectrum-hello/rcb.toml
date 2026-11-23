@@ -1,0 +1,7 @@
+# rcb project: `rcb build`, `rcb run`, `rcb debug`
+machine = "spectrum"
+entry = "start"
+
+[project]
+name = "spectrum-hello"
+sources = ["src/main.asm"]

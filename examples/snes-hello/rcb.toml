@@ -1,0 +1,10 @@
+# rcb project: `rcb build`, `rcb run`, `rcb debug`
+machine = "snes"
+entry = "reset"
+
+[options]
+mapping = "lorom"
+
+[project]
+name = "snes-hello"
+sources = ["src/main.asm"]

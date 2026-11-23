@@ -1,0 +1,17 @@
+# rcld layout, filled in by CMake (configure_file): the objects and the library are build products.
+machine = "c64"
+name = "HELLO"
+entry = "start"
+
+[[input]]
+obj = "@OBJ_DIR@/main.rco"
+
+[[input]]
+lib = "@OBJ_DIR@/screen.rca"
+
+[[segment]]
+name = "CODE"
+start = 0x080D
+
+[options]
+basic_stub = true

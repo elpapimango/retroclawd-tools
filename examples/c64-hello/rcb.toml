@@ -1,0 +1,10 @@
+# rcb project: `rcb build`, `rcb run`, `rcb debug`
+machine = "c64"
+entry = "start"
+
+[options]
+basic_stub = true     # `10 SYS 2061`: RUN starts the program
+
+[project]
+name = "c64-hello"
+sources = ["src/main.asm"]

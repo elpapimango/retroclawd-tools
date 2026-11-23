@@ -1,0 +1,6 @@
+# rcb project: `rcb build`, `rcb run`, `rcb debug`
+machine = "amiga"
+
+[project]
+name = "amiga-hello"
+sources = ["src/main.s"]

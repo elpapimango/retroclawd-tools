@@ -1,0 +1,7 @@
+# rcb project: `rcb build`, `rcb run`, `rcb debug`
+machine = "genesis"
+entry = "reset"
+
+[project]
+name = "genesis-hello"
+sources = ["src/main.s"]

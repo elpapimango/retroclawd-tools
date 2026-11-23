@@ -1,0 +1,15 @@
+# Two source files, each assembled to its own object and linked: `separate = true`.
+machine = "c64"
+entry = "start"
+
+[[segment]]
+name = "CODE"
+start = 0x080D            # right after the BASIC stub
+
+[options]
+basic_stub = true         # `10 SYS 2061`: RUN starts the program
+
+[project]
+name = "two-files"
+sources = ["src/*.asm"]
+separate = true

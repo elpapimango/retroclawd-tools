@@ -1,0 +1,7 @@
+# rcb project: `rcb build`, `rcb run`, `rcb debug`
+machine = "cpc"
+entry = "start"
+
+[project]
+name = "cpc-hello"
+sources = ["src/main.asm"]

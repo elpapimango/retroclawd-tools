@@ -402,6 +402,17 @@ fn cpm_disk(c: &mut Ctx, format: &str, header: &str) -> Result<Made, String> {
     let (load, image) = place::image(&pieces, c.layout.gaps, c.fill, &mut c.notes)?;
     let (e, _) = c.need_entry("the program")?;
     let mut name = c.option_name().to_ascii_uppercase();
+    if c.layout.options.file_name.is_none() {
+        // a name taken from the program's own must fit 8.3: letters and digits, at most eight of them
+        let short: String = name
+            .chars()
+            .filter(char::is_ascii_alphanumeric)
+            .take(8)
+            .collect();
+        if !short.is_empty() {
+            name = short;
+        }
+    }
     if header == "amsdos" && !name.contains('.') {
         name.push_str(".BIN");
     }

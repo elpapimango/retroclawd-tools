@@ -1,0 +1,7 @@
+# rcb project: `rcb build`, `rcb run`, `rcb debug`
+machine = "pcengine"
+entry = "reset"
+
+[project]
+name = "pcengine-hello"
+sources = ["src/main.asm"]

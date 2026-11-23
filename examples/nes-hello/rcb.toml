@@ -1,0 +1,11 @@
+# rcb project: `rcb build`, `rcb run`, `rcb debug`
+machine = "nes"
+entry = "reset"
+
+[options]
+mapper = 0
+mirroring = "vertical"
+
+[project]
+name = "nes-hello"
+sources = ["src/main.asm"]

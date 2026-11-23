@@ -180,12 +180,13 @@ impl Image {
             )));
         }
         if let Some(&m) = self.pixels.iter().max()
-            && (m as u32) >= 1 << bpp {
-                return Err(Error::TooManyColours {
-                    found: m as usize + 1,
-                    allowed: 1 << bpp,
-                });
-            }
+            && (m as u32) >= 1 << bpp
+        {
+            return Err(Error::TooManyColours {
+                found: m as usize + 1,
+                allowed: 1 << bpp,
+            });
+        }
         let mut out = Vec::with_capacity(self.width * self.height / 64 * tile_bytes);
         for ty in 0..self.height / 8 {
             for tx in 0..self.width / 8 {
