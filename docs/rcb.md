@@ -8,6 +8,7 @@ rcb run          build, then `rcd <machine> ...` on the image
 rcb debug        build, then `rcdd <machine> ... --symbols build/NAME.sym`
 rcb clean        remove build/
 rcb targets      the machines and what each project makes
+rcb kits         the hardware kits;  rcb kit c64   prints one
 rcb -C DIR ...   work in another project folder
 ```
 
@@ -26,4 +27,6 @@ output = "build/hello.pce"  # default build/<name>.<the machine's usual extensio
 
 `[run] args = ["pcengine", "--rom", "{output}"]` replaces the emulator arguments `rcb run` guesses (`{output}` is the image); `RCB_EMULATOR=program` replaces `rcd`/`rcdd`.
 Machines the emulator does not have yet (NES, SNES, Amiga, X68000) build, but `rcb run` says so unless `[run]` is given. `rcb new` makes a skeleton for each machine that builds as it is
-(a loop or a return with the vectors the machine needs). Hardware kits (register and BIOS include files) are planned; `rcb kits` lists none yet.
+(a loop or a return with the vectors the machine needs). Hardware kits: `rcb kits` lists them, `rcb kit MACHINE` prints one, and `rcb new` writes the machine's kit to `src/kit.inc` and includes it from the skeleton
+(`.include "src/kit.inc"`). A kit is constants only (registers, system call numbers, colours, joypad bits): it emits no bytes. The values are from public hardware documentation
+and tutorials; the 68000 machines' firmware numbers are marked `[H?]` where they come from memory.

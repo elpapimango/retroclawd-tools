@@ -1,0 +1,27 @@
+; NES hardware kit: addresses and values for rcb projects.
+PPUCTRL     = $2000          ; bit 7 NMI on vblank, 5 8x16 sprites, 4 BG pattern table, 3 sprite table, 2 +32 increment
+PPUMASK     = $2001          ; bit 4 sprites on, 3 background on
+PPUSTATUS   = $2002          ; bit 7 vblank; reading resets the $2005/$2006 latch
+OAMADDR     = $2003
+OAMDATA     = $2004
+PPUSCROLL   = $2005          ; write X then Y
+PPUADDR     = $2006          ; write high then low
+PPUDATA     = $2007
+SQ1_VOL     = $4000          ; APU: pulse 1 $4000-$4003, pulse 2 $4004-$4007, triangle $4008-$400B, noise $400C-$400F
+SQ1_LO      = $4002
+SQ1_HI      = $4003
+OAMDMA      = $4014          ; write the page number of 256 bytes of sprites
+SND_CHN     = $4015          ; bit 0 pulse 1, 1 pulse 2, 2 triangle, 3 noise
+JOY1        = $4016          ; write 1 then 0 to latch, then read eight times (bit 0)
+JOY2        = $4017
+PPU_NAMETABLE0 = $2000       ; video addresses (through PPUADDR)
+PPU_ATTR0   = $23C0
+PPU_PALETTE = $3F00
+BTN_A       = $01            ; the order of eight reads shifted in with ror
+BTN_B       = $02
+BTN_SELECT  = $04
+BTN_START   = $08
+BTN_UP      = $10
+BTN_DOWN    = $20
+BTN_LEFT    = $40
+BTN_RIGHT   = $80

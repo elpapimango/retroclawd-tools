@@ -147,3 +147,39 @@ fn the_examples_build() {
     }
     assert!(built >= 12, "{built} examples");
 }
+
+#[test]
+fn kits_are_listed_printed_and_written_into_new_projects() {
+    let d = temp("kits");
+    let out = rcb(&["kits"], &d);
+    let list = String::from_utf8_lossy(&out.stdout).to_string();
+    for t in templates::ALL {
+        assert!(list.contains(t.machine), "{} has no kit: {list}", t.machine);
+        let out = rcb(&["kit", t.machine], &d);
+        assert!(out.status.success());
+        assert!(!out.stdout.is_empty(), "{}", t.machine);
+    }
+    assert!(String::from_utf8_lossy(&rcb(&["kit", "c64"], &d).stdout).contains("BORDER"));
+    assert!(!rcb(&["kit", "zx99"], &d).status.success());
+    assert!(rcb(&["new", "p", "--machine", "c64"], &d).status.success());
+    let kit = std::fs::read_to_string(d.join("p/src/kit.inc")).unwrap();
+    assert!(kit.contains("SID_VOLUME"));
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn a_program_can_use_the_kit_names() {
+    let d = temp("usekit");
+    assert!(rcb(&["new", "p", "--machine", "c64"], &d).status.success());
+    std::fs::write(
+        d.join("p/src/main.asm"),
+        ".include \"src/kit.inc\"\n* = $080D\nstart:  lda #RED\n        sta BORDER\n        lda #JOY_FIRE\n        jmp start\n",
+    )
+    .unwrap();
+    let out = rcb(&["build", "-C", "p"], &d);
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let prg = std::fs::read(d.join("p/build/p.prg")).unwrap();
+    // load address, the SYS stub, then lda #2 / sta $d020
+    assert!(prg.windows(5).any(|w| w == [0xA9, 0x02, 0x8D, 0x20, 0xD0]), "{prg:02X?}");
+    let _ = std::fs::remove_dir_all(&d);
+}

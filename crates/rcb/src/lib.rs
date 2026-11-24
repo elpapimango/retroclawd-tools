@@ -19,6 +19,7 @@
 use rcld::layout::{self, Machine};
 use std::path::{Path, PathBuf};
 
+pub mod kits;
 pub mod templates;
 
 pub struct Project {

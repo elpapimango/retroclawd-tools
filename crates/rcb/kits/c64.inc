@@ -1,0 +1,49 @@
+; Commodore 64 hardware kit: addresses and values for rcb projects.
+SCREEN      = $0400          ; 40x25 text screen (screen codes)
+COLORRAM    = $D800          ; 40x25 colour nibbles
+VIC_CTRL1   = $D011          ; bit 7 raster bit 8, 6 ECM, 5 bitmap, 4 screen on, 3 25 rows
+VIC_RASTER  = $D012
+VIC_CTRL2   = $D016          ; bit 4 multicolour, 3 40 columns
+VIC_MEMPTR  = $D018          ; screen and character/bitmap base
+VIC_IRQFLAG = $D019
+VIC_IRQMASK = $D01A
+BORDER      = $D020
+BACKGROUND  = $D021
+SID         = $D400
+SID_V1_FREQ = $D400          ; low, high
+SID_V1_CTRL = $D404          ; bit 0 gate, 4 triangle, 5 saw, 6 pulse, 7 noise
+SID_V1_AD   = $D405
+SID_V1_SR   = $D406
+SID_VOLUME  = $D418          ; low nibble
+CIA1_PRA    = $DC00          ; joystick 2 (active low) and keyboard columns
+CIA1_PRB    = $DC01          ; joystick 1 (active low) and keyboard rows
+CIA1_DDRA   = $DC02
+CIA1_DDRB   = $DC03
+CIA2_PRA    = $DD00          ; bits 0-1: VIC bank (inverted)
+JOY_UP      = $01
+JOY_DOWN    = $02
+JOY_LEFT    = $04
+JOY_RIGHT   = $08
+JOY_FIRE    = $10
+; KERNAL jump table
+SCNKEY      = $FF9F
+CHRIN       = $FFCF
+CHROUT      = $FFD2          ; print the character in A (PETSCII)
+GETIN       = $FFE4          ; A = key, 0 when none
+; colours
+BLACK       = 0
+WHITE       = 1
+RED         = 2
+CYAN        = 3
+PURPLE      = 4
+GREEN       = 5
+BLUE        = 6
+YELLOW      = 7
+ORANGE      = 8
+BROWN       = 9
+LIGHT_RED   = 10
+DARK_GREY   = 11
+GREY        = 12
+LIGHT_GREEN = 13
+LIGHT_BLUE  = 14
+LIGHT_GREY  = 15

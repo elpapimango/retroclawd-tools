@@ -46,6 +46,8 @@ enum Command {
     Targets,
     /// List the hardware kits (include files for the machines' registers).
     Kits,
+    /// Print a machine's hardware kit (`rcb kit c64 > src/kit.inc`).
+    Kit { machine: String },
 }
 
 fn fail(m: impl std::fmt::Display) -> ExitCode {
@@ -150,11 +152,19 @@ fn main() -> ExitCode {
             Ok(())
         }
         Command::Kits => {
-            println!(
-                "no hardware kits yet (register and BIOS include files per machine are planned)"
-            );
+            for k in rcb::kits::ALL {
+                println!("{:<10} {}", k.machine, k.about);
+            }
             Ok(())
         }
+        Command::Kit { machine } => rcb::kits::find(&machine)
+            .map(|k| print!("{}", k.text))
+            .ok_or_else(|| {
+                format!(
+                    "no kit for \"{machine}\"; try {}",
+                    rcb::kits::ALL.iter().map(|k| k.machine).collect::<Vec<_>>().join(", ")
+                )
+            }),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,

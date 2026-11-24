@@ -101,9 +101,16 @@ sources = [\"src/{}\"]
 ",
         t.layout, t.source_name
     );
+    let kit = crate::kits::find(t.machine).map_or("", |k| k.text);
     vec![
         ("rcb.toml".to_string(), toml),
-        (format!("src/{}", t.source_name), t.source.to_string()),
+        (
+            format!("src/{}", t.source_name),
+            format!("; the machine's addresses and values: src/kit.inc (`rcb kit {}`)
+.include \"src/kit.inc\"
+{}", t.machine, t.source),
+        ),
+        ("src/kit.inc".to_string(), kit.to_string()),
         (".gitignore".to_string(), "build/\n".to_string()),
     ]
 }
