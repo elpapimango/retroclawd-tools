@@ -45,7 +45,7 @@ fn split_name(name: &str) -> Result<([u8; 8], [u8; 3]), String> {
 
 fn put12(fat: &mut [u8], cluster: usize, value: u16) {
     let at = cluster * 3 / 2;
-    if cluster % 2 == 0 {
+    if cluster.is_multiple_of(2) {
         fat[at] = value as u8;
         fat[at + 1] = (fat[at + 1] & 0xF0) | (value >> 8) as u8 & 0x0F;
     } else {
@@ -201,12 +201,12 @@ mod tests {
         let size = u32::from_le_bytes(ent[28..32].try_into().ok()?) as usize;
         let fat = &disk[FAT1 * SECTOR..(FAT1 + FAT_SECTORS) * SECTOR];
         let mut out = Vec::new();
-        while cluster >= 2 && cluster < 0xFF8 && out.len() < size + SECTOR {
+        while (2..0xFF8).contains(&cluster) && out.len() < size + SECTOR {
             let at = (DATA + cluster - 2) * SECTOR;
             out.extend_from_slice(&disk[at..at + SECTOR]);
             let i = cluster * 3 / 2;
             let v = u16::from_le_bytes([fat[i], fat[i + 1]]);
-            cluster = if cluster % 2 == 0 { v & 0xFFF } else { v >> 4 } as usize;
+            cluster = if cluster.is_multiple_of(2) { v & 0xFFF } else { v >> 4 } as usize;
         }
         out.truncate(size);
         Some(out)
