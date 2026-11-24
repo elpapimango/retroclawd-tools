@@ -18,6 +18,7 @@ pub mod neogeo;
 pub mod nes;
 pub mod pcengine;
 pub mod place;
+pub mod segacd;
 pub mod snes;
 pub mod templates;
 pub mod x68000;
@@ -102,7 +103,7 @@ fn cpu_of(layout: &Layout) -> Result<rcasm::Cpu, String> {
         (Machine::PcEngine, _) => Ok(rcasm::Cpu::Huc6280),
         (Machine::Nes, _) => Ok(rcasm::Cpu::Mos6502),
         (Machine::Snes, _) => Ok(rcasm::Cpu::W65816),
-        (Machine::Amiga | Machine::X68000 | Machine::Genesis | Machine::NeoGeo, _) => Err(
+        (Machine::Amiga | Machine::X68000 | Machine::Genesis | Machine::NeoGeo | Machine::SegaCd, _) => Err(
             "the Amiga and the X68000 are 68000 machines: they are built by their own modules"
                 .to_string(),
         ),
@@ -123,7 +124,7 @@ fn cpu_of(layout: &Layout) -> Result<rcasm::Cpu, String> {
 pub(crate) fn is_68k(layout: &Layout) -> bool {
     matches!(
         layout.machine,
-        Machine::AtariSt | Machine::Amiga | Machine::X68000 | Machine::Genesis | Machine::NeoGeo
+        Machine::AtariSt | Machine::Amiga | Machine::X68000 | Machine::Genesis | Machine::NeoGeo | Machine::SegaCd
     ) || (layout.machine == Machine::Generic
         && matches!(layout.cpu.as_deref(), Some("68000" | "m68000" | "68k")))
 }
@@ -458,6 +459,9 @@ pub fn build(
     }
     if layout.machine == Machine::PcEngine {
         return pcengine::build(layout, base, output, cli_defines);
+    }
+    if layout.machine == Machine::SegaCd {
+        return segacd::build(layout, base, output, cli_defines);
     }
     if layout.machine == Machine::NeoGeo {
         return neogeo::build(layout, base, output, cli_defines);

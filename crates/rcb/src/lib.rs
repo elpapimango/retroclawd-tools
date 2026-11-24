@@ -46,6 +46,7 @@ pub fn default_extension(m: Machine) -> &'static str {
         Machine::X68000 => "x",
         Machine::Genesis => "md",
         Machine::NeoGeo => "zip",
+        Machine::SegaCd => "iso",
         Machine::Generic => "bin",
     }
 }
@@ -61,6 +62,7 @@ pub fn machines() -> Vec<(Machine, Option<&'static str>)> {
         (Machine::PcEngine, Some("pcengine")),
         (Machine::Genesis, Some("genesis")),
         (Machine::NeoGeo, Some("neogeo")),
+        (Machine::SegaCd, Some("segacd")),
         (Machine::Nes, None),
         (Machine::Snes, None),
         (Machine::Amiga, None),
@@ -242,6 +244,7 @@ impl Project {
                 let flag = match ext.as_str() {
                     "tap" | "tzx" => "--tape",
                     "dsk" | "d64" | "d81" | "adf" | "st" => "--disk",
+                    "iso" | "cue" | "chd" => "--disc",
                     "prg" | "xex" => "--program",
                     _ => "--rom",
                 };

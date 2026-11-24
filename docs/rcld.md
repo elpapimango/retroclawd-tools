@@ -282,3 +282,15 @@ rcasm --cpu 68000 -f object lib.s  -o lib.rco
 rcar create libs.rca lib.rco
 rcld build layout.toml -o game.prg        # [[input]] obj = ["main.rco"]  [[input]] lib = ["libs.rca"]
 ```
+
+## Mega-CD (`machine = "segacd"`)
+
+A data disc image, `.iso` (2048-byte sectors), that the Mega-CD BIOS boots. Each `[[input]] asm` is assembled on its own at absolute addresses (`.org`), `bin` inputs go at `at`:
+a piece at `$FF0584` and up in the main CPU's work RAM is the **initial program** (IP: the BIOS runs its region security code first and jumps to `$FF0584`), a piece at `$006000` and up is the **sub program**
+(SP: a module header "name, version, next, length, entry offset" and a table of entry offsets, as `rcb new --machine segacd` writes it). Sector 0 holds the header (`SEGADISCSYSTEM`, the volume name from `name`, the IP and SP offsets and sizes,
+a Genesis-style header at `$100` from `[options] title serial copyright console region`), the IP and SP follow in the system area (sectors 0-15, 32 KB in all), and sector 16 starts an ISO 9660 volume with the `[[file]]` entries
+(`path`, `name`: 8.3 upper-case names) that the sub program reads through the BIOS.
+
+The security code at `$200-$783` is Sega's and is not part of this tool: `[options] security = "file"` names a file with it (1412 or 1536 bytes, from a disc you own). Without it the area is zeros and a note says so: the disc is
+for emulators and BIOS versions that do not check it. The entry offset and work RAM size fields of the header are written as 0 `[H?]`. The ISO 9660 volume reads back in 7-Zip. Not done: audio tracks, CD-ROM XA sectors, a `.cue` or CHD
+(`rcchd createcd` makes a CHD from a cue sheet), subdirectories.

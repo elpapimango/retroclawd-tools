@@ -447,6 +447,7 @@ fn can_make(machine: Machine) -> &'static str {
         Machine::X68000 => ".x",
         Machine::Genesis => ".md .bin .gen",
         Machine::NeoGeo => ".zip",
+        Machine::SegaCd => ".iso",
         Machine::Generic => ".bin",
     }
 }

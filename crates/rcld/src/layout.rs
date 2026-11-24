@@ -57,6 +57,8 @@ pub enum Machine {
     Genesis,
     /// The SNK Neo Geo: a 68000 program and region files, written as a cartridge set (a zip).
     NeoGeo,
+    /// The Sega Mega-CD: a main and a sub 68000 program on a data disc, written as an `.iso`.
+    SegaCd,
     /// No machine: raw images only, and the CPU has to be named.
     Generic,
 }
@@ -76,6 +78,7 @@ impl Machine {
             Machine::X68000 => "x68000",
             Machine::Genesis => "genesis",
             Machine::NeoGeo => "neogeo",
+            Machine::SegaCd => "segacd",
             Machine::Generic => "generic",
         }
     }
@@ -242,6 +245,8 @@ pub struct Options {
     pub m: Option<String>,
     pub v1: Option<String>,
     pub v2: Option<String>,
+    /// Mega-CD: a file with the region security code (the first $584 bytes of the initial program).
+    pub security: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
