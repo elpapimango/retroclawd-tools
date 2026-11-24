@@ -30,3 +30,8 @@ Machines the emulator does not have yet (NES, SNES, Amiga, X68000) build, but `r
 (a loop or a return with the vectors the machine needs). Hardware kits: `rcb kits` lists them, `rcb kit MACHINE` prints one, and `rcb new` writes the machine's kit to `src/kit.inc` and includes it from the skeleton
 (`.include "src/kit.inc"`). A kit is constants only (registers, system call numbers, colours, joypad bits): it emits no bytes. The values are from public hardware documentation
 and tutorials; the 68000 machines' firmware numbers are marked `[H?]` where they come from memory.
+
+`rcb build` also writes `build/NAME.rcdbg` (which source line made which bytes) for projects whose sources the 8-bit/16-bit assembler takes (every machine but the 68000 family), and `rcb debug` passes it on:
+`rcdd ... --symbols build/NAME.sym --debug-info build/NAME.rcdbg`. The debugger then shows the source line at the PC (`source_line` in the state of debug-ui), sets breakpoints by line
+(debug-zrcp: `set-breakpoint 0 main.asm:12`; debug-ui: `POST /api/breakpoint/source {"file": "main.asm", "line": 12}`) and steps by line (`step-line` / `next-line` in debug-zrcp,
+`POST /api/step-line` / `/api/next-line` in debug-ui; `next-line` steps over calls).

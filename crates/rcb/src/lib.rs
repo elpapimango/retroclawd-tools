@@ -210,8 +210,17 @@ impl Project {
         rcld::build(&self.layout, &self.root, &self.output, &[])
     }
 
+    /// The `.rcdbg` text for the project's assembler sources (see [`rcld::debug_info`]).
+    pub fn debug_info(&self) -> Result<Option<String>, String> {
+        rcld::debug_info(&self.layout, &self.root, &[])
+    }
+
     pub fn map_path(&self) -> PathBuf {
         self.output.with_extension("map")
+    }
+
+    pub fn debug_info_path(&self) -> PathBuf {
+        self.output.with_extension("rcdbg")
     }
 
     pub fn symbols_path(&self) -> PathBuf {
@@ -254,6 +263,10 @@ impl Project {
         if debug {
             args.push("--symbols".to_string());
             args.push(self.symbols_path().display().to_string());
+            if self.debug_info_path().exists() {
+                args.push("--debug-info".to_string());
+                args.push(self.debug_info_path().display().to_string());
+            }
         }
         Ok(args)
     }

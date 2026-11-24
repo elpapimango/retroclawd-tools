@@ -67,6 +67,12 @@ fn build(p: &Project, write: bool, force: bool) -> Result<(), String> {
         write_file(&p.output, &b.bytes, true)
             .map_err(|e| format!("{}: {e}", p.output.display()))?;
         write_file(&p.map_path(), b.map.as_bytes(), true)?;
+        // source-level debugging: which line made which bytes (`rcb debug` hands it to rcdd)
+        match p.debug_info() {
+            Ok(Some(text)) => write_file(&p.debug_info_path(), text.as_bytes(), true)?,
+            Ok(None) => {}
+            Err(e) => eprintln!("rcb: note: no debug information: {e}"),
+        }
         if !b.symbols_text.is_empty() {
             write_file(&p.symbols_path(), b.symbols_text.as_bytes(), true)?;
         }

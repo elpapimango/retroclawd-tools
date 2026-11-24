@@ -424,6 +424,46 @@ pub fn load(
     })
 }
 
+/// Debug information (`.rcdbg`: which source line made which bytes) for the assembler sources (`asm` inputs) of a layout,
+/// for the debugger (`rcdd --debug-info`). `None` when there is nothing to say: no `asm` input, or a machine whose
+/// sources the 68000 assembler takes (its listing is not turned into debug information yet).
+pub fn debug_info(
+    layout: &Layout,
+    base: &Path,
+    cli_defines: &[(String, i64)],
+) -> Result<Option<String>, String> {
+    let Ok(cpu) = cpu_of(layout) else {
+        return Ok(None);
+    };
+    let sources: Vec<PathBuf> = layout
+        .input
+        .iter()
+        .filter_map(|i| i.asm.as_ref())
+        .flat_map(|a| a.list())
+        .map(|p| resolve(base, &p))
+        .collect();
+    if sources.is_empty() {
+        return Ok(None);
+    }
+    let mut defines: Vec<(String, i64)> = layout.define.iter().map(|(k, v)| (k.clone(), *v)).collect();
+    defines.extend(cli_defines.iter().cloned());
+    // a Windows path has backslashes, which are escapes in an assembler string
+    let quote = |p: &Path| p.display().to_string().replace('\\', "\\\\").replace('"', "\\\"");
+    let source: String = sources
+        .iter()
+        .map(|p| format!(".include \"{}\"\n", quote(p)))
+        .collect();
+    let opts = rcasm::Options {
+        cpu: Some(cpu),
+        defines,
+        include_dirs: vec![base.to_path_buf()],
+        ..rcasm::Options::default()
+    };
+    let asm = rcasm::assemble("layout", &source, &opts, &rcasm::DiskFiles)
+        .map_err(|diags| diags.iter().map(|d| d.to_string()).collect::<Vec<_>>().join("\n"))?;
+    Ok(Some(rcasm::debug_info(&asm).to_text()))
+}
+
 /// The entry address: a number, or a symbol of the sources or symbol files. `None` when the layout names none.
 pub fn entry(layout: &Layout, program: &Program) -> Result<Option<(u16, String)>, String> {
     let Some(v) = &layout.entry else {

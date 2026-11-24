@@ -192,3 +192,19 @@ fn a_program_can_use_the_kit_names() {
     );
     let _ = std::fs::remove_dir_all(&d);
 }
+
+#[test]
+fn a_build_writes_debug_information_and_rcb_debug_hands_it_to_the_emulator() {
+    let d = temp("dbg");
+    assert!(rcb(&["new", "p", "--machine", "c64"], &d).status.success());
+    assert!(rcb(&["build", "-C", "p"], &d).status.success());
+    let text = std::fs::read_to_string(d.join("p/build/p.rcdbg")).unwrap();
+    assert!(text.starts_with("rcdbg 1"), "{text}");
+    assert!(text.contains("main.asm"), "{text}");
+    assert!(text.contains("sym start"), "{text}");
+    let p = Project::load(&d.join("p")).unwrap();
+    let args = p.run_args(true).unwrap();
+    assert!(args.iter().any(|a| a == "--debug-info"), "{args:?}");
+    assert!(!p.run_args(false).unwrap().iter().any(|a| a == "--debug-info"));
+    let _ = std::fs::remove_dir_all(&d);
+}
