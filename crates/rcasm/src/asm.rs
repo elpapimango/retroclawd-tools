@@ -1695,7 +1695,7 @@ impl<'f> Asm<'f> {
 
     /// Replaces `.define`d names (object-like and function-like) and `.sizeof(Struct)` in a line, outside strings.
     fn apply_defines(&self, line: &str) -> String {
-        let first = line.trim_start().split_whitespace().next().unwrap_or("").to_ascii_lowercase();
+        let first = line.split_whitespace().next().unwrap_or("").to_ascii_lowercase();
         if matches!(first.as_str(), ".define" | ".undef" | ".undefine" | ".ifdef" | ".ifndef") {
             return line.to_string();
         }
@@ -1744,13 +1744,14 @@ impl<'f> Asm<'f> {
             }
             let word: String = chars[start..i].iter().collect();
             let qualified = start > 0 && chars[start - 1] == ':';
-            if word.eq_ignore_ascii_case(".sizeof") && chars.get(i) == Some(&'(') {
-                if let Some(close) = chars[i..].iter().position(|c| *c == ')') {
-                    let inner: String = chars[i + 1..i + close].iter().collect();
-                    out.push_str(&format!("{}::__size", inner.trim()));
-                    i += close + 1;
-                    continue;
-                }
+            if word.eq_ignore_ascii_case(".sizeof")
+                && chars.get(i) == Some(&'(')
+                && let Some(close) = chars[i..].iter().position(|c| *c == ')')
+            {
+                let inner: String = chars[i + 1..i + close].iter().collect();
+                out.push_str(&format!("{}::__size", inner.trim()));
+                i += close + 1;
+                continue;
             }
             match self.defines.get(&word) {
                 Some(d) if !qualified => match &d.params {
