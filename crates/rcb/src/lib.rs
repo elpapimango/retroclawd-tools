@@ -264,7 +264,7 @@ impl Project {
             args.push("--symbols".to_string());
             args.push(self.symbols_path().display().to_string());
             if self.debug_info_path().exists() {
-                args.push("--debug-info".to_string());
+                args.push("--source-info".to_string());
                 args.push(self.debug_info_path().display().to_string());
             }
         }

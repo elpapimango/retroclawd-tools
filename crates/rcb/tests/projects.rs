@@ -204,7 +204,7 @@ fn a_build_writes_debug_information_and_rcb_debug_hands_it_to_the_emulator() {
     assert!(text.contains("sym start"), "{text}");
     let p = Project::load(&d.join("p")).unwrap();
     let args = p.run_args(true).unwrap();
-    assert!(args.iter().any(|a| a == "--debug-info"), "{args:?}");
-    assert!(!p.run_args(false).unwrap().iter().any(|a| a == "--debug-info"));
+    assert!(args.iter().any(|a| a == "--source-info"), "{args:?}");
+    assert!(!p.run_args(false).unwrap().iter().any(|a| a == "--source-info"));
     let _ = std::fs::remove_dir_all(&d);
 }
