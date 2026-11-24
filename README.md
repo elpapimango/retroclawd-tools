@@ -21,9 +21,10 @@ the [releases](https://github.com/elpapimango/retroclawd-tools/releases).
 | Sega Mega Drive | 68000 | `genesis` | `.md` ROM with vectors, header, checksum |
 | SNK Neo Geo | 68000 | `neogeo` | cartridge set `.zip` |
 | Amiga | 68000 | `amiga` | hunk executable, `.adf` disk |
-| Sharp X68000 | 68000 | `x68000` | `.x` executable |
+| Sharp X68000 | 68000 | `x68000` | `.x` executable, `.xdf` floppy with a Human68k filesystem |
+| Sega Mega-CD | 68000 x 2 | `segacd` | `.iso` data disc (system area, ISO 9660) |
 
-Not yet: Mega-CD discs, X68000 floppies with a Human68k filesystem, 68010-68030 / FPU / PMMU targets. See `docs/` and
+Not yet: 68010-68030 / FPU / PMMU targets, Mega-CD audio tracks and CHD output from `rcld` (use `rcchd createcd`). See `docs/` and
 the plans under `docs/superpowers/plans/`.
 
 ## The tools
@@ -31,7 +32,7 @@ the plans under `docs/superpowers/plans/`.
 | Tool | What it does |
 |---|---|
 | [`rcb`](docs/rcb.md) | the **project driver**: `rcb new`, `build`, `check`, `run`, `debug`, `clean`, `targets` over an `rcb.toml` |
-| [`rcasm`](docs/rcasm.md) | assembler: 6502, Z80, HuC6280, 65816, SPC700, 68000. Flat images, `.prg`, relocatable objects (`.rco`), symbol files, listings, debug info; ca65-style scopes, unnamed labels, `.repeat`, macros, conditionals |
+| [`rcasm`](docs/rcasm.md) | assembler: 6502, Z80, HuC6280, 65816, SPC700, 68000. Flat images, `.prg`, relocatable objects (`.rco`, also for the 68000), symbol files, listings, debug info; ca65-style scopes, unnamed labels, `.repeat`, `.define`, `.struct`, `.enum`, macros with `.local`, conditionals |
 | [`rcar`](docs/rcar.md) | object libraries (`.rca`): create, list, extract, add, delete |
 | [`rcld`](docs/rcld.md) | linker and packager: places sources, objects, libraries and binaries by a TOML layout (or an ld65 `.cfg`), checks overlaps and regions, writes every image above |
 | [`rcdis`](docs/rcdis.md) | disassembler (6502, Z80, HuC6280, 65816, SPC700, 68000) whose output assembles back to the same bytes; linear or following flow |

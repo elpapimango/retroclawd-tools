@@ -15,7 +15,7 @@ path = "src/main.rs"
 
 [dependencies]
 atari-media.workspace = true
-rc-common = { path = "../rc-common", version = "0.4.0" }
+rc-common = { path = "../rc-common", version = "0.5.0" }
 cbm-dos.workspace = true
 d64.workspace = true
 d71.workspace = true
@@ -25,4 +25,4 @@ dsk.workspace = true
 clap.workspace = true
 
 [dev-dependencies]
-rcasm = { path = "../rcasm", version = "0.4.0" }
+rcasm = { path = "../rcasm", version = "0.5.0" }
