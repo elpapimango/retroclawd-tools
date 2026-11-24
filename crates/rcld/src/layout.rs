@@ -247,6 +247,8 @@ pub struct Options {
     pub v2: Option<String>,
     /// Mega-CD: a file with the region security code (the first $584 bytes of the initial program).
     pub security: Option<String>,
+    /// X68000 floppy: a file with the boot sector's code (without it the disk is a data disk).
+    pub ipl: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]

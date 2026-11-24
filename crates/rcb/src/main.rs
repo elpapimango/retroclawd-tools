@@ -162,7 +162,11 @@ fn main() -> ExitCode {
             .ok_or_else(|| {
                 format!(
                     "no kit for \"{machine}\"; try {}",
-                    rcb::kits::ALL.iter().map(|k| k.machine).collect::<Vec<_>>().join(", ")
+                    rcb::kits::ALL
+                        .iter()
+                        .map(|k| k.machine)
+                        .collect::<Vec<_>>()
+                        .join(", ")
                 )
             }),
     };

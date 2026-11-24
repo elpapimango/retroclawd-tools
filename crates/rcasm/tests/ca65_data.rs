@@ -8,8 +8,18 @@ fn asm(source: &str) -> Result<Vec<u8>, String> {
         ..Options::default()
     };
     assemble("t.asm", source, &opts, &DiskFiles)
-        .map(|a| a.segments.into_iter().flat_map(|s| s.bytes).collect::<Vec<u8>>())
-        .map_err(|e| e.iter().map(|d| d.to_string()).collect::<Vec<_>>().join("; "))
+        .map(|a| {
+            a.segments
+                .into_iter()
+                .flat_map(|s| s.bytes)
+                .collect::<Vec<u8>>()
+        })
+        .map_err(|e| {
+            e.iter()
+                .map(|d| d.to_string())
+                .collect::<Vec<_>>()
+                .join("; ")
+        })
 }
 
 #[test]
@@ -27,14 +37,21 @@ fn define_replaces_names_and_function_like_macros_outside_strings() {
 ";
     assert_eq!(
         asm(src).unwrap(),
-        [0xA9, 0x00, 0x8D, 0x00, 0x04, 0xA9, 8, b'S', b'C', b'R', b'E', b'E', b'N']
+        [
+            0xA9, 0x00, 0x8D, 0x00, 0x04, 0xA9, 8, b'S', b'C', b'R', b'E', b'E', b'N'
+        ]
     );
-    assert!(asm(".org $1000\n.define X 1\n.undef X\n lda #X\n").unwrap_err().contains("X"));
+    assert!(
+        asm(".org $1000\n.define X 1\n.undef X\n lda #X\n")
+            .unwrap_err()
+            .contains("X")
+    );
 }
 
 #[test]
 fn ifdef_sees_a_define() {
-    let src = ".org $1000\n.define DEBUG 1\n.ifdef DEBUG\n nop\n.endif\n.ifndef DEBUG\n brk\n.endif\n";
+    let src =
+        ".org $1000\n.define DEBUG 1\n.ifdef DEBUG\n nop\n.endif\n.ifndef DEBUG\n brk\n.endif\n";
     assert_eq!(asm(src).unwrap(), [0xEA]);
 }
 

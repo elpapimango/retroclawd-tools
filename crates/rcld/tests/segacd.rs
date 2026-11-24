@@ -55,7 +55,11 @@ fn the_system_area_has_the_header_the_ip_and_the_sp() {
     assert_eq!(&d[0x784..0x786], &[0x60, 0xFE]);
     // the SP module header and its first word
     assert_eq!(&d[0x800..0x808], b"MAIN-TES");
-    assert!(b.notes.iter().any(|n| n.contains("security")), "{:?}", b.notes);
+    assert!(
+        b.notes.iter().any(|n| n.contains("security")),
+        "{:?}",
+        b.notes
+    );
     assert_eq!(d.len() % 2048, 0);
 }
 
@@ -85,7 +89,11 @@ fn files_go_in_an_iso9660_volume() {
         let n = dir[at + 32] as usize;
         let extent = u32::from_le_bytes(dir[at + 2..at + 6].try_into().unwrap()) as usize;
         let size = u32::from_le_bytes(dir[at + 10..at + 14].try_into().unwrap()) as usize;
-        names.push((String::from_utf8_lossy(&dir[at + 33..at + 33 + n]).into_owned(), extent, size));
+        names.push((
+            String::from_utf8_lossy(&dir[at + 33..at + 33 + n]).into_owned(),
+            extent,
+            size,
+        ));
         at += len;
     }
     assert_eq!(names.len(), 4, "{names:?}");
@@ -108,13 +116,20 @@ fn mistakes_are_named() {
         .build("machine = \"segacd\"\n[[input]]\nasm = [\"low.s\"]\n[[input]]\nasm = [\"sp.s\"]\n")
         .unwrap_err();
     assert!(e.contains("security code"), "{e}");
-    let e = p.build("machine = \"segacd\"\n[[input]]\nasm = [\"sp.s\"]\n").unwrap_err();
+    let e = p
+        .build("machine = \"segacd\"\n[[input]]\nasm = [\"sp.s\"]\n")
+        .unwrap_err();
     assert!(e.contains("no initial program"), "{e}");
-    let e = p.build("machine = \"segacd\"\n[[input]]\nasm = [\"ip.s\"]\n").unwrap_err();
+    let e = p
+        .build("machine = \"segacd\"\n[[input]]\nasm = [\"ip.s\"]\n")
+        .unwrap_err();
     assert!(e.contains("no sub program"), "{e}");
     p.file("sec.bin", &[1u8; 10]);
     let e = p
-        .build(&format!("{}\n", LAYOUT.replace("region = \"E\"", "region = \"E\"\nsecurity = \"sec.bin\"")))
+        .build(&format!(
+            "{}\n",
+            LAYOUT.replace("region = \"E\"", "region = \"E\"\nsecurity = \"sec.bin\"")
+        ))
         .unwrap_err();
     assert!(e.contains("security code is"), "{e}");
     p.file("big.s", b"        .org $FF0584\n        ds.b 40000\n");

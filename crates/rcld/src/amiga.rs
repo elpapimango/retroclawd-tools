@@ -41,7 +41,11 @@ pub(crate) fn assemble_68000(
     }
     let items = crate::linked_items(layout, base);
     if !items.is_empty() {
-        if layout.input.iter().any(|i| i.asm.is_some() || i.bin.is_some() || i.prg.is_some()) {
+        if layout
+            .input
+            .iter()
+            .any(|i| i.asm.is_some() || i.bin.is_some() || i.prg.is_some())
+        {
             return Err(format!(
                 "the {who} target takes either `asm` sources or `src` / `obj` / `lib` inputs, not both"
             ));

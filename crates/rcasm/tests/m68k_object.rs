@@ -5,8 +5,12 @@ use rcasm::DiskFiles;
 use rcasm::m68k::{M68kOptions, assemble_m68k_object};
 
 fn object(src: &str) -> Result<Object, String> {
-    assemble_m68k_object("t.s", src, &M68kOptions::default(), &DiskFiles)
-        .map_err(|e| e.iter().map(|d| d.to_string()).collect::<Vec<_>>().join("\n"))
+    assemble_m68k_object("t.s", src, &M68kOptions::default(), &DiskFiles).map_err(|e| {
+        e.iter()
+            .map(|d| d.to_string())
+            .collect::<Vec<_>>()
+            .join("\n")
+    })
 }
 
 #[test]
@@ -33,7 +37,11 @@ tab:
     )
     .unwrap();
     assert_eq!(o.cpu, "68000");
-    let kinds: Vec<(u32, u32, u8, Kind)> = o.relocs.iter().map(|r| (r.section, r.offset, r.width, r.kind)).collect();
+    let kinds: Vec<(u32, u32, u8, Kind)> = o
+        .relocs
+        .iter()
+        .map(|r| (r.section, r.offset, r.width, r.kind))
+        .collect();
     // move.l #start (2 + 4 at offset 6), bsr.w ext (word at 20, relative), jsr ext (long at 24), the two data longs
     assert_eq!(
         kinds,
@@ -45,7 +53,11 @@ tab:
             (1, 4, 4, Kind::Abs),
         ]
     );
-    let names: Vec<(&str, Class, bool)> = o.symbols.iter().map(|s| (s.name.as_str(), s.class, s.global)).collect();
+    let names: Vec<(&str, Class, bool)> = o
+        .symbols
+        .iter()
+        .map(|s| (s.name.as_str(), s.class, s.global))
+        .collect();
     assert!(names.contains(&("start", Class::Label, true)));
     assert!(names.contains(&("ext", Class::Import, true)));
     assert!(names.contains(&("back", Class::Label, false)));

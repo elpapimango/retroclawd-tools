@@ -72,7 +72,10 @@ pub struct LinkOptions {
 
 impl Default for LinkOptions {
     fn default() -> Self {
-        LinkOptions { limit: 0x10000, track_addresses: false }
+        LinkOptions {
+            limit: 0x10000,
+            track_addresses: false,
+        }
     }
 }
 
@@ -112,7 +115,11 @@ impl Scope for Ctx<'_> {
     fn symbol(&self, name: &str) -> Option<i64> {
         let i: usize = name.strip_prefix('#')?.parse().ok()?;
         let v = self.values.get(i).copied()?;
-        Some(if self.addr.get(i).copied().unwrap_or(false) { v + self.shift } else { v })
+        Some(if self.addr.get(i).copied().unwrap_or(false) {
+            v + self.shift
+        } else {
+            v
+        })
     }
     fn pc(&self) -> i64 {
         self.pc

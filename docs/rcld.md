@@ -245,7 +245,7 @@ Facts the Amiga machine has not confirmed yet (the boot block code, the hunk sub
 
 ## X68000 (`machine = "x68000"`)
 
-The same relocatable 68000 program as a Human68k `.x` executable (`entry` is the execution address, default the first byte). A floppy image with a Human68k filesystem is not written yet. `rcld template x68000`.
+The same relocatable 68000 program as a Human68k `.x` executable (`entry` is the execution address, default the first byte). With `-o demo.xdf` the program goes into a 2HD floppy image (77 x 2 x 8 sectors of 1024 bytes) with a Human68k FAT12 filesystem: the program as `NAME.X` (`name`, or `options.file_name`), the `[[file]]` entries (8.3 names), `options.disk_name` as the volume label and `options.ipl` (a file of up to 1024 bytes) as the boot sector's code. Without `ipl` the disk is a data disk: boot it with a Human68k system disk and run the program from it. The filesystem layout is written from memory (`[H?]`: BPB big endian, FAT and directory little endian, one sector per cluster) and checked only by reading it back with our own FAT walk. The boot code and Human68k itself (`HUMAN.SYS`, `COMMAND.X`) are Sharp's: bring your own. `rcld template x68000`.
 
 ## Mega Drive / Genesis (`machine = "genesis"`)
 

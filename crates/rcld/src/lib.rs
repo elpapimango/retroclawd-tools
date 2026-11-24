@@ -11,6 +11,7 @@ pub mod basic;
 pub mod cfg;
 pub mod emit;
 pub mod genesis;
+pub mod human68k;
 pub mod layout;
 pub mod link;
 pub mod m68klink;
@@ -103,7 +104,10 @@ fn cpu_of(layout: &Layout) -> Result<rcasm::Cpu, String> {
         (Machine::PcEngine, _) => Ok(rcasm::Cpu::Huc6280),
         (Machine::Nes, _) => Ok(rcasm::Cpu::Mos6502),
         (Machine::Snes, _) => Ok(rcasm::Cpu::W65816),
-        (Machine::Amiga | Machine::X68000 | Machine::Genesis | Machine::NeoGeo | Machine::SegaCd, _) => Err(
+        (
+            Machine::Amiga | Machine::X68000 | Machine::Genesis | Machine::NeoGeo | Machine::SegaCd,
+            _,
+        ) => Err(
             "the Amiga and the X68000 are 68000 machines: they are built by their own modules"
                 .to_string(),
         ),
@@ -124,7 +128,12 @@ fn cpu_of(layout: &Layout) -> Result<rcasm::Cpu, String> {
 pub(crate) fn is_68k(layout: &Layout) -> bool {
     matches!(
         layout.machine,
-        Machine::AtariSt | Machine::Amiga | Machine::X68000 | Machine::Genesis | Machine::NeoGeo | Machine::SegaCd
+        Machine::AtariSt
+            | Machine::Amiga
+            | Machine::X68000
+            | Machine::Genesis
+            | Machine::NeoGeo
+            | Machine::SegaCd
     ) || (layout.machine == Machine::Generic
         && matches!(layout.cpu.as_deref(), Some("68000" | "m68000" | "68k")))
 }
@@ -190,15 +199,15 @@ pub(crate) fn link_inputs(
                     rcasm::assemble_object(&name, &text, &opts, &rcasm::DiskFiles)
                 }
                 .map_err(|diags| {
-                        diags
-                            .iter()
-                            .map(|d| d.to_string())
-                            .collect::<Vec<_>>()
-                            .join(
-                                "
+                    diags
+                        .iter()
+                        .map(|d| d.to_string())
+                        .collect::<Vec<_>>()
+                        .join(
+                            "
 ",
-                            )
-                    })?;
+                        )
+                })?;
                 objects.push(link::LinkObject { file: name, object });
             }
             Item::Obj(path) => {
@@ -356,7 +365,14 @@ pub fn load(
     defines.extend(cli_defines.iter().cloned());
     let mut notes = Vec::new();
     if !linked.is_empty() {
-        let l = link_inputs(layout, base, &linked, &defines, link::LinkOptions::default(), &[])?;
+        let l = link_inputs(
+            layout,
+            base,
+            &linked,
+            &defines,
+            link::LinkOptions::default(),
+            &[],
+        )?;
         pieces.extend(l.pieces);
         symbols.extend(l.symbols);
         symbols_text.push_str(&l.symbols_text);

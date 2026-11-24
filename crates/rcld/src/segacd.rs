@@ -17,8 +17,8 @@
 //! Facts: the header layout (the id, the IP/SP offset and size fields at `$30-$4F`, the Genesis-style header at `$100`) is
 //! read from discs and from Michael Pavone's Sega CD page; `[H?]` for the entry offset and work RAM size fields (written 0).
 
-use crate::layout::{self, Layout};
 use crate::Build;
+use crate::layout::{self, Layout};
 use rcasm::m68k::{M68kOptions, assemble_m68k, symbols_text};
 use std::path::{Path, PathBuf};
 
@@ -84,7 +84,10 @@ fn iso_name(name: &str) -> Result<Vec<u8>, String> {
     let upper = name.to_ascii_uppercase();
     let (stem, ext) = upper.rsplit_once('.').unwrap_or((&upper, ""));
     let ok = |s: &str, max: usize| {
-        !s.is_empty() && s.len() <= max && s.bytes().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == b'_')
+        !s.is_empty()
+            && s.len() <= max
+            && s.bytes()
+                .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == b'_')
     };
     if !ok(stem, 8) || !(ext.is_empty() || ok(ext, 3)) {
         return Err(format!(
@@ -100,7 +103,11 @@ pub fn build(
     output: &Path,
     cli_defines: &[(String, i64)],
 ) -> Result<Build, String> {
-    let ext = output.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
+    let ext = output
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
     if ext != "iso" {
         return Err(format!(
             "{}: a Mega-CD disc is written as .iso (a data track of 2048-byte sectors)",
@@ -108,7 +115,8 @@ pub fn build(
         ));
     }
     let o = &layout.options;
-    let mut defines: Vec<(String, i64)> = layout.define.iter().map(|(k, v)| (k.clone(), *v)).collect();
+    let mut defines: Vec<(String, i64)> =
+        layout.define.iter().map(|(k, v)| (k.clone(), *v)).collect();
     defines.extend(cli_defines.iter().cloned());
 
     // the programs and binaries, each with its address
@@ -121,15 +129,23 @@ pub fn build(
                     let path = resolve(base, &src);
                     let text = format!(
                         "    .include \"{}\"\n",
-                        path.display().to_string().replace('\\', "\\\\").replace('"', "\\\"")
+                        path.display()
+                            .to_string()
+                            .replace('\\', "\\\\")
+                            .replace('"', "\\\"")
                     );
                     let opts = M68kOptions {
                         include_dirs: vec![base.to_path_buf()],
                         defines: defines.clone(),
                         ..M68kOptions::default()
                     };
-                    let asm = assemble_m68k(&src, &text, &opts, &rcasm::DiskFiles)
-                        .map_err(|e| e.iter().map(|d| d.to_string()).collect::<Vec<_>>().join("\n"))?;
+                    let asm =
+                        assemble_m68k(&src, &text, &opts, &rcasm::DiskFiles).map_err(|e| {
+                            e.iter()
+                                .map(|d| d.to_string())
+                                .collect::<Vec<_>>()
+                                .join("\n")
+                        })?;
                     let image = asm.image();
                     if !image.is_empty() {
                         pieces.push((src.clone(), asm.origin, image));
@@ -143,10 +159,11 @@ pub fn build(
                     .as_ref()
                     .ok_or_else(|| format!("input {}: bin \"{bin}\" needs \"at\"", n + 1))?;
                 let at = layout::number(at).map_err(|e| format!("input {} at: {e}", n + 1))?;
-                let at = u32::try_from(at).map_err(|_| format!("input {} at: {at:#X} is not an address", n + 1))?;
+                let at = u32::try_from(at)
+                    .map_err(|_| format!("input {} at: {at:#X} is not an address", n + 1))?;
                 let path = resolve(base, bin);
-                let bytes =
-                    std::fs::read(&path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+                let bytes = std::fs::read(&path)
+                    .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
                 pieces.push((bin.clone(), at, bytes));
             }
             _ => {
@@ -190,14 +207,21 @@ pub fn build(
         }
     }
     if ip.len() == SECURITY_LEN {
-        return Err("no initial program: assemble a source with `.org $FF0584` (the main CPU starts there)".to_string());
+        return Err(
+            "no initial program: assemble a source with `.org $FF0584` (the main CPU starts there)"
+                .to_string(),
+        );
     }
     if sp.is_empty() {
-        return Err("no sub program: assemble a source with `.org $6000` and the SP module header".to_string());
+        return Err(
+            "no sub program: assemble a source with `.org $6000` and the SP module header"
+                .to_string(),
+        );
     }
     if let Some(sec) = &o.security {
         let path = resolve(base, sec);
-        let bytes = std::fs::read(&path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+        let bytes =
+            std::fs::read(&path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
         if bytes.len() != SECURITY_LEN && bytes.len() != 0x600 {
             return Err(format!(
                 "{}: the security code is {SECURITY_LEN} ($584) or 1536 ($600) bytes, not {}",
@@ -225,7 +249,11 @@ pub fn build(
     }
     let mut disc = vec![0u8; SYSTEM_SECTORS * SECTOR];
     pad_text(&mut disc, 0, 16, "SEGADISCSYSTEM  ");
-    let volume = layout.name.clone().unwrap_or_else(|| "RCDISC".to_string()).to_ascii_uppercase();
+    let volume = layout
+        .name
+        .clone()
+        .unwrap_or_else(|| "RCDISC".to_string())
+        .to_ascii_uppercase();
     pad_text(&mut disc, 0x10, 11, &volume);
     disc[0x1B..0x20].copy_from_slice(&[0, 1, 0, 0, 1]);
     pad_text(&mut disc, 0x20, 11, "SEGAOS");
@@ -244,12 +272,22 @@ pub fn build(
     pad_text(&mut disc, 0x110, 16, o.copyright.as_deref().unwrap_or(""));
     pad_text(&mut disc, 0x120, 48, &title);
     pad_text(&mut disc, 0x150, 48, &title);
-    pad_text(&mut disc, 0x180, 14, o.serial.as_deref().unwrap_or("GM 00000000-00"));
+    pad_text(
+        &mut disc,
+        0x180,
+        14,
+        o.serial.as_deref().unwrap_or("GM 00000000-00"),
+    );
     pad_text(&mut disc, 0x18E, 2, "");
     pad_text(&mut disc, 0x190, 16, "");
     pad_text(&mut disc, 0x1A0, 0x50, "");
     let region = o.region.as_deref().unwrap_or("U");
-    pad_text(&mut disc, 0x1F0, 16, &region.chars().take(3).collect::<String>());
+    pad_text(
+        &mut disc,
+        0x1F0,
+        16,
+        &region.chars().take(3).collect::<String>(),
+    );
     disc[IP_START..IP_START + ip.len()].copy_from_slice(&ip);
     disc[sp_start..sp_start + sp.len()].copy_from_slice(&sp);
 
@@ -257,16 +295,22 @@ pub fn build(
     let mut files: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
     for f in &layout.file {
         let path = resolve(base, &f.path);
-        let data = std::fs::read(&path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+        let data =
+            std::fs::read(&path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
         let name = f.name.clone().unwrap_or_else(|| {
-            path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
+            path.file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default()
         });
         files.push((iso_name(&name)?, data));
     }
     files.sort_by(|a, b| a.0.cmp(&b.0));
     for w in files.windows(2) {
         if w[0].0 == w[1].0 {
-            return Err(format!("two files are named {}", String::from_utf8_lossy(&w[0].0)));
+            return Err(format!(
+                "two files are named {}",
+                String::from_utf8_lossy(&w[0].0)
+            ));
         }
     }
     let (l_path, m_path, root) = (18u32, 19u32, 20u32);
@@ -302,7 +346,15 @@ pub fn build(
     pvd[148..152].copy_from_slice(&m_path.to_be_bytes());
     let root_rec = dir_record(&[0], root, SECTOR as u32, true);
     pvd[156..156 + 34].copy_from_slice(&root_rec[..34]);
-    for (at, len) in [(190, 128), (318, 128), (446, 128), (574, 128), (702, 37), (739, 37), (776, 37)] {
+    for (at, len) in [
+        (190, 128),
+        (318, 128),
+        (446, 128),
+        (574, 128),
+        (702, 37),
+        (739, 37),
+        (776, 37),
+    ] {
         pad_text(&mut pvd, at, len, "");
     }
     for at in [813, 830, 847, 864] {
@@ -318,9 +370,17 @@ pub fn build(
     for big in [false, true] {
         let mut t = vec![0u8; SECTOR];
         t[0] = 1;
-        let extent = if big { root.to_be_bytes() } else { root.to_le_bytes() };
+        let extent = if big {
+            root.to_be_bytes()
+        } else {
+            root.to_le_bytes()
+        };
         t[2..6].copy_from_slice(&extent);
-        let parent = if big { 1u16.to_be_bytes() } else { 1u16.to_le_bytes() };
+        let parent = if big {
+            1u16.to_be_bytes()
+        } else {
+            1u16.to_le_bytes()
+        };
         t[6..8].copy_from_slice(&parent);
         disc.extend(&t);
     }
@@ -344,5 +404,10 @@ pub fn build(
         total,
         disc.len()
     );
-    Ok(Build { bytes: disc, notes, map, symbols_text: symbols })
+    Ok(Build {
+        bytes: disc,
+        notes,
+        map,
+        symbols_text: symbols,
+    })
 }

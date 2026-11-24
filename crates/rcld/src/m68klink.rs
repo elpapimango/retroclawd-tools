@@ -2,8 +2,8 @@
 //! by the linker either at fixed addresses (the cartridge machines) or one after another from 0 as a program a loader
 //! relocates (the Atari ST, the Amiga and the X68000).
 
-use crate::link::{LinkOptions, Linked, Rule};
 use crate::layout::Layout;
+use crate::link::{LinkOptions, Linked, Rule};
 use crate::{Item, link_inputs};
 use rcasm::m68k::{M68kAssembly, M68kSymbol};
 use std::path::Path;
@@ -22,15 +22,26 @@ pub(crate) fn link_flat(
     bss_at: u32,
 ) -> Result<Linked, String> {
     let defaults = [
-        Rule { name: "TEXT".to_string(), start: Some(text_at), ..Rule::default() },
-        Rule { name: "BSS".to_string(), start: Some(bss_at), ..Rule::default() },
+        Rule {
+            name: "TEXT".to_string(),
+            start: Some(text_at),
+            ..Rule::default()
+        },
+        Rule {
+            name: "BSS".to_string(),
+            start: Some(bss_at),
+            ..Rule::default()
+        },
     ];
     link_inputs(
         layout,
         base,
         items,
         defines,
-        LinkOptions { limit: SPACE, track_addresses: false },
+        LinkOptions {
+            limit: SPACE,
+            track_addresses: false,
+        },
         &defaults,
     )
 }
@@ -44,13 +55,20 @@ pub(crate) fn link_relocatable(
     defines: &[(String, i64)],
     who: &str,
 ) -> Result<M68kAssembly, String> {
-    let defaults = [Rule { name: "TEXT".to_string(), start: Some(0), ..Rule::default() }];
+    let defaults = [Rule {
+        name: "TEXT".to_string(),
+        start: Some(0),
+        ..Rule::default()
+    }];
     let linked = link_inputs(
         layout,
         base,
         items,
         defines,
-        LinkOptions { limit: SPACE, track_addresses: true },
+        LinkOptions {
+            limit: SPACE,
+            track_addresses: true,
+        },
         &defaults,
     )?;
     let mut text_end = 0u32;
@@ -90,10 +108,13 @@ pub(crate) fn link_relocatable(
         symbols: linked
             .symbols
             .iter()
-            .map(|(name, value)| M68kSymbol { name: name.clone(), value: *value, label: true })
+            .map(|(name, value)| M68kSymbol {
+                name: name.clone(),
+                value: *value,
+                label: true,
+            })
             .collect(),
         listing: Vec::new(),
         object: None,
     })
 }
-

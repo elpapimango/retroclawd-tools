@@ -135,9 +135,12 @@ sources = [{}]
         ("rcb.toml".to_string(), toml),
         (
             format!("src/{}", t.source_name),
-            format!("; the machine's addresses and values: src/kit.inc (`rcb kit {}`)
+            format!(
+                "; the machine's addresses and values: src/kit.inc (`rcb kit {}`)
 .include \"src/kit.inc\"
-{}", t.machine, t.source),
+{}",
+                t.machine, t.source
+            ),
         ),
         ("src/kit.inc".to_string(), kit.to_string()),
         (".gitignore".to_string(), "build/\n".to_string()),

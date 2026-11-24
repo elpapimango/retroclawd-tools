@@ -3,8 +3,8 @@
 //! The layout names the sources (`[[input]] asm = [...]`, assembled together with sections `.text`, `.data` and `.bss`)
 //! and an output with the extension `.x`. `entry` (a label or an offset) sets the execution address, the offset from the
 //! program's start (default 0). Each long that holds an address of the program is recorded in the relocation table the
-//! loader walks. A floppy image with a Human68k filesystem is not written yet (the filesystem is added with the
-//! machine, where it can be checked).
+//! loader walks. With the extension `.xdf` the program goes into a 2HD floppy image with a Human68k filesystem (`human68k`:
+//! the program as `NAME.X`, the `[[file]]` entries, `options.disk_name` as the label, `options.ipl` as the boot sector).
 
 use crate::Build;
 use crate::amiga::assemble_68000;
@@ -24,9 +24,9 @@ pub fn build(
         .and_then(|e| e.to_str())
         .unwrap_or("")
         .to_ascii_lowercase();
-    if ext != "x" {
+    if ext != "x" && ext != "xdf" {
         return Err(format!(
-            "{}: an X68000 program is written as .x, not .{ext}",
+            "{}: an X68000 program is written as .x or on a floppy as .xdf, not .{ext}",
             output.display()
         ));
     }
@@ -67,8 +67,60 @@ pub fn build(
         scd: [0; 3],
     };
     let bytes = exe.to_bytes().map_err(|e| e.to_string())?;
+    let (bytes, disk_note) = if ext == "xdf" {
+        let resolve = |p: &str| {
+            if Path::new(p).is_absolute() {
+                std::path::PathBuf::from(p)
+            } else {
+                base.join(p)
+            }
+        };
+        let name = match (&layout.options.file_name, &layout.name) {
+            (Some(n), _) | (None, Some(n)) => n.clone(),
+            _ => "PROGRAM".to_string(),
+        };
+        let name = if name.contains('.') {
+            name
+        } else {
+            format!("{name}.X")
+        };
+        let mut files = vec![crate::human68k::File { name, data: bytes }];
+        for f in &layout.file {
+            let path = resolve(&f.path);
+            let data =
+                std::fs::read(&path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+            let name = f.name.clone().unwrap_or_else(|| {
+                path.file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default()
+            });
+            files.push(crate::human68k::File { name, data });
+        }
+        let ipl = match &layout.options.ipl {
+            Some(p) => {
+                let path = resolve(p);
+                Some(
+                    std::fs::read(&path)
+                        .map_err(|e| format!("cannot read {}: {e}", path.display()))?,
+                )
+            }
+            None => None,
+        };
+        let n = files.len();
+        let disk = crate::human68k::build_xdf(
+            &files,
+            layout.options.disk_name.as_deref(),
+            ipl.as_deref(),
+        )?;
+        (
+            disk,
+            format!("floppy: {n} file(s) on a Human68k 2HD disk\n"),
+        )
+    } else {
+        (bytes, String::new())
+    };
     let map = format!(
-        "text {} bytes, data {} bytes, bss {} bytes, {} relocations, entry ${entry:X}\n",
+        "{disk_note}text {} bytes, data {} bytes, bss {} bytes, {} relocations, entry ${entry:X}\n",
         asm.text.len(),
         asm.data.len(),
         asm.bss,

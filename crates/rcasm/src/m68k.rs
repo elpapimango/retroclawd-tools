@@ -559,7 +559,14 @@ impl<'a> Asm<'a> {
     /// A displacement from `at` (the extension word's address) to `text`, `width` bytes. In an object, a target that
     /// is not a fixed distance away (another section, an import, an absolute address) is left to the linker: the
     /// flag says so and the value is 0.
-    fn rel_field(&self, text: &str, ipc: i64, at: i64, width: u8, sub: u8) -> Result<(i64, bool), String> {
+    fn rel_field(
+        &self,
+        text: &str,
+        ipc: i64,
+        at: i64,
+        width: u8,
+        sub: u8,
+    ) -> Result<(i64, bool), String> {
         let (t, d) = self.deltas(text, ipc)?;
         if self.opts.object {
             let cur = self.sec as usize;
@@ -655,7 +662,11 @@ impl<'a> Asm<'a> {
             }
             Op::PcIdx(e, reg, long) => {
                 let (d, dep) = self.rel_field(e, ipc, at, 1, 1)?;
-                let w = if dep { ((*reg as u16) << 12) | ((*long as u16) << 11) } else { brief(d, *reg, *long)? };
+                let w = if dep {
+                    ((*reg as u16) << 12) | ((*long as u16) << 11)
+                } else {
+                    brief(d, *reg, *long)?
+                };
                 (0x3B, vec![Ext::W(w)])
             }
             Op::AbsW(e) => {
@@ -697,7 +708,10 @@ impl<'a> Asm<'a> {
                         if !dep {
                             no_reloc(r, "immediate")?;
                         }
-                        (0x3C, vec![Ext::W(if dep { v as u16 } else { word(v, "immediate")? })])
+                        (
+                            0x3C,
+                            vec![Ext::W(if dep { v as u16 } else { word(v, "immediate")? })],
+                        )
                     }
                     Sz::L => {
                         if !dep && !lax && !(-0x8000_0000..=0xFFFF_FFFF).contains(&v) {
@@ -2062,7 +2076,11 @@ pub fn assemble_m68k(
     }
     for n in asm.exports.clone() {
         if !asm.symbols.contains_key(&n) {
-            return Err(vec![Diag::new(name, 0, format!("\"{n}\" is exported but not defined"))]);
+            return Err(vec![Diag::new(
+                name,
+                0,
+                format!("\"{n}\" is exported but not defined"),
+            )]);
         }
     }
     // Pass 2: values.
@@ -2165,7 +2183,11 @@ fn to_obj_expr(
         expr::Expr::Num(n) => obj::Expr::Num(*n),
         expr::Expr::Pc => obj::Expr::Pc,
         expr::Expr::Sym(n) => match asm.symbols.get(n) {
-            Some(Def::Label(..)) => obj::Expr::Sym(*index.get(n).ok_or_else(|| format!("\"{n}\" has no symbol"))?),
+            Some(Def::Label(..)) => obj::Expr::Sym(
+                *index
+                    .get(n)
+                    .ok_or_else(|| format!("\"{n}\" has no symbol"))?,
+            ),
             Some(Def::Const(v)) => obj::Expr::Num(*v),
             Some(Def::Lazy(t)) => to_obj_expr(asm, &expr::parse(t)?, index, depth + 1)?,
             None => match index.get(n) {
@@ -2173,7 +2195,9 @@ fn to_obj_expr(
                 None => return Err(format!("undefined symbol \"{n}\"")),
             },
         },
-        expr::Expr::Unary(op, a) => obj::Expr::Unary(*op as u8, Box::new(to_obj_expr(asm, a, index, depth)?)),
+        expr::Expr::Unary(op, a) => {
+            obj::Expr::Unary(*op as u8, Box::new(to_obj_expr(asm, a, index, depth)?))
+        }
         expr::Expr::Binary(op, a, b) => obj::Expr::Binary(
             op.code(),
             Box::new(to_obj_expr(asm, a, index, depth)?),
@@ -2255,7 +2279,11 @@ fn build_object(
             offset: r.offset,
             width: r.width,
             big_endian: true,
-            kind: if r.rel { obj::Kind::Rel } else { obj::Kind::Abs },
+            kind: if r.rel {
+                obj::Kind::Rel
+            } else {
+                obj::Kind::Abs
+            },
             bias: r.bias,
             instr_back: r.instr_back,
             expr: e,
@@ -2270,7 +2298,11 @@ fn build_object(
         align: 2,
         size: bss_size.unwrap_or(bytes.len() as u32),
         addr: None,
-        bytes: if bss_size.is_some() { Vec::new() } else { bytes.to_vec() },
+        bytes: if bss_size.is_some() {
+            Vec::new()
+        } else {
+            bytes.to_vec()
+        },
     };
     Ok(obj::Object {
         cpu: "68000".to_string(),

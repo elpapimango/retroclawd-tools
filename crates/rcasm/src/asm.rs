@@ -587,7 +587,8 @@ impl<'f> Asm<'f> {
             // Conditionals and macro definitions are handled even in inactive regions.
             if let Some(Kind::Body(word, operand)) = &kind {
                 match directive_name(word).as_deref() {
-                    Some("if") | Some("ifdef") | Some("ifndef") | Some("ifblank") | Some("ifnblank") => {
+                    Some("if") | Some("ifdef") | Some("ifndef") | Some("ifblank")
+                    | Some("ifnblank") => {
                         let dir = directive_name(word).unwrap();
                         self.begin_if(&src, &dir, operand);
                         continue;
@@ -603,7 +604,11 @@ impl<'f> Asm<'f> {
                         continue;
                     }
                     Some(dir @ ("struct" | "enum")) => {
-                        let close = if dir == "struct" { "endstruct" } else { "endenum" };
+                        let close = if dir == "struct" {
+                            "endstruct"
+                        } else {
+                            "endenum"
+                        };
                         let (body, next) = self.collect_block(&lines, i, dir, close);
                         if self.active() {
                             if dir == "struct" {
@@ -1302,13 +1307,20 @@ impl<'f> Asm<'f> {
             "define" => self.do_define(src, operand),
             "undef" | "undefine" => {
                 if self.defines.remove(operand.trim()).is_none() && self.pass == 1 {
-                    self.error(src, format!(".{dir}: \"{}\" is not a .define", operand.trim()));
+                    self.error(
+                        src,
+                        format!(".{dir}: \"{}\" is not a .define", operand.trim()),
+                    );
                 }
             }
             "local" => self.error(src, ".local is only valid inside a macro"),
-            "endstruct" | "endenum" => self.error(src, format!(".{dir} without its opening directive")),
-            "macro" | "endm" | "endmacro" | "if" | "ifdef" | "ifndef" | "ifblank" | "ifnblank" | "else"
-            | "endif" | "include" | "struct" | "enum" => unreachable!("handled by the walk"),
+            "endstruct" | "endenum" => {
+                self.error(src, format!(".{dir} without its opening directive"))
+            }
+            "macro" | "endm" | "endmacro" | "if" | "ifdef" | "ifndef" | "ifblank" | "ifnblank"
+            | "else" | "endif" | "include" | "struct" | "enum" => {
+                unreachable!("handled by the walk")
+            }
             other => self.error(src, format!("unknown directive .{other}")),
         }
     }
@@ -1641,7 +1653,12 @@ impl<'f> Asm<'f> {
             let text = strip_comment(&l.text);
             let (word, rest) = take_word(text.trim());
             if word.eq_ignore_ascii_case(".local") {
-                locals.extend(split_top(rest).into_iter().map(|n| n.trim().to_string()).filter(|n| !n.is_empty()));
+                locals.extend(
+                    split_top(rest)
+                        .into_iter()
+                        .map(|n| n.trim().to_string())
+                        .filter(|n| !n.is_empty()),
+                );
             } else {
                 body.push(l);
             }
@@ -1670,7 +1687,9 @@ impl<'f> Asm<'f> {
     /// `.define NAME text` or `.define NAME(a, b) text`.
     fn do_define(&mut self, src: &LineSrc, operand: &str) {
         let text = operand.trim();
-        let end = text.find(|c: char| !expr::is_symbol_char(c)).unwrap_or(text.len());
+        let end = text
+            .find(|c: char| !expr::is_symbol_char(c))
+            .unwrap_or(text.len());
         let name = &text[..end];
         if name.is_empty() || name.starts_with('.') && name.len() == 1 {
             self.error(src, ".define needs a name");
@@ -1680,7 +1699,12 @@ impl<'f> Asm<'f> {
         let (params, body) = match rest.strip_prefix('(') {
             Some(after) => match after.find(')') {
                 Some(close) => (
-                    Some(split_top(&after[..close]).into_iter().map(|p| p.trim().to_string()).collect()),
+                    Some(
+                        split_top(&after[..close])
+                            .into_iter()
+                            .map(|p| p.trim().to_string())
+                            .collect(),
+                    ),
                     after[close + 1..].trim(),
                 ),
                 None => {
@@ -1690,13 +1714,26 @@ impl<'f> Asm<'f> {
             },
             None => (None, rest.trim()),
         };
-        self.defines.insert(name.to_string(), Define { params, body: body.to_string() });
+        self.defines.insert(
+            name.to_string(),
+            Define {
+                params,
+                body: body.to_string(),
+            },
+        );
     }
 
     /// Replaces `.define`d names (object-like and function-like) and `.sizeof(Struct)` in a line, outside strings.
     fn apply_defines(&self, line: &str) -> String {
-        let first = line.split_whitespace().next().unwrap_or("").to_ascii_lowercase();
-        if matches!(first.as_str(), ".define" | ".undef" | ".undefine" | ".ifdef" | ".ifndef") {
+        let first = line
+            .split_whitespace()
+            .next()
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        if matches!(
+            first.as_str(),
+            ".define" | ".undef" | ".undefine" | ".ifdef" | ".ifndef"
+        ) {
             return line.to_string();
         }
         let mut text = line.to_string();
@@ -1782,7 +1819,10 @@ impl<'f> Asm<'f> {
                             continue;
                         };
                         let inner: String = chars[i + 1..end].iter().collect();
-                        let args: Vec<String> = split_top(&inner).into_iter().map(|a| a.trim().to_string()).collect();
+                        let args: Vec<String> = split_top(&inner)
+                            .into_iter()
+                            .map(|a| a.trim().to_string())
+                            .collect();
                         out.push_str(&substitute(&d.body, params, &args));
                         i = end + 1;
                     }
@@ -1823,7 +1863,9 @@ impl<'f> Asm<'f> {
                     .view()
                     .symbol(&format!("{}::__size", operand.trim()))
                     .ok_or_else(|| format!(".tag: \"{}\" is not a struct", operand.trim())),
-                other => Err(format!("{other} is not allowed in a .struct (.byte .word .addr .dword .res .tag)")),
+                other => Err(format!(
+                    "{other} is not allowed in a .struct (.byte .word .addr .dword .res .tag)"
+                )),
             };
             let size = match size {
                 Ok(n) if n >= 0 => n,
@@ -1873,7 +1915,11 @@ impl<'f> Asm<'f> {
                         }
                     }
                 }
-                let full = if name.is_empty() { n.to_string() } else { format!("{name}::{n}") };
+                let full = if name.is_empty() {
+                    n.to_string()
+                } else {
+                    format!("{name}::{n}")
+                };
                 self.define(l, &full, next, false);
                 next += 1;
             }

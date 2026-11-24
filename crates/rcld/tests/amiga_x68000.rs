@@ -200,3 +200,26 @@ fn an_x68000_executable_has_relocations_and_an_entry() {
         .unwrap_err();
     assert!(e.contains("outside the text"), "{e}");
 }
+
+#[test]
+fn an_x68000_floppy_holds_the_program_and_extra_files() {
+    let p = Project::new("xdf");
+    p.file("main.s", "        .text\nstart:  rts\n");
+    p.file("data.bin", "0123456789");
+    let b = p
+        .build(
+            "machine = \"x68000\"\nname = \"demo\"\n[options]\ndisk_name = \"MYDISK\"\n[[input]]\nasm = \"main.s\"\n[[file]]\npath = \"data.bin\"\nname = \"DATA.BIN\"\n",
+            "demo.xdf",
+        )
+        .unwrap();
+    assert_eq!(b.bytes.len(), 1_261_568);
+    // the volume label, then the files in name order: DATA.BIN, DEMO.X
+    let root = &b.bytes[5 * 1024..];
+    assert_eq!(&root[..6], b"MYDISK");
+    assert_eq!(&root[32..40], b"DATA    ");
+    assert_eq!(&root[64..72], b"DEMO    ");
+    assert_eq!(&root[72..75], b"X  ");
+    let size = u32::from_le_bytes(root[32 + 28..32 + 32].try_into().unwrap());
+    assert_eq!(size, 10);
+    assert!(b.map.contains("2 file(s)"), "{}", b.map);
+}

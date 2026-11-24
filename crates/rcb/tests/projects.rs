@@ -141,7 +141,9 @@ fn the_examples_build() {
         }
         let p = Project::load(&dir).unwrap_or_else(|e| panic!("{}: {e}", dir.display()));
         // build in memory: the folders stay clean
-        let b = p.build().unwrap_or_else(|e| panic!("{}: {e}", dir.display()));
+        let b = p
+            .build()
+            .unwrap_or_else(|e| panic!("{}: {e}", dir.display()));
         assert!(!b.bytes.is_empty(), "{}", dir.display());
         built += 1;
     }
@@ -177,9 +179,16 @@ fn a_program_can_use_the_kit_names() {
     )
     .unwrap();
     let out = rcb(&["build", "-C", "p"], &d);
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let prg = std::fs::read(d.join("p/build/p.prg")).unwrap();
     // load address, the SYS stub, then lda #2 / sta $d020
-    assert!(prg.windows(5).any(|w| w == [0xA9, 0x02, 0x8D, 0x20, 0xD0]), "{prg:02X?}");
+    assert!(
+        prg.windows(5).any(|w| w == [0xA9, 0x02, 0x8D, 0x20, 0xD0]),
+        "{prg:02X?}"
+    );
     let _ = std::fs::remove_dir_all(&d);
 }
