@@ -157,7 +157,11 @@ Enough of ca65's language to assemble typical cc65-era projects as they are:
 - `.addr` (= `.word`), `.dbyt` (a big-endian word), `.setcpu "65816"`, `.p02`, `.pc02`, `.psc02`, `.p816`, and the housekeeping directives `.feature`, `.list`, `.nolist`, `.macpack`, `.listbytes`, `.autoimport`, `.case` (accepted, no effect).
 - Together with `.segment`, `.import`/`.export`/`.global`, `.importzp`/`.exportzp`, `.res`, `.macro`/`.endmacro`, `.if`/`.ifdef`, `.include`, `.incbin` and `@cheap` locals, which were there already.
 
-Not done: `.define`, `.struct`/`.enum`, `.local`, `.charmap`, `.ifblank` and the other conditionals of ca65, `.mac` tricks with `.concat`; and the `vasm` syntaxes beyond what the 68000 assembler's Motorola style already takes.
+Also: `.define NAME text` and `.define NAME(a, b) text` (replaced outside strings, `.undef NAME` removes; `.ifdef` sees them),
+`.struct Name` ... `.endstruct` (members `.byte .word .addr .faraddr .dword .res N .tag Other`; `Name::member` is the offset, `.sizeof(Name)` the size),
+`.enum [Name]` ... `.endenum` (`A`, `B = 5`, counting up; `Name::A` when named), `.local a, b` in a macro (names private to each expansion) and `.ifblank` / `.ifnblank`.
+
+Not done: `.union`, `.charmap`, `.ifconst` / `.ifref`, `.mac` tricks with `.concat`; and the `vasm` syntaxes beyond what the 68000 assembler's Motorola style already takes.
 
 ## 68000 objects (`--cpu 68000 -f object`)
 

@@ -127,6 +127,10 @@ struct Asm<'f> {
     pass: u8,
     symbols: HashMap<String, Sym>,
     macros: HashMap<String, Macro>,
+    /// ca65 `.define`s: the name and what it stands for.
+    defines: HashMap<String, Define>,
+    /// How many macro expansions have renamed their `.local` names.
+    local_counter: usize,
     /// Instruction number -> "the first pass found an unknown symbol in the operand".
     wide: HashMap<usize, bool>,
     // per pass
@@ -214,6 +218,8 @@ fn run_passes<'f>(
         pass: 1,
         symbols: HashMap::new(),
         macros: HashMap::new(),
+        defines: HashMap::new(),
+        local_counter: 0,
         wide: HashMap::new(),
         pc: None,
         bank: 0,
@@ -375,6 +381,16 @@ const DIRECTIVES: &[&str] = &[
     "case",
     "repeat",
     "endrep",
+    "define",
+    "undef",
+    "undefine",
+    "struct",
+    "endstruct",
+    "enum",
+    "endenum",
+    "local",
+    "ifblank",
+    "ifnblank",
 ];
 
 /// Names that are directives even without a leading dot (Z80 assemblers write them bare).
@@ -537,6 +553,11 @@ impl<'f> Asm<'f> {
             let src = lines[i].clone();
             i += 1;
             let stripped = self.anonymous_labels(strip_comment(&src.text));
+            let stripped = if self.defines.is_empty() && !stripped.contains(".sizeof") {
+                stripped
+            } else {
+                self.apply_defines(&stripped)
+            };
             let stmt = self.parse(&stripped);
             let (labels, kind) = match stmt {
                 Stmt::Empty => {
@@ -566,7 +587,7 @@ impl<'f> Asm<'f> {
             // Conditionals and macro definitions are handled even in inactive regions.
             if let Some(Kind::Body(word, operand)) = &kind {
                 match directive_name(word).as_deref() {
-                    Some("if") | Some("ifdef") | Some("ifndef") => {
+                    Some("if") | Some("ifdef") | Some("ifndef") | Some("ifblank") | Some("ifnblank") => {
                         let dir = directive_name(word).unwrap();
                         self.begin_if(&src, &dir, operand);
                         continue;
@@ -579,6 +600,19 @@ impl<'f> Asm<'f> {
                         if self.conds.pop().is_none() {
                             self.error(&src, ".endif without .if");
                         }
+                        continue;
+                    }
+                    Some(dir @ ("struct" | "enum")) => {
+                        let close = if dir == "struct" { "endstruct" } else { "endenum" };
+                        let (body, next) = self.collect_block(&lines, i, dir, close);
+                        if self.active() {
+                            if dir == "struct" {
+                                self.do_struct(&src, operand, body);
+                            } else {
+                                self.do_enum(&src, operand, body);
+                            }
+                        }
+                        i = next;
                         continue;
                     }
                     Some("repeat") => {
@@ -1265,8 +1299,16 @@ impl<'f> Asm<'f> {
                     Err(e) => self.error(src, e),
                 }
             }
-            "macro" | "endm" | "endmacro" | "if" | "ifdef" | "ifndef" | "else" | "endif"
-            | "include" => unreachable!("handled by the walk"),
+            "define" => self.do_define(src, operand),
+            "undef" | "undefine" => {
+                if self.defines.remove(operand.trim()).is_none() && self.pass == 1 {
+                    self.error(src, format!(".{dir}: \"{}\" is not a .define", operand.trim()));
+                }
+            }
+            "local" => self.error(src, ".local is only valid inside a macro"),
+            "endstruct" | "endenum" => self.error(src, format!(".{dir} without its opening directive")),
+            "macro" | "endm" | "endmacro" | "if" | "ifdef" | "ifndef" | "ifblank" | "ifnblank" | "else"
+            | "endif" | "include" | "struct" | "enum" => unreachable!("handled by the walk"),
             other => self.error(src, format!("unknown directive .{other}")),
         }
     }
@@ -1379,9 +1421,11 @@ impl<'f> Asm<'f> {
         } else {
             match dir {
                 "ifdef" | "ifndef" => {
-                    let defined = self.view().symbol(operand.trim()).is_some();
+                    let defined = self.view().symbol(operand.trim()).is_some()
+                        || self.defines.contains_key(operand.trim());
                     defined == (dir == "ifdef")
                 }
+                "ifblank" | "ifnblank" => operand.trim().is_empty() == (dir == "ifblank"),
                 _ => match self.eval_now(operand) {
                     Ok(v) => v != 0,
                     Err(e) => {
@@ -1590,16 +1634,250 @@ impl<'f> Asm<'f> {
             );
             return None;
         }
+        // `.local a, b`: names that belong to this expansion alone
+        let mut locals: Vec<String> = Vec::new();
+        let mut body: Vec<&LineSrc> = Vec::new();
+        for l in &m.body {
+            let text = strip_comment(&l.text);
+            let (word, rest) = take_word(text.trim());
+            if word.eq_ignore_ascii_case(".local") {
+                locals.extend(split_top(rest).into_iter().map(|n| n.trim().to_string()).filter(|n| !n.is_empty()));
+            } else {
+                body.push(l);
+            }
+        }
+        self.local_counter += 1;
+        let mut names = m.params.clone();
+        let mut values = args;
+        values.resize(m.params.len(), String::new());
+        for l in &locals {
+            names.push(l.clone());
+            values.push(format!("{l}__L{}", self.local_counter));
+        }
         Some(
-            m.body
-                .iter()
+            body.iter()
                 .map(|l| LineSrc {
-                    text: substitute(&l.text, &m.params, &args),
+                    text: substitute(&l.text, &names, &values),
                     file: Rc::clone(&l.file),
                     line: l.line,
                 })
                 .collect(),
         )
+    }
+
+    // ---- ca65: .define, .struct, .enum ----
+
+    /// `.define NAME text` or `.define NAME(a, b) text`.
+    fn do_define(&mut self, src: &LineSrc, operand: &str) {
+        let text = operand.trim();
+        let end = text.find(|c: char| !expr::is_symbol_char(c)).unwrap_or(text.len());
+        let name = &text[..end];
+        if name.is_empty() || name.starts_with('.') && name.len() == 1 {
+            self.error(src, ".define needs a name");
+            return;
+        }
+        let rest = &text[end..];
+        let (params, body) = match rest.strip_prefix('(') {
+            Some(after) => match after.find(')') {
+                Some(close) => (
+                    Some(split_top(&after[..close]).into_iter().map(|p| p.trim().to_string()).collect()),
+                    after[close + 1..].trim(),
+                ),
+                None => {
+                    self.error(src, ".define: the parameter list has no )");
+                    return;
+                }
+            },
+            None => (None, rest.trim()),
+        };
+        self.defines.insert(name.to_string(), Define { params, body: body.to_string() });
+    }
+
+    /// Replaces `.define`d names (object-like and function-like) and `.sizeof(Struct)` in a line, outside strings.
+    fn apply_defines(&self, line: &str) -> String {
+        let first = line.trim_start().split_whitespace().next().unwrap_or("").to_ascii_lowercase();
+        if matches!(first.as_str(), ".define" | ".undef" | ".undefine" | ".ifdef" | ".ifndef") {
+            return line.to_string();
+        }
+        let mut text = line.to_string();
+        for _ in 0..8 {
+            let next = self.apply_defines_once(&text);
+            if next == text {
+                break;
+            }
+            text = next;
+        }
+        text
+    }
+
+    fn apply_defines_once(&self, line: &str) -> String {
+        let chars: Vec<char> = line.chars().collect();
+        let mut out = String::with_capacity(line.len());
+        let mut i = 0;
+        while i < chars.len() {
+            let c = chars[i];
+            if c == '"' || c == '\'' {
+                out.push(c);
+                i += 1;
+                while i < chars.len() {
+                    out.push(chars[i]);
+                    if chars[i] == '\\' && i + 1 < chars.len() {
+                        i += 1;
+                        out.push(chars[i]);
+                    } else if chars[i] == c {
+                        i += 1;
+                        break;
+                    }
+                    i += 1;
+                }
+                continue;
+            }
+            if !expr::is_symbol_start(c) {
+                out.push(c);
+                i += 1;
+                continue;
+            }
+            let start = i;
+            i += 1;
+            while i < chars.len() && expr::is_symbol_char(chars[i]) {
+                i += 1;
+            }
+            let word: String = chars[start..i].iter().collect();
+            let qualified = start > 0 && chars[start - 1] == ':';
+            if word.eq_ignore_ascii_case(".sizeof") && chars.get(i) == Some(&'(') {
+                if let Some(close) = chars[i..].iter().position(|c| *c == ')') {
+                    let inner: String = chars[i + 1..i + close].iter().collect();
+                    out.push_str(&format!("{}::__size", inner.trim()));
+                    i += close + 1;
+                    continue;
+                }
+            }
+            match self.defines.get(&word) {
+                Some(d) if !qualified => match &d.params {
+                    None => out.push_str(&d.body),
+                    Some(params) => {
+                        if chars.get(i) != Some(&'(') {
+                            out.push_str(&word);
+                            continue;
+                        }
+                        // the arguments: up to the matching )
+                        let mut depth = 0;
+                        let mut end = None;
+                        for (k, ch) in chars.iter().enumerate().skip(i) {
+                            match ch {
+                                '(' => depth += 1,
+                                ')' => {
+                                    depth -= 1;
+                                    if depth == 0 {
+                                        end = Some(k);
+                                        break;
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                        let Some(end) = end else {
+                            out.push_str(&word);
+                            continue;
+                        };
+                        let inner: String = chars[i + 1..end].iter().collect();
+                        let args: Vec<String> = split_top(&inner).into_iter().map(|a| a.trim().to_string()).collect();
+                        out.push_str(&substitute(&d.body, params, &args));
+                        i = end + 1;
+                    }
+                },
+                _ => out.push_str(&word),
+            }
+        }
+        out
+    }
+
+    /// `.struct Name` ... `.endstruct`: `Name::member` is the member's offset, `.sizeof(Name)` the size.
+    fn do_struct(&mut self, src: &LineSrc, operand: &str, body: Vec<LineSrc>) {
+        let name = operand.trim();
+        if name.is_empty() || !name.chars().all(|c| expr::is_symbol_char(c) || c == ':') {
+            self.error(src, ".struct needs a name");
+            return;
+        }
+        let mut off: i64 = 0;
+        for l in &body {
+            let text = strip_comment(&l.text).trim().to_string();
+            if text.is_empty() {
+                continue;
+            }
+            let (first, rest) = take_word(&text);
+            let (member, decl) = if first.starts_with('.') {
+                (None, text.as_str())
+            } else {
+                (Some(first.trim_end_matches(':')), rest)
+            };
+            let (d, operand) = take_word(decl);
+            let size = match d.to_ascii_lowercase().as_str() {
+                ".byte" => Ok(1),
+                ".word" | ".addr" => Ok(2),
+                ".faraddr" => Ok(3),
+                ".dword" => Ok(4),
+                ".res" => self.eval_now(operand),
+                ".tag" => self
+                    .view()
+                    .symbol(&format!("{}::__size", operand.trim()))
+                    .ok_or_else(|| format!(".tag: \"{}\" is not a struct", operand.trim())),
+                other => Err(format!("{other} is not allowed in a .struct (.byte .word .addr .dword .res .tag)")),
+            };
+            let size = match size {
+                Ok(n) if n >= 0 => n,
+                Ok(n) => {
+                    self.error(l, format!("a member cannot have the size {n}"));
+                    continue;
+                }
+                Err(e) => {
+                    self.error(l, e);
+                    continue;
+                }
+            };
+            if let Some(m) = member {
+                self.define(l, &format!("{name}::{m}"), off, false);
+            }
+            off += size;
+        }
+        self.define(src, &format!("{name}::__size"), off, false);
+    }
+
+    /// `.enum [Name]` ... `.endenum`: names counting up from 0 (or from the last `= value`), as `Name::A` for a named
+    /// enum and `A` for an unnamed one.
+    fn do_enum(&mut self, src: &LineSrc, operand: &str, body: Vec<LineSrc>) {
+        let name = operand.trim();
+        let mut next: i64 = 0;
+        for l in &body {
+            let text = strip_comment(&l.text).trim().to_string();
+            for item in split_top(&text) {
+                let item = item.trim();
+                if item.is_empty() {
+                    continue;
+                }
+                let (n, value) = match item.split_once('=') {
+                    Some((n, v)) => (n.trim(), Some(v.trim())),
+                    None => (item, None),
+                };
+                if n.is_empty() || !n.chars().all(expr::is_symbol_char) {
+                    self.error(l, format!("\"{item}\" is not an enum member"));
+                    continue;
+                }
+                if let Some(v) = value {
+                    match self.eval_now(v) {
+                        Ok(v) => next = v,
+                        Err(e) => {
+                            self.error(l, e);
+                            continue;
+                        }
+                    }
+                }
+                let full = if name.is_empty() { n.to_string() } else { format!("{name}::{n}") };
+                self.define(l, &full, next, false);
+                next += 1;
+            }
+        }
+        let _ = src;
     }
 
     fn finish(self, name: &str) -> Result<Assembly, Vec<Diag>> {
@@ -1670,6 +1948,12 @@ enum Kind {
     Org(String),
     Assign(String, String),
     Body(String, String),
+}
+
+/// A ca65 `.define`: object-like (`params` is `None`) or function-like.
+struct Define {
+    params: Option<Vec<String>>,
+    body: String,
 }
 
 struct MacroCopy {
