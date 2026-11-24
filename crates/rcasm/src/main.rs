@@ -273,16 +273,15 @@ fn run_68000(cli: &Cli) -> ExitCode {
         Err(e) => return fail(format!("cannot read {}: {e}", cli.source.display())),
     };
     let relocatable = matches!(cli.format, Format::Gemdos);
-    if matches!(cli.format, Format::Object) {
-        return fail("objects for the 68000 are not available yet");
-    }
+    let object = matches!(cli.format, Format::Object);
     if matches!(cli.format, Format::Prg | Format::Segments) {
         return fail(
-            "for the 68000 the formats are bin (a flat image at .org) and gemdos (a relocatable .PRG)",
+            "for the 68000 the formats are bin (a flat image at .org), gemdos (a relocatable .PRG) and object (.rco)",
         );
     }
     let opts = M68kOptions {
         relocatable,
+        object,
         include_dirs: cli.include.clone(),
         defines,
     };
@@ -299,7 +298,14 @@ fn run_68000(cli: &Cli) -> ExitCode {
         asm.text.len(),
         asm.data.len(),
         asm.bss,
-        if relocatable {
+        if object {
+            let o = asm.object.as_ref();
+            format!(
+                ", {} symbol(s), {} relocation(s)",
+                o.map_or(0, |o| o.symbols.len()),
+                o.map_or(0, |o| o.relocs.len())
+            )
+        } else if relocatable {
             format!(", {} relocations", asm.relocs.len())
         } else {
             format!(", origin ${:06X}", asm.origin)
@@ -313,7 +319,9 @@ fn run_68000(cli: &Cli) -> ExitCode {
         return fail("no output file: give -o <file> (or --check)");
     };
     let result = (|| -> Result<(), String> {
-        if relocatable {
+        if let Some(o) = &asm.object {
+            write_file(output, &o.encode(), cli.force)?;
+        } else if relocatable {
             let prg = rc_common::prg::Prg {
                 text: asm.text.clone(),
                 data: asm.data.clone(),

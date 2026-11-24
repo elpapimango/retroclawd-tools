@@ -158,3 +158,12 @@ Enough of ca65's language to assemble typical cc65-era projects as they are:
 - Together with `.segment`, `.import`/`.export`/`.global`, `.importzp`/`.exportzp`, `.res`, `.macro`/`.endmacro`, `.if`/`.ifdef`, `.include`, `.incbin` and `@cheap` locals, which were there already.
 
 Not done: `.define`, `.struct`/`.enum`, `.local`, `.charmap`, `.ifblank` and the other conditionals of ca65, `.mac` tricks with `.concat`; and the `vasm` syntaxes beyond what the 68000 assembler's Motorola style already takes.
+
+## 68000 objects (`--cpu 68000 -f object`)
+
+Motorola syntax as for the 68000 images. The object has three sections, `TEXT`, `DATA` and `BSS` (`.text`, `.data`, `.bss`), each starting at 0; `.org` is an error (the linker places the sections, see `rcld`).
+`xref a,b` (also `.import`, `.extern`) names symbols of other objects; `xdef a,b` (also `.export`) and `.globl` / `.global` export symbols this object defines (a `.globl` name that is never defined is an import).
+A field is settled by the assembler when it is a constant (`size equ end-start` is one: a difference of two labels of one section) or a displacement inside the section (`lea back(pc),a0`, `bra.s loop`). Anything else becomes a relocation:
+an absolute long (`move.l #label,d0`, `jsr ext`, `dc.l label`), an absolute word or a displacement word (`abs.w`, `d16(an)`), a byte (a brief index displacement, an immediate byte) and, for a PC-relative field whose
+target is in another section or an import, a relative one (`bsr.w ext`: the value minus the address of the extension word). The linker checks that every value fits its field and names the source line when not.
+A short branch (`.s`) must stay inside the section; to anything else write `.w`. A constant is required where the instruction encodes it (a `moveq` value, a shift count, a `trap` number): an address or an import there is an error.

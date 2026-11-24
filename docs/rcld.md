@@ -263,3 +263,22 @@ written (`fix_checksum = false` stops that) and the image is padded to a power o
 ## ld65 configuration files
 
 `cfg = "c64.cfg"` (top level of the layout) reads an ld65 `.cfg`: each `MEMORY` area becomes a region (`start`, `size`), each `SEGMENTS` entry a placement rule (`load` the region, `start`, `align`). `file`, `fill`, `type`, `define`, `run`, `offset`, and the `FILES`, `FORMATS`, `SYMBOLS`, `FEATURES` blocks are accepted and ignored: the layout's `output`, `fill` and machine decide those. Values are numbers with `+ - *`; a linker symbol such as `__STACKSIZE__` is an error. Use it with `src = [...]` inputs (separate compilation): the sources' `.segment "CODE"` / `"RODATA"` / `"BSS"` ... land where the config says.
+
+## 68000 objects and libraries
+
+For the Atari ST, the Amiga, the X68000, the Mega Drive and the Neo Geo, `src`, `obj` and `lib` inputs go through the linker like the 8-bit machines' (see "Objects and libraries"), the sources assembled with `rcasm --cpu 68000 -f object`'s rules.
+An `asm` input and these cannot be mixed in one layout. The sections are `TEXT`, `DATA` and `BSS`.
+
+* **Atari ST, Amiga, X68000** (loaders that relocate the program): the sections are placed from 0 in the order TEXT, DATA, BSS, and every four-byte field that holds an address of the program goes in the loader's relocation
+  table (the GEMDOS fixups, the hunk relocations). An address in a word or a byte, or an expression that is neither an address nor a constant, is an error that names the line. There are no regions.
+* **Mega Drive**: `TEXT` at `$000200` (after the vectors and header the target generates; put `[[segment]] name = "TEXT" start = 0` to write your own), `DATA` after it in the ROM, `BSS` at `$FF0000` in the work RAM.
+* **Neo Geo**: `TEXT` at `$000000`, `DATA` after it, `BSS` at `$100000`.
+
+`[[segment]]` rules override these (`name`, `start`, `region`, `align`).
+
+```
+rcasm --cpu 68000 -f object main.s -o main.rco
+rcasm --cpu 68000 -f object lib.s  -o lib.rco
+rcar create libs.rca lib.rco
+rcld build layout.toml -o game.prg        # [[input]] obj = ["main.rco"]  [[input]] lib = ["libs.rca"]
+```

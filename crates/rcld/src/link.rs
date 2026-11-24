@@ -43,9 +43,48 @@ pub struct LinkObject {
     pub object: Object,
 }
 
+/// A placed run of bytes with a 32-bit address (what [`Linked::pieces`] cannot hold above 64 KB).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WidePiece {
+    pub name: String,
+    pub start: u32,
+    pub bytes: Vec<u8>,
+}
+
+/// A section as placed.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PlacedSection {
+    pub name: String,
+    pub addr: u32,
+    pub size: u32,
+    pub bss: bool,
+}
+
+/// How the linker is asked to work.
+#[derive(Clone, Copy, Debug)]
+pub struct LinkOptions {
+    /// The address space: 0x10000 for the 8-bit CPUs, 0x100_0000 for the 68000.
+    pub limit: u64,
+    /// Find the fields that hold an address of the program (for a loader that relocates them): they go in
+    /// [`Linked::address_fields`], and an address in a field that is not four bytes wide is an error.
+    pub track_addresses: bool,
+}
+
+impl Default for LinkOptions {
+    fn default() -> Self {
+        LinkOptions { limit: 0x10000, track_addresses: false }
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct Linked {
+    /// The placed bytes with 16-bit addresses (empty when the address space is larger: see `wide`).
     pub pieces: Vec<Piece>,
+    pub wide: Vec<WidePiece>,
+    /// Every placed section that is not empty, in address order.
+    pub sections: Vec<PlacedSection>,
+    /// The addresses of the four-byte big-endian fields that hold an address of the program (`track_addresses`).
+    pub address_fields: Vec<u32>,
     /// Globals and labels, by name (non-global labels as `file:name` when two objects use the same one).
     pub symbols: Vec<(String, i64)>,
     pub map: String,
@@ -63,13 +102,17 @@ struct Placed {
 /// What the symbol `#n` of one object means while a relocation is evaluated.
 struct Ctx<'a> {
     values: &'a [i64],
+    /// Which symbols are addresses, and how far they are moved (to see which values depend on an address).
+    addr: &'a [bool],
+    shift: i64,
     pc: i64,
 }
 
 impl Scope for Ctx<'_> {
     fn symbol(&self, name: &str) -> Option<i64> {
         let i: usize = name.strip_prefix('#')?.parse().ok()?;
-        self.values.get(i).copied()
+        let v = self.values.get(i).copied()?;
+        Some(if self.addr.get(i).copied().unwrap_or(false) { v + self.shift } else { v })
     }
     fn pc(&self) -> i64 {
         self.pc
@@ -128,6 +171,18 @@ pub fn link(
     rules: &[Rule],
     regions: &[RegionSpec],
 ) -> Result<Linked, Vec<String>> {
+    link_with(objects, libs, rules, regions, LinkOptions::default())
+}
+
+pub fn link_with(
+    objects: Vec<LinkObject>,
+    libs: &[(String, Archive)],
+    rules: &[Rule],
+    regions: &[RegionSpec],
+    options: LinkOptions,
+) -> Result<Linked, Vec<String>> {
+    let wide = options.limit > 0x10000;
+    let digits = if wide { 6 } else { 4 };
     let mut errors: Vec<String> = Vec::new();
     let mut objects = objects;
 
@@ -354,7 +409,7 @@ pub fn link(
         if s.size > 0 {
             let _ = writeln!(
                 map,
-                "{:<10} ${:04X}-${:04X} {:>6} bytes  {}{}",
+                "{:<10} ${:0digits$X}-${:0digits$X} {:>6} bytes  {}{}",
                 s.name,
                 p.addr,
                 p.addr + s.size - 1,
@@ -363,19 +418,21 @@ pub fn link(
                 if s.bss { "  (bss)" } else { "" }
             );
         }
-        if p.addr as u64 + s.size as u64 > 0x10000 {
+        if p.addr as u64 + s.size as u64 > options.limit {
             errors.push(format!(
-                "segment \"{}\" of {} runs past the end of memory (${:04X} + {} bytes)",
+                "segment \"{}\" of {} runs past the end of memory (${:0digits$X} + {} bytes)",
                 s.name, o.file, p.addr, s.size
             ));
         }
     }
 
     // ---- symbol values ----------------------------------------------------------------------
-    let mut exports: HashMap<&str, i64> = HashMap::new();
+    let mut exports: HashMap<&str, (i64, bool)> = HashMap::new();
     let mut values: Vec<Vec<i64>> = Vec::new();
+    let mut is_addr: Vec<Vec<bool>> = Vec::new();
     for (oi, o) in objects.iter().enumerate() {
         let mut v = Vec::with_capacity(o.object.symbols.len());
+        let mut a = Vec::with_capacity(o.object.symbols.len());
         for s in &o.object.symbols {
             let value = match s.class {
                 Class::Label => base[oi][s.section as usize].map_or(0, |b| b as i64) + s.value,
@@ -383,17 +440,22 @@ pub fn link(
                 Class::Import => 0,
             };
             if s.global && s.class != Class::Import {
-                exports.insert(s.name.as_str(), value);
+                exports.insert(s.name.as_str(), (value, s.class == Class::Label));
             }
             v.push(value);
+            a.push(s.class == Class::Label);
         }
         values.push(v);
+        is_addr.push(a);
     }
     for (oi, o) in objects.iter().enumerate() {
         for (si, s) in o.object.symbols.iter().enumerate() {
             if s.class == Class::Import {
                 match exports.get(s.name.as_str()) {
-                    Some(v) => values[oi][si] = *v,
+                    Some((v, addr)) => {
+                        values[oi][si] = *v;
+                        is_addr[oi][si] = *addr;
+                    }
                     None => {
                         let who: Vec<&str> = objects
                             .iter()
@@ -422,6 +484,7 @@ pub fn link(
         .iter()
         .map(|o| o.object.sections.iter().map(|s| s.bytes.clone()).collect())
         .collect();
+    let mut address_fields: Vec<u32> = Vec::new();
     for (oi, o) in objects.iter().enumerate() {
         for r in &o.object.relocs {
             let section = &o.object.sections[r.section as usize];
@@ -444,6 +507,8 @@ pub fn link(
             };
             let ctx = Ctx {
                 values: &values[oi],
+                addr: &is_addr[oi],
+                shift: 0,
                 pc: instr,
             };
             let value = match parsed.eval(&ctx) {
@@ -453,6 +518,33 @@ pub fn link(
                     continue;
                 }
             };
+            if options.track_addresses && r.kind == Kind::Abs {
+                const MOVE: i64 = 1 << 30;
+                let moved = Ctx {
+                    values: &values[oi],
+                    addr: &is_addr[oi],
+                    shift: MOVE,
+                    pc: instr + MOVE,
+                };
+                match parsed.eval(&moved).map(|v| v - value) {
+                    Ok(0) => {}
+                    Ok(MOVE) if r.width == 4 && r.big_endian => {
+                        address_fields.push((sec_base + r.offset as i64) as u32);
+                    }
+                    Ok(MOVE) => errors.push(format!(
+                        "{at}: {} holds an address of the program, which the loader can only relocate in a four-byte field (segment \"{}\" of {})",
+                        show(&r.expr, &o.object),
+                        section.name,
+                        o.file
+                    )),
+                    _ => errors.push(format!(
+                        "{at}: {} is neither an address nor a constant: it cannot be relocated (segment \"{}\" of {})",
+                        show(&r.expr, &o.object),
+                        section.name,
+                        o.file
+                    )),
+                }
+            }
             let (field, ok) = match r.kind {
                 Kind::Abs => (value, fits(value, r.width, false)),
                 Kind::Rel => {
@@ -491,20 +583,40 @@ pub fn link(
 
     // ---- output -----------------------------------------------------------------------------
     let mut pieces: Vec<Piece> = Vec::new();
+    let mut wide_pieces: Vec<WidePiece> = Vec::new();
+    let mut sections: Vec<PlacedSection> = Vec::new();
     let mut order: Vec<&Placed> = placed.iter().collect();
     order.sort_by_key(|p| p.addr);
     for p in order {
         let s = &objects[p.object].object.sections[p.section];
+        if s.size > 0 {
+            sections.push(PlacedSection {
+                name: s.name.clone(),
+                addr: p.addr,
+                size: s.size,
+                bss: s.bss,
+            });
+        }
         if s.bss || s.bytes.is_empty() {
             continue;
         }
         let bytes = images[p.object][p.section].clone();
-        pieces.push(Piece {
-            name: format!("{} {}", objects[p.object].file, s.name),
-            start: p.addr as u16,
+        let name = format!("{} {}", objects[p.object].file, s.name);
+        if !wide {
+            pieces.push(Piece {
+                name: name.clone(),
+                start: p.addr as u16,
+                bytes: bytes.clone(),
+            });
+        }
+        wide_pieces.push(WidePiece {
+            name,
+            start: p.addr,
             bytes,
         });
     }
+    address_fields.sort_unstable();
+    address_fields.dedup();
     let mut symbols: Vec<(String, i64)> = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
     for (oi, o) in objects.iter().enumerate() {
@@ -527,18 +639,21 @@ pub fn link(
     for (oi, o) in objects.iter().enumerate() {
         for (si, s) in o.object.symbols.iter().enumerate() {
             let v = values[oi][si];
-            if s.class == Class::Label && (0..=0xFFFF).contains(&v) {
+            if s.class == Class::Label && (0..options.limit as i64).contains(&v) {
                 let name: String = s
                     .name
                     .chars()
                     .map(|c| if c == '@' || c == '#' { '_' } else { c })
                     .collect();
-                let _ = writeln!(symbols_text, "{name} = ${v:04X}");
+                let _ = writeln!(symbols_text, "{name} = ${v:0digits$X}");
             }
         }
     }
     Ok(Linked {
         pieces,
+        wide: wide_pieces,
+        sections,
+        address_fields,
         symbols,
         map,
         notes: Vec::new(),

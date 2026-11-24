@@ -39,6 +39,18 @@ pub(crate) fn assemble_68000(
             "regions and reserves are for machines with a fixed memory layout; the {who} loader places the program"
         ));
     }
+    let items = crate::linked_items(layout, base);
+    if !items.is_empty() {
+        if layout.input.iter().any(|i| i.asm.is_some() || i.bin.is_some() || i.prg.is_some()) {
+            return Err(format!(
+                "the {who} target takes either `asm` sources or `src` / `obj` / `lib` inputs, not both"
+            ));
+        }
+        let mut defines: Vec<(String, i64)> =
+            layout.define.iter().map(|(k, v)| (k.clone(), *v)).collect();
+        defines.extend(cli_defines.iter().cloned());
+        return crate::m68klink::link_relocatable(layout, base, &items, &defines, who);
+    }
     let mut sources = Vec::new();
     for (n, input) in layout.input.iter().enumerate() {
         match (&input.asm, &input.bin, &input.prg, &input.symbols) {
@@ -70,6 +82,7 @@ pub(crate) fn assemble_68000(
     }
     let opts = M68kOptions {
         relocatable: true,
+        object: false,
         include_dirs: vec![base.to_path_buf()],
         defines,
     };

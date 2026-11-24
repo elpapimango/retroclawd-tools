@@ -13,6 +13,7 @@ pub mod emit;
 pub mod genesis;
 pub mod layout;
 pub mod link;
+pub mod m68klink;
 pub mod neogeo;
 pub mod nes;
 pub mod pcengine;
@@ -118,21 +119,50 @@ fn cpu_of(layout: &Layout) -> Result<rcasm::Cpu, String> {
     }
 }
 
+/// The layouts of the 68000 machines: their sources are assembled by the 68000 back end.
+pub(crate) fn is_68k(layout: &Layout) -> bool {
+    matches!(
+        layout.machine,
+        Machine::AtariSt | Machine::Amiga | Machine::X68000 | Machine::Genesis | Machine::NeoGeo
+    ) || (layout.machine == Machine::Generic
+        && matches!(layout.cpu.as_deref(), Some("68000" | "m68000" | "68k")))
+}
+
+/// The inputs that go through the linker (`src`, `obj`, `lib`), in order.
+pub(crate) fn linked_items(layout: &Layout, base: &Path) -> Vec<Item> {
+    let mut items = Vec::new();
+    for input in &layout.input {
+        for (list, make) in [
+            (&input.src, Item::Src as fn(PathBuf) -> Item),
+            (&input.obj, Item::Obj as fn(PathBuf) -> Item),
+            (&input.lib, Item::Lib as fn(PathBuf) -> Item),
+        ] {
+            if let Some(list) = list {
+                items.extend(list.list().into_iter().map(|p| make(resolve(base, &p))));
+            }
+        }
+    }
+    items
+}
+
 /// An input that goes through the linker.
-enum Item {
+pub(crate) enum Item {
     Src(PathBuf),
     Obj(PathBuf),
     Lib(PathBuf),
 }
 
 /// Assembles the `src` files to objects, reads the `obj` and `lib` files and links them by the layout's rules.
-fn link_inputs(
+pub(crate) fn link_inputs(
     layout: &Layout,
     base: &Path,
     items: &[Item],
     defines: &[(String, i64)],
+    options: link::LinkOptions,
+    extra_rules: &[link::Rule],
 ) -> Result<link::Linked, String> {
-    let cpu = cpu_of(layout)?;
+    let m68k = is_68k(layout);
+    let cpu = if m68k { None } else { Some(cpu_of(layout)?) };
     let mut objects = Vec::new();
     let mut libs = Vec::new();
     for item in items {
@@ -141,15 +171,24 @@ fn link_inputs(
                 let text = std::fs::read(path)
                     .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
                 let text = String::from_utf8_lossy(&text).into_owned();
-                let opts = rcasm::Options {
-                    cpu: Some(cpu),
-                    defines: defines.to_vec(),
-                    include_dirs: vec![base.to_path_buf()],
-                    ..rcasm::Options::default()
-                };
                 let name = path.to_string_lossy().into_owned();
-                let object = rcasm::assemble_object(&name, &text, &opts, &rcasm::DiskFiles)
-                    .map_err(|diags| {
+                let object = if m68k {
+                    let opts = rcasm::m68k::M68kOptions {
+                        defines: defines.to_vec(),
+                        include_dirs: vec![base.to_path_buf()],
+                        ..rcasm::m68k::M68kOptions::default()
+                    };
+                    rcasm::m68k::assemble_m68k_object(&name, &text, &opts, &rcasm::DiskFiles)
+                } else {
+                    let opts = rcasm::Options {
+                        cpu,
+                        defines: defines.to_vec(),
+                        include_dirs: vec![base.to_path_buf()],
+                        ..rcasm::Options::default()
+                    };
+                    rcasm::assemble_object(&name, &text, &opts, &rcasm::DiskFiles)
+                }
+                .map_err(|diags| {
                         diags
                             .iter()
                             .map(|d| d.to_string())
@@ -202,7 +241,8 @@ fn link_inputs(
             end: r.end as u32,
         })
         .collect();
-    link::link(objects, &libs, &rules, &regions).map_err(|e| {
+    rules.extend(extra_rules.iter().cloned());
+    link::link_with(objects, &libs, &rules, &regions, options).map_err(|e| {
         e.join(
             "
 ",
@@ -315,7 +355,7 @@ pub fn load(
     defines.extend(cli_defines.iter().cloned());
     let mut notes = Vec::new();
     if !linked.is_empty() {
-        let l = link_inputs(layout, base, &linked, &defines)?;
+        let l = link_inputs(layout, base, &linked, &defines, link::LinkOptions::default(), &[])?;
         pieces.extend(l.pieces);
         symbols.extend(l.symbols);
         symbols_text.push_str(&l.symbols_text);

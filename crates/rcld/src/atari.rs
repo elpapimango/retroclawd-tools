@@ -9,21 +9,8 @@
 use crate::Build;
 use crate::layout::Layout;
 use rc_common::prg::Prg;
-use rcasm::m68k::{M68kOptions, assemble_m68k, symbols_text};
-use std::path::{Path, PathBuf};
-
-fn read_source(base: &Path, p: &str) -> Result<(String, String), String> {
-    let path = if Path::new(p).is_absolute() {
-        PathBuf::from(p)
-    } else {
-        base.join(p)
-    };
-    let bytes = std::fs::read(&path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
-    Ok((
-        path.display().to_string(),
-        String::from_utf8_lossy(&bytes).into_owned(),
-    ))
-}
+use rcasm::m68k::symbols_text;
+use std::path::Path;
 
 pub fn build(
     layout: &Layout,
@@ -51,48 +38,7 @@ pub fn build(
     if !layout.region.is_empty() || !layout.reserve.is_empty() {
         return Err("regions and reserves are for machines with a fixed memory layout; the ST loader places the program".to_string());
     }
-    let mut sources = Vec::new();
-    for (n, input) in layout.input.iter().enumerate() {
-        match (&input.asm, &input.bin, &input.prg, &input.symbols) {
-            (Some(asm), None, None, None) => sources.extend(asm.list()),
-            _ => {
-                return Err(format!(
-                    "input {}: the Atari ST target takes assembler sources only (a raw binary cannot say which of its longs are addresses)",
-                    n + 1
-                ));
-            }
-        }
-    }
-    if sources.is_empty() {
-        return Err("no program: give [[input]] asm = [\"main.s\"]".to_string());
-    }
-    let mut defines: Vec<(String, i64)> =
-        layout.define.iter().map(|(k, v)| (k.clone(), *v)).collect();
-    defines.extend(cli_defines.iter().cloned());
-    // One source assembled from the sources in order: an include of each.
-    let mut text = String::new();
-    for s in &sources {
-        let (path, _) = read_source(base, s)?;
-        text.push_str(&format!(
-            "    .include \"{}\"\n",
-            path.replace('\\', "\\\\").replace('"', "\\\"")
-        ));
-    }
-    let opts = M68kOptions {
-        relocatable: true,
-        include_dirs: vec![base.to_path_buf()],
-        defines,
-    };
-    let asm = assemble_m68k("layout", &text, &opts, &rcasm::DiskFiles).map_err(|errors| {
-        errors
-            .iter()
-            .map(|d| d.to_string())
-            .collect::<Vec<_>>()
-            .join("\n")
-    })?;
-    if asm.text.is_empty() {
-        return Err("the program has no text".to_string());
-    }
+    let asm = crate::amiga::assemble_68000(layout, base, cli_defines, "Atari ST")?;
     let prg = Prg {
         text: asm.text.clone(),
         data: asm.data.clone(),

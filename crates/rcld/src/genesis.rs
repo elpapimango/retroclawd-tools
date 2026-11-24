@@ -64,6 +64,9 @@ pub fn build(
     let mut sources = Vec::new();
     let mut pieces: Vec<(String, u32, Vec<u8>)> = Vec::new();
     for (n, input) in layout.input.iter().enumerate() {
+        if input.src.is_some() || input.obj.is_some() || input.lib.is_some() {
+            continue;
+        }
         match (&input.asm, &input.bin, &input.prg, &input.symbols) {
             (Some(asm), None, None, None) => sources.extend(asm.list()),
             (None, Some(bin), None, None) => {
@@ -106,6 +109,7 @@ pub fn build(
         }
         let opts = M68kOptions {
             relocatable: false,
+            object: false,
             include_dirs: vec![base.to_path_buf()],
             defines,
         };
@@ -125,6 +129,23 @@ pub fn build(
             .map(|s| (s.name.clone(), s.value))
             .collect();
         symbols_txt = symbols_text(&asm, false);
+    }
+    let items = crate::linked_items(layout, base);
+    if !items.is_empty() {
+        let defines: Vec<(String, i64)> = layout
+            .define
+            .iter()
+            .map(|(k, v)| (k.clone(), *v))
+            .chain(cli_defines.iter().cloned())
+            .collect();
+        // the vectors and the header (generated, or `[[segment]] name = "TEXT" start = 0` to write them) come before $200;
+        // the work RAM is at $FF0000
+        let l = crate::m68klink::link_flat(layout, base, &items, &defines, 0x200, 0xFF_0000)?;
+        for w in l.wide {
+            pieces.push((w.name, w.start, w.bytes));
+        }
+        symbols.extend(l.symbols);
+        symbols_txt.push_str(&l.symbols_text);
     }
     if pieces.is_empty() {
         return Err("no program: give [[input]] asm = [\"main.s\"]".to_string());

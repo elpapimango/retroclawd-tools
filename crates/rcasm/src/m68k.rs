@@ -35,6 +35,10 @@ pub struct M68kOptions {
     /// A relocatable program (a `.PRG`): the text starts at 0, `.org` is an error, and a long that holds an address
     /// is recorded in [`M68kAssembly::relocs`]. Off: a flat image at `.org` (default 0).
     pub relocatable: bool,
+    /// A relocatable object (`.rco`) for the linker: sections `TEXT`, `DATA` and `BSS`, imports (`xref`), exports
+    /// (`xdef`, `.globl`), and a relocation for every field that depends on an address or an import. Excludes
+    /// `relocatable`; `.org` is an error (the linker places the sections).
+    pub object: bool,
     pub include_dirs: Vec<PathBuf>,
     /// `-D NAME=VALUE`
     pub defines: Vec<(String, i64)>,
@@ -70,6 +74,8 @@ pub struct M68kAssembly {
     pub relocs: Vec<u32>,
     pub symbols: Vec<M68kSymbol>,
     pub listing: Vec<M68kListing>,
+    /// The object, when `M68kOptions::object` was set.
+    pub object: Option<rc_common::obj::Object>,
 }
 
 impl M68kAssembly {
@@ -164,13 +170,56 @@ struct Asm<'a> {
     listing: Vec<M68kListing>,
     unresolved: Cell<bool>,
     depth: Cell<u32>,
+    /// Object mode: names declared `xref` (or `.global` and never defined), in order.
+    imports: Vec<String>,
+    /// Object mode: names declared `xdef` / `.export`.
+    exports: Vec<String>,
+    /// Object mode: names declared `.globl` / `.global`: exported when defined, imported when not.
+    global_names: Vec<String>,
+    /// Object mode, last pass: fields the instruction being built needs relocated.
+    pending: std::cell::RefCell<Vec<Pending>>,
+    obj_relocs: Vec<ObjReloc>,
+    /// The file and line of the statement being assembled.
+    cur: (Rc<str>, u32),
+}
+
+/// A field of the instruction being built that the linker must fill in (object mode).
+struct Pending {
+    /// Bytes of the field and how far into its word it starts (a byte in a brief extension word or an immediate byte).
+    width: u8,
+    sub: u8,
+    /// A displacement from the extension word's address, not an absolute value.
+    rel: bool,
+    expr: String,
+}
+
+/// A pending field placed in the instruction: bytes from the instruction's start.
+struct Mark {
+    off: u32,
+    width: u8,
+    rel: bool,
+    bias: i64,
+    expr: String,
+}
+
+struct ObjReloc {
+    sec: Sec,
+    offset: u32,
+    width: u8,
+    rel: bool,
+    bias: i64,
+    instr_back: u32,
+    expr: String,
+    file: Rc<str>,
+    line: u32,
 }
 
 /// Evaluation of expressions at one point of one pass.
 struct Sc<'a, 'b> {
     asm: &'b Asm<'a>,
-    /// Added to every section address and to the pc: shifting the whole program tells which values are addresses.
-    shift: i64,
+    /// Added to the addresses of the text, data and bss sections, and (last) to imports: shifting one at a time tells
+    /// which of them a value depends on, and shifting all of them which values are addresses.
+    shifts: [i64; 4],
     pc: i64,
 }
 
@@ -178,7 +227,9 @@ impl Scope for Sc<'_, '_> {
     fn symbol(&self, name: &str) -> Option<i64> {
         let a = self.asm;
         match a.symbols.get(name) {
-            Some(Def::Label(sec, off)) => Some(a.base[*sec as usize] + *off as i64 + self.shift),
+            Some(Def::Label(sec, off)) => {
+                Some(a.base[*sec as usize] + *off as i64 + self.shifts[*sec as usize])
+            }
             Some(Def::Const(v)) => Some(*v),
             Some(Def::Lazy(text)) => {
                 if a.depth.get() > 32 {
@@ -190,7 +241,9 @@ impl Scope for Sc<'_, '_> {
                 v
             }
             None => {
-                if a.strict {
+                if a.imports.iter().any(|i| i == name) {
+                    Some(self.shifts[3])
+                } else if a.strict {
                     None
                 } else {
                     a.unresolved.set(true);
@@ -397,6 +450,12 @@ impl<'a> Asm<'a> {
             base: [0; 3],
             out: [Vec::new(), Vec::new()],
             relocs: Vec::new(),
+            imports: Vec::new(),
+            exports: Vec::new(),
+            global_names: Vec::new(),
+            pending: std::cell::RefCell::new(Vec::new()),
+            obj_relocs: Vec::new(),
+            cur: (Rc::from(""), 0),
             org: None,
             autobranch: false,
             branch_short: Vec::new(),
@@ -412,36 +471,112 @@ impl<'a> Asm<'a> {
         self.base[self.sec as usize] + self.off[self.sec as usize] as i64
     }
 
-    /// The value of an expression, and whether it is an address of this program (relocatable output, final pass).
+    /// The value of an expression, and whether it is an address of this program (relocatable output, final pass) or,
+    /// in an object, whether it is not a constant.
     fn value(&self, text: &str, pc: i64) -> Result<(i64, bool), String> {
+        let (v, d) = self.deltas(text, pc)?;
+        if self.opts.object {
+            return Ok((v, d.iter().any(|x| *x != 0)));
+        }
+        Ok((v, d[0] != 0))
+    }
+
+    /// The value, and how much it changes when the text, data, bss sections and the imports each move by `SHIFT`
+    /// (zero for the sections an expression does not depend on). Not an address or a constant: an error, outside
+    /// objects (where the linker evaluates any expression).
+    fn deltas(&self, text: &str, pc: i64) -> Result<(i64, [i64; 4]), String> {
         let e = expr::parse(text)?;
-        let eval = |shift: i64| {
+        let cur = self.sec as usize;
+        let eval = |shifts: [i64; 4]| {
             e.eval(&Sc {
                 asm: self,
-                shift,
-                pc: pc + shift,
+                shifts,
+                pc: pc + shifts[cur],
             })
         };
         let fail = |err: EvalError| match err {
             EvalError::Undefined(name) => format!("undefined symbol \"{name}\""),
             EvalError::Other(m) => m,
         };
-        let v1 = eval(0).map_err(fail)?;
-        if !(self.strict && self.opts.relocatable) {
-            return Ok((v1, false));
+        let v1 = eval([0; 4]).map_err(fail)?;
+        if self.opts.object {
+            let mut d = [0; 4];
+            for (i, slot) in d.iter_mut().enumerate() {
+                let mut s = [0; 4];
+                s[i] = SHIFT;
+                *slot = eval(s).map_err(fail)? - v1;
+            }
+            return Ok((v1, d));
         }
-        let v2 = eval(SHIFT).map_err(fail)?;
+        if !(self.strict && self.opts.relocatable) {
+            return Ok((v1, [0; 4]));
+        }
+        let v2 = eval([SHIFT, SHIFT, SHIFT, 0]).map_err(fail)?;
         match v2 - v1 {
-            0 => Ok((v1, false)),
-            SHIFT => Ok((v1, true)),
+            0 => Ok((v1, [0; 4])),
+            SHIFT => Ok((v1, [SHIFT, 0, 0, 0])),
             _ => Err(format!(
                 "\"{text}\" is not an address or a constant: it cannot be relocated"
             )),
         }
     }
 
+    /// A constant. In an object an address or an import is not one (it is only known to the linker).
     fn number(&self, text: &str, pc: i64) -> Result<i64, String> {
+        let (v, dep) = self.value(text, pc)?;
+        if dep && self.opts.object && self.strict {
+            return Err(format!(
+                "\"{text}\" is not a constant here: it depends on an address or an import"
+            ));
+        }
+        Ok(v)
+    }
+
+    /// The value of an expression for a field the assembler cannot range check because the linker decides it,
+    /// without the constant check of [`Asm::number`].
+    fn raw_number(&self, text: &str, pc: i64) -> Result<i64, String> {
         self.value(text, pc).map(|v| v.0)
+    }
+
+    /// An absolute field of `width` bytes, `sub` bytes into its word. In an object, a value that is not constant is
+    /// recorded for the linker (and not range checked here); the flag says so.
+    fn abs_field(&self, text: &str, ipc: i64, width: u8, sub: u8) -> Result<(i64, bool), String> {
+        let (v, dep) = self.value(text, ipc)?;
+        if self.opts.object && dep {
+            if self.strict {
+                self.pending.borrow_mut().push(Pending {
+                    width,
+                    sub,
+                    rel: false,
+                    expr: text.to_string(),
+                });
+            }
+            return Ok((v, true));
+        }
+        Ok((v, dep))
+    }
+
+    /// A displacement from `at` (the extension word's address) to `text`, `width` bytes. In an object, a target that
+    /// is not a fixed distance away (another section, an import, an absolute address) is left to the linker: the
+    /// flag says so and the value is 0.
+    fn rel_field(&self, text: &str, ipc: i64, at: i64, width: u8, sub: u8) -> Result<(i64, bool), String> {
+        let (t, d) = self.deltas(text, ipc)?;
+        if self.opts.object {
+            let cur = self.sec as usize;
+            let same_section = (0..4).all(|i| d[i] == if i == cur { SHIFT } else { 0 });
+            if !same_section {
+                if self.strict {
+                    self.pending.borrow_mut().push(Pending {
+                        width,
+                        sub,
+                        rel: true,
+                        expr: text.to_string(),
+                    });
+                }
+                return Ok((0, true));
+            }
+        }
+        Ok((wrap24(t - at), false))
     }
 
     fn err(&mut self, line: &Line, message: impl Into<String>) {
@@ -458,6 +593,7 @@ impl<'a> Asm<'a> {
     fn ea(&self, op: &Op, sz: Sz, at: i64, ipc: i64) -> Result<(u16, Vec<Ext>), String> {
         // The first pass does not know every value yet: it only needs the size, so it does not range check.
         let lax = !self.strict;
+        let obj = self.opts.object;
         let word = |v: i64, what: &str| -> Result<u16, String> {
             if lax || (-0x8000..=0xFFFF).contains(&v) {
                 Ok(v as u16)
@@ -494,51 +630,77 @@ impl<'a> Asm<'a> {
             Op::Post(n) => (0x18 | *n as u16, vec![]),
             Op::Pre(n) => (0x20 | *n as u16, vec![]),
             Op::Disp(e, n) => {
-                let (v, r) = self.value(e, ipc)?;
-                no_reloc(r, "displacement")?;
-                (0x28 | *n as u16, vec![Ext::W(disp16(v)?)])
+                let (v, r) = self.abs_field(e, ipc, 2, 0)?;
+                let w = if r && obj {
+                    v as u16
+                } else {
+                    no_reloc(r, "displacement")?;
+                    disp16(v)?
+                };
+                (0x28 | *n as u16, vec![Ext::W(w)])
             }
             Op::Idx(e, n, reg, long) => {
-                let (v, r) = self.value(e, ipc)?;
-                no_reloc(r, "displacement")?;
-                (0x30 | *n as u16, vec![Ext::W(brief(v, *reg, *long)?)])
+                let (v, r) = self.abs_field(e, ipc, 1, 1)?;
+                let w = if r && obj {
+                    ((*reg as u16) << 12) | ((*long as u16) << 11) | (v as u8 as u16)
+                } else {
+                    no_reloc(r, "displacement")?;
+                    brief(v, *reg, *long)?
+                };
+                (0x30 | *n as u16, vec![Ext::W(w)])
             }
             Op::PcDisp(e) => {
-                let (target, _) = self.value(e, ipc)?;
-                (0x3A, vec![Ext::W(disp16(wrap24(target - at))?)])
+                let (d, dep) = self.rel_field(e, ipc, at, 2, 0)?;
+                (0x3A, vec![Ext::W(if dep { 0 } else { disp16(d)? })])
             }
             Op::PcIdx(e, reg, long) => {
-                let (target, _) = self.value(e, ipc)?;
-                (0x3B, vec![Ext::W(brief(wrap24(target - at), *reg, *long)?)])
+                let (d, dep) = self.rel_field(e, ipc, at, 1, 1)?;
+                let w = if dep { ((*reg as u16) << 12) | ((*long as u16) << 11) } else { brief(d, *reg, *long)? };
+                (0x3B, vec![Ext::W(w)])
             }
             Op::AbsW(e) => {
-                let (v, r) = self.value(e, ipc)?;
-                no_reloc(r, "absolute address")?;
-                (0x38, vec![Ext::W(word(v, "address")?)])
+                let (v, r) = self.abs_field(e, ipc, 2, 0)?;
+                let w = if r && obj {
+                    v as u16
+                } else {
+                    no_reloc(r, "absolute address")?;
+                    word(v, "address")?
+                };
+                (0x38, vec![Ext::W(w)])
             }
             Op::AbsL(e) | Op::Bare(e) => {
-                let (v, r) = self.value(e, ipc)?;
-                if !lax && !(-0x8000_0000..=0xFFFF_FFFF).contains(&v) {
+                let (v, r) = self.abs_field(e, ipc, 4, 0)?;
+                if !lax && !(r && obj) && !(-0x8000_0000..=0xFFFF_FFFF).contains(&v) {
                     return Err(format!("address {v} does not fit in 32 bits"));
                 }
                 (0x39, vec![Ext::L(v as u32, r)])
             }
             Op::Imm(e) => {
-                let (v, r) = self.value(e, ipc)?;
+                let (width, sub) = match sz {
+                    Sz::B => (1, 1),
+                    Sz::W => (2, 0),
+                    Sz::L => (4, 0),
+                };
+                let (v, r) = self.abs_field(e, ipc, width, sub)?;
+                let dep = r && obj;
                 match sz {
                     Sz::B => {
-                        no_reloc(r, "immediate")?;
-                        if !lax && !(-128..=255).contains(&v) {
-                            return Err(format!("{v} does not fit in a byte"));
+                        if !dep {
+                            no_reloc(r, "immediate")?;
+                            if !lax && !(-128..=255).contains(&v) {
+                                return Err(format!("{v} does not fit in a byte"));
+                            }
                         }
                         (0x3C, vec![Ext::W(v as u8 as u16)])
                     }
                     Sz::W => {
-                        no_reloc(r, "immediate")?;
-                        (0x3C, vec![Ext::W(word(v, "immediate")?)])
+                        if !dep {
+                            no_reloc(r, "immediate")?;
+                        }
+                        (0x3C, vec![Ext::W(if dep { v as u16 } else { word(v, "immediate")? })])
                     }
                     Sz::L => {
-                        if !lax && !(-0x8000_0000..=0xFFFF_FFFF).contains(&v) {
+                        if !dep && !lax && !(-0x8000_0000..=0xFFFF_FFFF).contains(&v) {
                             return Err(format!("{v} does not fit in 32 bits"));
                         }
                         (0x3C, vec![Ext::L(v as u32, r)])
@@ -563,15 +725,29 @@ impl<'a> Asm<'a> {
 
     /// One instruction: its opcode word and extension words from the pieces. Extension words of the operands are
     /// computed in the order they are written, each knowing where it lies (PC-relative operands need that).
-    fn build(&self, insn: &Insn, pc: i64) -> Result<Vec<Ext>, String> {
+    fn build(&self, insn: &Insn, pc: i64) -> Result<(Vec<Ext>, Vec<Mark>), String> {
         // First the operands' extension words in order, with the pc moving over what is already there.
         let mut words: Vec<Ext> = Vec::new();
         let mut fields: Vec<u16> = Vec::new();
+        let mut marks: Vec<Mark> = Vec::new();
+        self.pending.borrow_mut().clear();
+        let mut drain = |at: i64, this: &Self| {
+            for p in this.pending.borrow_mut().drain(..) {
+                marks.push(Mark {
+                    off: (at - pc) as u32 + p.sub as u32,
+                    width: p.width,
+                    rel: p.rel,
+                    bias: at - pc,
+                    expr: p.expr,
+                });
+            }
+        };
         for item in &insn.parts {
             match item {
                 Part::Ea(op, sz) => {
                     let at = pc + 2 + Self::ext_len(&words);
                     let (field, ext) = self.ea(op, *sz, at, pc)?;
+                    drain(at, self);
                     fields.push(field);
                     words.extend(ext);
                 }
@@ -579,13 +755,14 @@ impl<'a> Asm<'a> {
                 Part::WordFrom(f) => {
                     let at = pc + 2 + Self::ext_len(&words);
                     words.push(Ext::W(f(self, at)?));
+                    drain(at, self);
                 }
             }
         }
         let opcode = (insn.opcode)(&fields);
         let mut all = vec![Ext::W(opcode)];
         all.extend(words);
-        Ok(all)
+        Ok((all, marks))
     }
 }
 
@@ -943,8 +1120,14 @@ impl Asm<'_> {
     /// A word displacement to `target` from the extension word at `at`; in the first pass a target that is not yet
     /// known is not range checked.
     fn rel16(&self, target: &str, at: i64, what: &str) -> Result<u16, String> {
+        if self.opts.object && self.strict {
+            let (_, dep) = self.rel_field(target, at - 2, at, 2, 0)?;
+            if dep {
+                return Ok(0);
+            }
+        }
         let before = self.unresolved.replace(false);
-        let t = self.number(target, at - 2);
+        let t = self.raw_number(target, at - 2);
         let unresolved = self.unresolved.replace(before);
         let t = t?;
         if unresolved && !self.strict {
@@ -962,8 +1145,16 @@ impl Asm<'_> {
     fn branch(&mut self, cc: u16, sz: Option<Sz>, target: &str, pc: i64) -> Result<Insn, String> {
         let known = |a: &Self| {
             let before = a.unresolved.replace(false);
-            let t = a.number(target, pc);
-            let unresolved = a.unresolved.replace(before);
+            let t = a.raw_number(target, pc);
+            let mut unresolved = a.unresolved.replace(before);
+            if a.opts.object {
+                // a short branch needs a target a fixed distance away: a label of this section
+                let cur = a.sec as usize;
+                match a.deltas(target, pc) {
+                    Ok((_, d)) if (0..4).all(|i| d[i] == if i == cur { SHIFT } else { 0 }) => {}
+                    _ => unresolved = true,
+                }
+            }
             (t, unresolved)
         };
         let short = match sz {
@@ -996,6 +1187,12 @@ impl Asm<'_> {
         };
         if short {
             let (t, unresolved) = known(self);
+            if self.opts.object && self.strict && unresolved {
+                return Err(
+                    "a short branch cannot reach a label of another section, an import or an absolute address: use .w"
+                        .to_string(),
+                );
+            }
             let t = t?;
             let disp = wrap24(t - (pc + 2));
             let byte = if unresolved && !self.strict {
@@ -1384,19 +1581,18 @@ impl Asm<'_> {
             self.symbols.insert(name.to_string(), def);
         } else if matches!(def, Def::Lazy(_)) {
             // Settled in pass 1 as far as it could be; in pass 2 everything is known.
-            if let Ok(v) = self.number(
-                match &def {
-                    Def::Lazy(t) => t,
-                    _ => unreachable!(),
-                },
-                self.pc(),
-            ) {
+            let text = match &def {
+                Def::Lazy(t) => t.clone(),
+                _ => unreachable!(),
+            };
+            if let Ok((v, false)) = self.value(&text, self.pc()) {
                 self.symbols.insert(name.to_string(), Def::Const(v));
             }
         }
     }
 
     fn statement(&mut self, line: &Line) {
+        self.cur = (line.file.clone(), line.line as u32);
         let code = strip_comment(&line.text);
         let mut rest = code.trim_end();
         if rest.trim().is_empty() {
@@ -1422,11 +1618,22 @@ impl Asm<'_> {
                 .then(|| after[word_end..].trim())
             });
             if let Some(value) = eq_form {
-                let def = match self.number(value, self.pc()) {
-                    Ok(v) if !self.unresolved.get() => Def::Const(v),
-                    _ => {
-                        self.unresolved.set(false);
-                        Def::Lazy(value.to_string())
+                let def = if self.opts.object {
+                    // an alias of an address stays an expression; a constant is folded
+                    match self.value(value, self.pc()) {
+                        Ok((v, false)) if !self.unresolved.get() => Def::Const(v),
+                        _ => {
+                            self.unresolved.set(false);
+                            Def::Lazy(value.to_string())
+                        }
+                    }
+                } else {
+                    match self.number(value, self.pc()) {
+                        Ok(v) if !self.unresolved.get() => Def::Const(v),
+                        _ => {
+                            self.unresolved.set(false);
+                            Def::Lazy(value.to_string())
+                        }
                     }
                 };
                 self.define(line, &name, def);
@@ -1529,7 +1736,21 @@ impl Asm<'_> {
                 };
                 return Ok(());
             }
-            "globl" | "global" | "xdef" | "xref" | "extern" => return Ok(()),
+            "globl" | "global" | "xdef" | "xref" | "extern" | "export" | "import" => {
+                if self.opts.object {
+                    for n in operands.split(',').map(str::trim).filter(|n| !n.is_empty()) {
+                        let list = match stem {
+                            "xdef" | "export" => &mut self.exports,
+                            "xref" | "extern" | "import" => &mut self.imports,
+                            _ => &mut self.global_names,
+                        };
+                        if !list.iter().any(|x| x == n) {
+                            list.push(n.to_string());
+                        }
+                    }
+                }
+                return Ok(());
+            }
             "even" => {
                 if self.off[self.sec as usize] % 2 == 1 {
                     self.reserve(1);
@@ -1548,6 +1769,9 @@ impl Asm<'_> {
                 return Ok(());
             }
             "org" => {
+                if self.opts.object {
+                    return Err(".org has no meaning in an object: place the section with a [[segment]] rule".to_string());
+                }
                 if self.opts.relocatable {
                     return Err(".org has no meaning in a relocatable program".to_string());
                 }
@@ -1596,7 +1820,31 @@ impl Asm<'_> {
                         continue;
                     }
                     let at = self.pc();
-                    let (v, reloc) = self.value(item, at)?;
+                    let width = match s {
+                        Sz::B => 1,
+                        Sz::W => 2,
+                        Sz::L => 4,
+                    };
+                    let (v, reloc) = self.abs_field(item, at, width, 0)?;
+                    if self.opts.object && reloc {
+                        // the linker fills the field in and checks that the value fits
+                        for p in self.pending.borrow_mut().drain(..) {
+                            self.obj_relocs.push(ObjReloc {
+                                sec: self.sec,
+                                offset: self.off[self.sec as usize],
+                                width: p.width,
+                                rel: false,
+                                bias: 0,
+                                instr_back: 0,
+                                expr: p.expr,
+                                file: self.cur.0.clone(),
+                                line: self.cur.1,
+                            });
+                        }
+                        let bytes = (v as u32).to_be_bytes();
+                        self.emit(&bytes[4 - width as usize..]);
+                        continue;
+                    }
                     match s {
                         Sz::B => {
                             if !(-128..=255).contains(&v) || reloc {
@@ -1635,8 +1883,8 @@ impl Asm<'_> {
         let _ = word;
         let raw: Vec<&str> = split_top(operands);
         let insn = self.instruction(stem, sz, &raw, pc)?;
-        let parts = self.build(&insn, pc)?;
-        self.emit_insn(parts, pc)
+        let (parts, marks) = self.build(&insn, pc)?;
+        self.emit_insn(parts, marks, pc)
     }
 
     fn include(&mut self, _line: &Line, _operands: &str) -> Result<(), String> {
@@ -1661,15 +1909,15 @@ impl Asm<'_> {
         (self.base[1] - self.base[0]) as u32
     }
 
-    fn emit_insn(&mut self, parts: Vec<Ext>, pc: i64) -> Result<(), String> {
+    fn emit_insn(&mut self, parts: Vec<Ext>, marks: Vec<Mark>, pc: i64) -> Result<(), String> {
         let mut bytes = Vec::new();
-        let mut marks = Vec::new();
+        let mut gemdos_marks = Vec::new();
         for p in &parts {
             match p {
                 Ext::W(w) => bytes.extend(be16(*w)),
                 Ext::L(v, reloc) => {
-                    if *reloc {
-                        marks.push(bytes.len() as u32);
+                    if *reloc && !self.opts.object {
+                        gemdos_marks.push(bytes.len() as u32);
                     }
                     bytes.extend(v.to_be_bytes());
                 }
@@ -1680,8 +1928,23 @@ impl Asm<'_> {
         if text.starts_with("dc.") || len != bytes.len() {
             return Err("this combination of operands is not a 68000 instruction".to_string());
         }
-        for m in marks {
+        for m in gemdos_marks {
             self.note_reloc(m);
+        }
+        if self.opts.object && self.strict {
+            for m in marks {
+                self.obj_relocs.push(ObjReloc {
+                    sec: self.sec,
+                    offset: self.off[self.sec as usize] + m.off,
+                    width: m.width,
+                    rel: m.rel,
+                    bias: m.bias,
+                    instr_back: m.off,
+                    expr: m.expr,
+                    file: self.cur.0.clone(),
+                    line: self.cur.1,
+                });
+            }
         }
         self.emit(&bytes);
         Ok(())
@@ -1782,11 +2045,26 @@ pub fn assemble_m68k(
     let text_len = sizes[0] + (sizes[0] & 1);
     let data_len = sizes[1] + (sizes[1] & 1);
     let origin = asm.org.unwrap_or(0) as i64;
-    let bases = [
-        origin,
-        origin + text_len as i64,
-        origin + (text_len + data_len) as i64,
-    ];
+    // in an object every section starts at 0: the linker places them
+    let bases = if opts.object {
+        [0; 3]
+    } else {
+        [
+            origin,
+            origin + text_len as i64,
+            origin + (text_len + data_len) as i64,
+        ]
+    };
+    for n in asm.global_names.clone() {
+        if !asm.symbols.contains_key(&n) && !asm.imports.contains(&n) {
+            asm.imports.push(n);
+        }
+    }
+    for n in asm.exports.clone() {
+        if !asm.symbols.contains_key(&n) {
+            return Err(vec![Diag::new(name, 0, format!("\"{n}\" is exported but not defined"))]);
+        }
+    }
     // Pass 2: values.
     asm.strict = true;
     asm.base = bases;
@@ -1838,14 +2116,173 @@ pub fn assemble_m68k(
     let mut relocs = std::mem::take(&mut asm.relocs);
     relocs.sort_unstable();
     relocs.dedup();
+    let bss = sizes[2] + (sizes[2] & 1);
+    let object = if opts.object {
+        Some(build_object(name, &asm, &text, &data, bss)?)
+    } else {
+        None
+    };
     Ok(M68kAssembly {
         text,
         data,
-        bss: sizes[2] + (sizes[2] & 1),
+        bss,
         origin: origin as u32,
         relocs,
         symbols,
         listing: asm.listing,
+        object,
+    })
+}
+
+/// Assembles `source` to a relocatable object: sections `TEXT`, `DATA` and `BSS`, a symbol table of the labels,
+/// exports and imports, and a relocation for every field that depends on an address or an import.
+pub fn assemble_m68k_object(
+    name: &str,
+    source: &str,
+    opts: &M68kOptions,
+    files: &dyn Files,
+) -> Result<rc_common::obj::Object, Vec<Diag>> {
+    let mut o = opts.clone();
+    o.object = true;
+    o.relocatable = false;
+    let asm = assemble_m68k(name, source, &o, files)?;
+    asm.object
+        .ok_or_else(|| vec![Diag::new(name, 0, "internal error: no object was built")])
+}
+
+/// An expression of the source as the object file stores it: constants folded, addresses and imports by symbol index.
+fn to_obj_expr(
+    asm: &Asm,
+    e: &expr::Expr,
+    index: &HashMap<String, u32>,
+    depth: u32,
+) -> Result<rc_common::obj::Expr, String> {
+    use rc_common::obj;
+    if depth > 32 {
+        return Err("the definitions of the symbols refer to each other".to_string());
+    }
+    Ok(match e {
+        expr::Expr::Num(n) => obj::Expr::Num(*n),
+        expr::Expr::Pc => obj::Expr::Pc,
+        expr::Expr::Sym(n) => match asm.symbols.get(n) {
+            Some(Def::Label(..)) => obj::Expr::Sym(*index.get(n).ok_or_else(|| format!("\"{n}\" has no symbol"))?),
+            Some(Def::Const(v)) => obj::Expr::Num(*v),
+            Some(Def::Lazy(t)) => to_obj_expr(asm, &expr::parse(t)?, index, depth + 1)?,
+            None => match index.get(n) {
+                Some(i) => obj::Expr::Sym(*i),
+                None => return Err(format!("undefined symbol \"{n}\"")),
+            },
+        },
+        expr::Expr::Unary(op, a) => obj::Expr::Unary(*op as u8, Box::new(to_obj_expr(asm, a, index, depth)?)),
+        expr::Expr::Binary(op, a, b) => obj::Expr::Binary(
+            op.code(),
+            Box::new(to_obj_expr(asm, a, index, depth)?),
+            Box::new(to_obj_expr(asm, b, index, depth)?),
+        ),
+    })
+}
+
+fn build_object(
+    name: &str,
+    asm: &Asm,
+    text: &[u8],
+    data: &[u8],
+    bss: u32,
+) -> Result<rc_common::obj::Object, Vec<Diag>> {
+    use rc_common::obj;
+    let mut symbols: Vec<obj::Symbol> = Vec::new();
+    let mut index: HashMap<String, u32> = HashMap::new();
+    let exported = |n: &str| asm.exports.iter().chain(&asm.global_names).any(|x| x == n);
+    for n in &asm.order {
+        match asm.symbols.get(n) {
+            Some(Def::Label(sec, off)) => {
+                index.insert(n.clone(), symbols.len() as u32);
+                symbols.push(obj::Symbol {
+                    name: n.clone(),
+                    class: obj::Class::Label,
+                    global: exported(n),
+                    zeropage: false,
+                    section: *sec as u32,
+                    value: *off as i64,
+                });
+            }
+            Some(Def::Const(v)) if exported(n) => symbols.push(obj::Symbol {
+                name: n.clone(),
+                class: obj::Class::Const,
+                global: true,
+                zeropage: false,
+                section: 0,
+                value: *v,
+            }),
+            Some(Def::Lazy(_)) if exported(n) => {
+                return Err(vec![Diag::new(
+                    name,
+                    0,
+                    format!("\"{n}\" is exported but is not a constant or a label"),
+                )]);
+            }
+            _ => {}
+        }
+    }
+    for n in &asm.imports {
+        index.insert(n.clone(), symbols.len() as u32);
+        symbols.push(obj::Symbol {
+            name: n.clone(),
+            class: obj::Class::Import,
+            global: true,
+            zeropage: false,
+            section: 0,
+            value: 0,
+        });
+    }
+    let mut files: Vec<String> = vec![name.to_string()];
+    let mut relocs = Vec::new();
+    for r in &asm.obj_relocs {
+        let at = Diag::new(&*r.file, r.line as usize, "");
+        let e = expr::parse(&r.expr)
+            .and_then(|e| to_obj_expr(asm, &e, &index, 0))
+            .map_err(|m| vec![Diag::new(&*r.file, r.line as usize, m)])?;
+        let _ = at;
+        let file = match files.iter().position(|f| f == &*r.file) {
+            Some(i) => i,
+            None => {
+                files.push(r.file.to_string());
+                files.len() - 1
+            }
+        };
+        relocs.push(obj::Reloc {
+            section: r.sec as u32,
+            offset: r.offset,
+            width: r.width,
+            big_endian: true,
+            kind: if r.rel { obj::Kind::Rel } else { obj::Kind::Abs },
+            bias: r.bias,
+            instr_back: r.instr_back,
+            expr: e,
+            file: file as u32,
+            line: r.line,
+        });
+    }
+    let section = |name: &str, bytes: &[u8], bss_size: Option<u32>| obj::Section {
+        name: name.to_string(),
+        bss: bss_size.is_some(),
+        zeropage: false,
+        align: 2,
+        size: bss_size.unwrap_or(bytes.len() as u32),
+        addr: None,
+        bytes: if bss_size.is_some() { Vec::new() } else { bytes.to_vec() },
+    };
+    Ok(obj::Object {
+        cpu: "68000".to_string(),
+        name: name.to_string(),
+        files,
+        sections: vec![
+            section("TEXT", text, None),
+            section("DATA", data, None),
+            section("BSS", &[], Some(bss)),
+        ],
+        symbols,
+        relocs,
     })
 }
 
