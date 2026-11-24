@@ -46,6 +46,20 @@ holds the assembler, linker, archiver, image writers, converters and the `rcb` d
 | 6 | Asset converters `rcasset` / `rcb asset` | tools | Golden round trips: picture -> data -> emulator screen |
 | 7 | Debug info: `.rcdbg` writer; `rcdd --debug-info`, source stepping | tools, emulator | Break on `file:line`, step by source line on three CPUs |
 
+## Status (2026-11-24, tools 0.5.0)
+
+| # | State |
+|---|---|
+| 0 | done (tools 0.2.0) |
+| 1 | done: `.rco` / `.rca`, relocatable `rcasm`, `rcar`, the linker; since 0.5.0 also for the 68000 (`rcasm --cpu 68000 -f object`, loader relocations for the Atari ST, Amiga and X68000) |
+| 2a | done: 65816, SPC700, 2A03, 68010-68030 with FPU, PMMU, SA-1 (with character conversion type 1), Super FX; the 68000 family has a disassembler for the integer set, the FPU and the PMMU. Semantics of the FPU, PMMU, SA-1 and GSU are `[H?]` (no reference to compare with) |
+| 2b | done: NES, SNES, X68000 (`.x`, `.xdf` floppies), Amiga (hunk, ADF) |
+| 3 | done for every machine in the list: images for ZX81 to Neo Geo, the Mega-CD data disc (`machine = "segacd"`) and the Human68k floppy; checked by booting in retroclawd where it has the machine (pcengine, genesis, neogeo, c64, spectrum, cpc, atari-st boot `rcb new` skeletons headless; the Atari 8-bit needs firmware this machine lacks); the NES, SNES, Amiga, X68000 and Mega-CD images are checked against format readers and 7-Zip only |
+| 4 | ca65: scopes, unnamed labels, `.repeat`, `.define`, `.struct`, `.enum`, macro `.local`, `.ifblank`, ld65 `.cfg`. Not done: `.union`, `.charmap`, `.ifconst`; the `vasm` dialects beyond the Motorola style the 68000 back end takes |
+| 5 | done: `rcb new/build/run/debug/clean/check/targets/kits/kit`, templates and kits for 13 machines |
+| 6 | done: `rcasset` (PNG to NES, SNES, Mega Drive, PC Engine tiles and palettes, the Spectrum screen) |
+| 7 | done: `.rcdbg` from `rcasm --debug-info` and `rcb build`; rcdd reads it with `--source-info` (emulator PR #4): line at the PC, breakpoints by `file:line`, `step-line`, `next-line`. 68000 listings are not turned into `.rcdbg` yet |
+
 ## Order of execution
 
 0 first, as soon as all 21 core crates and the 8 tools of 0.1 are on crates.io (the publish runs in the background). Then 1 and 2a in turn
