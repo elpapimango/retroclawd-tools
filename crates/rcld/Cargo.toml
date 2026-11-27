@@ -15,11 +15,11 @@ path = "src/main.rs"
 
 [dependencies]
 atari-media.workspace = true
-rc-common = { path = "../rc-common", version = "0.6.0" }
-rcasm = { path = "../rcasm", version = "0.6.0" }
-rcdisk = { path = "../rcdisk", version = "0.6.0" }
-rctape = { path = "../rctape", version = "0.6.0" }
-rcsnap = { path = "../rcsnap", version = "0.6.0" }
+rc-common = { path = "../rc-common", version = "0.6.1" }
+rcasm = { path = "../rcasm", version = "0.6.1" }
+rcdisk = { path = "../rcdisk", version = "0.6.1" }
+rctape = { path = "../rctape", version = "0.6.1" }
+rcsnap = { path = "../rcsnap", version = "0.6.1" }
 c64-cartridge.workspace = true
 ines.workspace = true
 sfc.workspace = true
