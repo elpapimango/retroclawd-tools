@@ -356,7 +356,7 @@ dependencies = [
 
 [[package]]
 name = "rc-common"
-version = "0.6.1"
+version = "0.6.2"
 
 [[package]]
 name = "rc-cpc-cartridge"
@@ -541,7 +541,7 @@ checksum = "acdc748316044913fa9d97c98772e4c21ef9a166a0bc14511a840fb6bb1bb463"
 
 [[package]]
 name = "rcar"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "clap",
  "rc-common",
@@ -550,7 +550,7 @@ dependencies = [
 
 [[package]]
 name = "rcasm"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "clap",
  "rc-common",
@@ -565,7 +565,7 @@ dependencies = [
 
 [[package]]
 name = "rcasset"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "clap",
  "png",
@@ -574,7 +574,7 @@ dependencies = [
 
 [[package]]
 name = "rcb"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "clap",
  "rc-common",
@@ -585,7 +585,7 @@ dependencies = [
 
 [[package]]
 name = "rcchd"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "clap",
  "rc-chd",
@@ -593,7 +593,7 @@ dependencies = [
 
 [[package]]
 name = "rcdis"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "clap",
  "rc-common",
@@ -609,7 +609,7 @@ dependencies = [
 
 [[package]]
 name = "rcdisk"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "clap",
  "rc-atari-media",
@@ -625,7 +625,7 @@ dependencies = [
 
 [[package]]
 name = "rcld"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "clap",
  "rc-amiga",
@@ -645,7 +645,7 @@ dependencies = [
 
 [[package]]
 name = "rcsnap"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "clap",
  "rc-c64-cartridge",
@@ -662,7 +662,7 @@ dependencies = [
 
 [[package]]
 name = "rctape"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "clap",
  "rc-c64-tape",

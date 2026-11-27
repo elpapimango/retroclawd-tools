@@ -14,10 +14,10 @@ name = "rctape"
 path = "src/main.rs"
 
 [dependencies]
-rc-common = { path = "../rc-common", version = "0.6.1" }
+rc-common = { path = "../rc-common", version = "0.6.2" }
 c64-tape.workspace = true
 clap.workspace = true
 
 [dev-dependencies]
-rcasm = { path = "../rcasm", version = "0.6.1" }
+rcasm = { path = "../rcasm", version = "0.6.2" }
 zx-tape.workspace = true
