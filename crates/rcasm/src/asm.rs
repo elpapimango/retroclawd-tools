@@ -178,6 +178,10 @@ struct Asm<'f> {
     listing: Vec<ListEntry>,
     errors: Vec<Diag>,
     stop: bool,
+    /// `.exitmacro` ran: the current macro expansion ends here.
+    exit_macro: bool,
+    /// Folders `.incdir` added to the include search path.
+    incdirs: Vec<PathBuf>,
     ob: ObjState,
 }
 
@@ -280,6 +284,8 @@ fn run_passes<'f>(
         listing: Vec::new(),
         errors: Vec::new(),
         stop: false,
+        exit_macro: false,
+        incdirs: Vec::new(),
         ob: ObjState::new(object || opts.object),
     };
     for (n, v) in &opts.defines {
@@ -390,6 +396,8 @@ const DIRECTIVES: &[&str] = &[
     "set",
     "include",
     "incbin",
+    "incdir",
+    "exitmacro",
     "macro",
     "endm",
     "endmacro",
@@ -497,6 +505,8 @@ impl<'f> Asm<'f> {
         self.conds.clear();
         self.listing.clear();
         self.stop = false;
+        self.exit_macro = false;
+        self.incdirs.clear();
         self.illegal = self.opts.illegal;
         self.cpu = self.opts.cpu;
         if self.ob.on {
@@ -632,7 +642,7 @@ impl<'f> Asm<'f> {
             return;
         }
         let mut i = 0;
-        while i < lines.len() && !self.stop {
+        while i < lines.len() && !self.stop && !self.exit_macro {
             if self.errors.len() >= MAX_ERRORS {
                 return;
             }
@@ -746,11 +756,17 @@ impl<'f> Asm<'f> {
                         let expansion = self.expand_macro(&src, &word, m, &operand);
                         if let Some(lines) = expansion {
                             let saved = self.global_scope.clone();
+                            let conds = self.conds.len();
                             self.macro_counter += 1;
                             self.macro_scope.push(self.macro_counter);
                             self.run(lines, depth + 1);
                             self.macro_scope.pop();
                             self.global_scope = saved;
+                            if self.exit_macro {
+                                // `.exitmacro` inside a conditional: the expansion's open conditionals end with it
+                                self.exit_macro = false;
+                                self.conds.truncate(conds);
+                            }
                         }
                         continue;
                     }
@@ -1134,6 +1150,22 @@ impl<'f> Asm<'f> {
 
     fn directive(&mut self, src: &LineSrc, dir: &str, operand: &str) {
         match dir {
+            "exitmacro" if self.macro_scope.is_empty() => {
+                self.error(src, ".exitmacro outside a macro")
+            }
+            "exitmacro" => self.exit_macro = true,
+            "incdir" => match self.file_arg(operand) {
+                Ok(name) => {
+                    // relative to the source file's folder, then as given (the working folder)
+                    let from = Path::new(&*src.file).parent().unwrap_or(Path::new(""));
+                    for dir in [from.join(&name), PathBuf::from(&name)] {
+                        if !self.incdirs.contains(&dir) {
+                            self.incdirs.push(dir);
+                        }
+                    }
+                }
+                Err(e) => self.error(src, e),
+            },
             "org" if self.dsect.is_some() => match self.eval_now(operand) {
                 Ok(v) if (0..self.limit() as i64).contains(&v) => self.pc = Some(v as u32),
                 Ok(v) => self.error(src, format!(".org {v} is outside the address space")),
@@ -1477,7 +1509,7 @@ impl<'f> Asm<'f> {
         let mut candidates = Vec::new();
         let from = Path::new(&*src.file).parent().unwrap_or(Path::new(""));
         candidates.push(from.join(name));
-        for dir in &self.opts.include_dirs {
+        for dir in self.opts.include_dirs.iter().chain(&self.incdirs) {
             candidates.push(dir.join(name));
         }
         candidates

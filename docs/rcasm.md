@@ -58,7 +58,9 @@ mnemonics and registers are not.
 | `.text "s"`, `.ascii`, `.asciiz` | text; `.asciiz` adds a 0 |
 | `.fill n[,v]` (`ds`, `defs`, `res`) | n bytes of v (default 0); `n` must be known |
 | `.align n[,v]` | pad to a multiple of n |
-| `.incbin "file"[,skip[,len]]`, `.include "file"` | relative to the including file, then `-I` |
+| `.incbin "file"[,skip[,len]]`, `.include "file"` | relative to the including file, then `-I`, then the `.incdir` folders |
+| `.incdir "path"` | another folder to search (relative to the source file, else to the working folder) |
+| `.exitmacro` | ends the current macro expansion here (its open `.if`s end with it) |
 | `.macro name p1,p2` ... `.endm` | text macro; parameters replace whole words; `@labels` inside are per expansion |
 | `.if expr` / `.ifdef sym` / `.ifndef sym` / `.else` / `.endif` | conditionals; `expr` must be known on that line |
 | `.cpu name`, `.illegal [on|off]` | select the CPU; allow undocumented 6502 opcodes |
@@ -191,8 +193,10 @@ In a layout: `syntax = "oldstyle"`.
   `global xdef xref xlib extern`, `list nolist`, `rorg phase` ... `rend dephase` (rcasm's `.phase`), `struct structure` ... `endstruct endstructure`
   (data and space fields; `name.field` is a field's offset and `name` the size; `label name v1,,v3` lays out an instance, an empty value keeping the
   field's default, a reserved field taking none; instructions in a structure are left out; structures are known in the files included after them),
-  `section NAME` (rcasm's `.segment` with `-f object`; an error in an image). Not translated (an error): `abyte roffs inline einline incdir exitmacro
-  local weak symdepend needs di64 ds64`.
+  `section NAME` (rcasm's `.segment` with `-f object`; an error in an image), `abyte OFFSET,values` (the offset added to every byte, string
+  characters too), `roffs OFFSET[,FILL]` (padding up to OFFSET past the last `org`), `di64 ds64`, `inline` ... `einline` (local labels of the block's
+  own), `incdir PATH` (rcasm's `.incdir`), `exitmacro exitm mexit` (rcasm's `.exitmacro`, also from inside a conditional), and `local symdepend needs`
+  (no effect: they only concern object files). Not translated (an error): `weak`.
 - **std**: labels end with `:`; local labels `.1`, `1$`, digit labels `1:` with `1b` / `1f`; numbers `0x`, `0b`, `017` (octal); `a!b` (or-not). Directives:
   `.byte .ascii .short .half .word .2byte .int .long .4byte .asciz .asciiz .string .space .skip .zero .align .p2align` (power of two) `.balign .org .include .incbin
   .equ .set .equiv .if .ifne .ifeq .ifgt .ifge .iflt .ifle .ifdef .ifndef .ifb .ifnb .ifc .ifnc .elseif .else .endif .macro .endm .rept .irp .irpc .endr .end .err

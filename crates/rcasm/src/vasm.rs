@@ -114,6 +114,17 @@ enum Dir {
     Ifc(bool),
     /// `.irp` (false) or `.irpc` (true).
     Irp(bool),
+    /// `abyte offset, values`: bytes with the offset added to each.
+    Abyte,
+    /// `roffs offset[, fill]`: pad up to the address `offset` past the last `org`.
+    Roffs,
+    /// `inline` / `einline`: a block whose local labels are its own.
+    Inline,
+    Einline,
+    /// `incdir path`: another folder to look for include files in.
+    Incdir,
+    /// `exitmacro`: leave the macro expansion here.
+    Exitmacro,
     /// Accepted, no effect (listing control, debug records).
     Ignore,
     Unsupported,
@@ -186,8 +197,17 @@ fn directive(word: &str, syntax: Syntax, cpu: Option<Cpu>) -> Option<Dir> {
                 "struct" | "structure" => Dir::Struct,
                 "endstruct" | "endstructure" => Dir::EndStruct,
                 "section" => Dir::Section,
-                "abyte" | "roffs" | "inline" | "einline" | "incdir" | "exitmacro" | "local"
-                | "weak" | "symdepend" | "needs" | "di64" | "ds64" => Dir::Unsupported,
+                "abyte" => Dir::Abyte,
+                "roffs" => Dir::Roffs,
+                "inline" => Dir::Inline,
+                "einline" => Dir::Einline,
+                "incdir" => Dir::Incdir,
+                "exitmacro" | "exitm" | "mexit" => Dir::Exitmacro,
+                "di64" => Dir::Data(8),
+                "ds64" => Dir::Space(8),
+                // object-file hints with no effect on what is assembled
+                "local" | "symdepend" | "needs" => Dir::Ignore,
+                "weak" => Dir::Unsupported,
                 _ => return None,
             })
         }
@@ -292,6 +312,11 @@ pub struct Rewriter<'s> {
     ifs: Vec<usize>,
     /// `std` digit labels: how many of each digit were defined so far.
     digits: [u32; 10],
+    /// Open `inline` blocks (innermost last), each with its number: local labels inside belong to it alone.
+    inline: Vec<u32>,
+    inlines: u32,
+    /// The last `org` address (an rcasm expression): `roffs` counts from it.
+    origin: String,
 }
 
 impl<'s> Rewriter<'s> {
@@ -306,6 +331,9 @@ impl<'s> Rewriter<'s> {
             macro_params: None,
             ifs: Vec::new(),
             digits: [0; 10],
+            inline: Vec::new(),
+            inlines: 0,
+            origin: "0".to_string(),
         }
     }
 
@@ -486,8 +514,52 @@ impl<'s> Rewriter<'s> {
             Dir::Even => out.push(format!("{}        .align 2", lead(self))),
             Dir::Org => {
                 let a = ops.first().copied().unwrap_or("").trim_start_matches('#');
-                out.push(format!("{}        .org {}", lead(self), self.expr(a)));
+                self.origin = self.expr(a);
+                out.push(format!("{}        .org {}", lead(self), self.origin));
             }
+            Dir::Roffs => {
+                // the address `offset` past the last `org`, padded up to
+                let fill = ops
+                    .get(1)
+                    .map(|f| self.expr(f))
+                    .unwrap_or_else(|| "0".to_string());
+                let off = self.expr(ops.first().copied().unwrap_or("0"));
+                out.push(format!(
+                    "{}        .fill ({}) + ({off}) - *, {fill}",
+                    lead(self),
+                    self.origin
+                ));
+            }
+            Dir::Abyte => match ops.split_first() {
+                Some((off, values)) if !values.is_empty() => {
+                    let off = self.expr(off);
+                    let mut parts = Vec::new();
+                    for v in values {
+                        let v = v.trim();
+                        match delimited(v) {
+                            Some(s) if v.starts_with('"') || v.starts_with('\'') => parts
+                                .extend(s.bytes().map(|b| format!("(${b:02X} + ({off})) & $FF"))),
+                            _ => parts.push(format!("(({}) + ({off})) & $FF", self.expr(v))),
+                        }
+                    }
+                    out.push(format!("{}        .byte {}", lead(self), parts.join(", ")));
+                }
+                _ => out.push(self.unsupported(word, "takes an offset and values")),
+            },
+            Dir::Inline => {
+                self.inlines += 1;
+                self.inline.push(self.inlines);
+                out.push(lead(self));
+            }
+            Dir::Einline => {
+                if self.inline.pop().is_none() {
+                    out.push(self.unsupported(word, "without inline"));
+                } else {
+                    out.push(lead(self));
+                }
+            }
+            Dir::Incdir => out.push(format!("{}        .incdir {}", lead(self), quoted(operand))),
+            Dir::Exitmacro => out.push(format!("{}        .exitmacro", lead(self))),
             Dir::Include => out.push(format!(
                 "{}        .include {}",
                 lead(self),
@@ -907,20 +979,25 @@ impl<'s> Rewriter<'s> {
             .join(" ")
     }
 
-    /// A symbol name in rcasm's terms (local labels become `@` labels).
+    /// A symbol name in rcasm's terms (local labels become `@` labels; inside an `inline` block, names of that block alone).
     fn symbol(&self, name: &str) -> String {
         let name = name.trim();
-        if let Some(rest) = name.strip_prefix('.')
+        let local = if let Some(rest) = name.strip_prefix('.')
             && !rest.is_empty()
         {
-            format!("@{rest}")
+            rest.to_string()
         } else if let Some(stem) = name.strip_suffix('$')
             && !stem.is_empty()
             && stem.chars().all(is_ident)
         {
-            format!("@{stem}_d")
+            format!("{stem}_d")
         } else {
-            name.to_string()
+            return name.to_string();
+        };
+        match self.inline.last() {
+            // an `@` label (a global one would start a new scope for the `@` labels after the block)
+            Some(n) => format!("@__inline{n}_{local}"),
+            None => format!("@{local}"),
         }
     }
 

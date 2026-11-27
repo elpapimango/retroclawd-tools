@@ -153,13 +153,97 @@ loop\\@ dex
 
 #[test]
 fn oldstyle_unsupported_directives_are_named() {
-    let e = old("        org $1000\n        abyte 1,2\n").unwrap_err();
-    assert!(e.contains("abyte") && e.contains("t.asm:2"), "{e}");
-    let e = old("        org $1000\n        inline\n").unwrap_err();
-    assert!(e.contains("inline"), "{e}");
+    let e = old("        org $1000\n        weak foo\n").unwrap_err();
+    assert!(e.contains("weak") && e.contains("t.asm:2"), "{e}");
+    let e = old("        org $1000\n        einline\n").unwrap_err();
+    assert!(e.contains("einline"), "{e}");
     // an unclosed structure or a stray endstruct is named too
     let e = old("        org $1000\n        endstruct\n").unwrap_err();
     assert!(e.contains("endstruct"), "{e}");
+}
+
+/// vasm's manual: `abyte` adds its offset to every byte (strings too), `roffs` pads to an offset from the section
+/// start (here the last `org`), `di64`/`ds64` are 64-bit data and space; `local`, `symdepend` and `needs` only
+/// concern object files.
+#[test]
+fn oldstyle_abyte_roffs_and_64_bit_data() {
+    let src = "        org     $1000
+        abyte   $20,1,\"AB\",$FF
+        roffs   8,$EA
+        di64    $0102030405060708
+        ds64    1
+        local   foo
+        symdepend foo
+        needs   foo
+";
+    assert_eq!(
+        old(src).unwrap(),
+        [
+            0x21, 0x61, 0x62, 0x1F, 0xEA, 0xEA, 0xEA, 0xEA, 8, 7, 6, 5, 4, 3, 2, 1, 0, 0, 0, 0, 0,
+            0, 0, 0
+        ]
+    );
+}
+
+/// `inline` gives its block local labels of its own: the same `.loop` inside and outside does not clash, and after
+/// `einline` the outer one is seen again. `exitmacro` leaves an expansion, also from inside a conditional.
+#[test]
+fn oldstyle_inline_blocks_and_exitmacro() {
+    let src = "        org     $1000
+outer   ldx     #2
+.loop   dex
+        inline
+.loop   dey
+        bne     .loop
+        einline
+        bne     .loop
+twice   macro
+        lda     #\\1
+        if      \\1>1
+        exitmacro
+        endif
+        sta     $D020
+        endm
+        twice   1
+        twice   2
+        nop
+";
+    assert_eq!(
+        old(src).unwrap(),
+        [
+            0xA2, 2, 0xCA, 0x88, 0xD0, 0xFD, 0xD0, 0xFA, 0xA9, 1, 0x8D, 0x20, 0xD0, 0xA9, 2, 0xEA
+        ]
+    );
+    let e = old("        org $1000\n        exitmacro\n").unwrap_err();
+    assert!(e.contains("exitmacro outside a macro"), "{e}");
+}
+
+/// `incdir` adds a folder to the include search path, relative to the source file.
+#[test]
+fn oldstyle_incdir_finds_include_files() {
+    let dir = std::env::temp_dir().join(format!("rcasm-incdir-{}", std::process::id()));
+    std::fs::create_dir_all(dir.join("inc")).unwrap();
+    std::fs::write(dir.join("inc").join("defs.i"), "value = $42\n").unwrap();
+    let main = dir.join("main.asm");
+    let src = "        org     $1000\n        incdir  \"inc\"\n        include \"defs.i\"\n        lda     #value\n";
+    let opts = Options {
+        cpu: Some(Cpu::Mos6502),
+        syntax: Syntax::Oldstyle,
+        ..Options::default()
+    };
+    let bytes: Vec<u8> = assemble(main.to_str().unwrap(), src, &opts, &DiskFiles)
+        .map(|a| a.segments.into_iter().flat_map(|s| s.bytes).collect())
+        .unwrap_or_else(|e| {
+            panic!(
+                "{}",
+                e.iter()
+                    .map(|d| d.to_string())
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            )
+        });
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(bytes, [0xA9, 0x42]);
 }
 
 #[test]
