@@ -500,18 +500,19 @@ fn slashes(mut info: rc_common::dbg::DebugInfo) -> rc_common::dbg::DebugInfo {
 
 /// The 68000 machines' `.rcdbg`: the machines with a flat image (the Mega Drive, the Neo Geo, the Mega-CD's programs)
 /// run their code where it was assembled. The Atari ST, the Amiga and the X68000 load a program wherever the system
-/// puts it, so their listing holds offsets the debugger cannot place: they get none.
+/// puts it: their addresses are offsets from the start of the text, with `base text gemdos|scan` and an `anchor` (the
+/// text's first bytes, relocated longs masked) so the debugger can find where it was loaded.
 fn debug_info_68k(
     layout: &Layout,
     base: &Path,
     cli_defines: &[(String, i64)],
 ) -> Result<Option<String>, String> {
-    if matches!(
+    // these load a program where the system puts it: the addresses are offsets from the start of its text, and an
+    // anchor (its first bytes) lets the debugger find where that is
+    let relocated = matches!(
         layout.machine,
         Machine::AtariSt | Machine::Amiga | Machine::X68000
-    ) {
-        return Ok(None);
-    }
+    );
     let sources: Vec<PathBuf> = layout
         .input
         .iter()
@@ -548,6 +549,7 @@ fn debug_info_68k(
         let opts = rcasm::m68k::M68kOptions {
             include_dirs: vec![base.to_path_buf()],
             defines: defines.clone(),
+            relocatable: relocated,
             ..rcasm::m68k::M68kOptions::default()
         };
         let asm = rcasm::m68k::assemble_m68k("layout", &text, &opts, &rcasm::DiskFiles).map_err(
@@ -560,8 +562,36 @@ fn debug_info_68k(
             },
         )?;
         rcasm::m68k::add_debug_info(&asm, &mut info);
+        if relocated {
+            let method = if layout.machine == Machine::AtariSt {
+                "gemdos"
+            } else {
+                "scan"
+            };
+            info.base = Some(format!("text {method}"));
+            info.anchor = Some(anchor(&asm.text, &asm.relocs));
+        }
     }
     Ok(Some(slashes(info).to_text()))
+}
+
+/// The first bytes of a relocatable program's text as hex, `??` for the bytes of the longs the loader relocates.
+fn anchor(text: &[u8], relocs: &[u32]) -> String {
+    const LEN: usize = 32;
+    text.iter()
+        .take(LEN)
+        .enumerate()
+        .map(|(i, b)| {
+            let patched = relocs
+                .iter()
+                .any(|&r| (r as usize..r as usize + 4).contains(&i));
+            if patched {
+                "??".to_string()
+            } else {
+                format!("{b:02X}")
+            }
+        })
+        .collect()
 }
 
 /// The entry address: a number, or a symbol of the sources or symbol files. `None` when the layout names none.

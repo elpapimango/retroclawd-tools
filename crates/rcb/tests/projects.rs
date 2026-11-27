@@ -219,14 +219,75 @@ fn the_flat_68000_machines_get_debug_information_at_their_run_addresses() {
             assert!(text.contains(w), "{machine} wants {w}: {text}");
         }
     }
-    // the Atari ST loads a program where the system puts it: no addresses to give
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn the_loaded_68000_programs_get_offsets_and_an_anchor() {
+    let d = temp("dbgrel");
+    // the Atari ST, the Amiga and the X68000 load a program where the system puts it: offsets from the text, and how
+    // the debugger finds it
+    for (machine, method) in [
+        ("atari-st", "gemdos"),
+        ("amiga", "scan"),
+        ("x68000", "scan"),
+    ] {
+        let name = format!("p-{machine}");
+        assert!(
+            rcb(&["new", &name, "--machine", machine], &d)
+                .status
+                .success()
+        );
+        let out = rcb(&["build", "-C", &name], &d);
+        assert!(
+            out.status.success(),
+            "{machine}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let text = std::fs::read_to_string(d.join(format!("{name}/build/{name}.rcdbg")))
+            .unwrap_or_else(|e| panic!("{machine}: {e}"));
+        let info = rc_common::dbg::DebugInfo::parse(&text).unwrap();
+        assert_eq!(
+            info.base.as_deref(),
+            Some(&*format!("text {method}")),
+            "{text}"
+        );
+        let anchor = info.anchor.clone().unwrap();
+        assert!(!anchor.is_empty() && anchor.len() <= 64, "{anchor}");
+        assert!(!info.lines.is_empty(), "{machine}: {text}");
+        // the first line of code is at offset 0
+        assert_eq!(info.lines.iter().map(|l| l.2).min(), Some(0), "{text}");
+    }
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn an_anchor_masks_the_relocated_longs() {
+    let d = temp("anchor");
     assert!(
-        rcb(&["new", "p-st", "--machine", "atari-st"], &d)
+        rcb(&["new", "p", "--machine", "atari-st"], &d)
             .status
             .success()
     );
-    assert!(rcb(&["build", "-C", "p-st"], &d).status.success());
-    assert!(!d.join("p-st/build/p-st.rcdbg").exists());
+    // lea msg,a0 has a relocated long at offset 2; moveq #0,d0 is plain
+    std::fs::write(
+        d.join("p/src/main.s"),
+        "        .text\nstart:  lea     msg,a0\n        moveq   #0,d0\n        rts\nmsg:    dc.b    \"x\",0\n",
+    )
+    .unwrap();
+    let out = rcb(&["build", "-C", "p"], &d);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let text = std::fs::read_to_string(d.join("p/build/p.rcdbg")).unwrap();
+    let info = rc_common::dbg::DebugInfo::parse(&text).unwrap();
+    // 41F9 = lea (abs).l,a0, then the 4 relocated bytes, 7000 = moveq #0,d0, 4E75 = rts
+    assert!(
+        info.anchor.unwrap().starts_with("41F9????????70004E75"),
+        "{text}"
+    );
     let _ = std::fs::remove_dir_all(&d);
 }
 

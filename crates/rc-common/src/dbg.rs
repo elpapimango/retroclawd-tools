@@ -7,6 +7,14 @@
 //! sym reset 0xE000
 //! ```
 //!
+//! A program the system loads where it likes (an Atari ST `.PRG`, an Amiga or X68000 executable) has addresses that are
+//! offsets from the start of its code, and two more records say how a debugger finds that start:
+//!
+//! ```text
+//! base text gemdos          # offsets from the text; `gemdos`: the GEMDOS basepage 256 bytes before it names it; `scan`: no check
+//! anchor 41F9????????4E75   # the first bytes of the text, `??` where the loader patches an address
+//! ```
+//!
 //! Lines starting with `#` and blank lines are ignored. `parse` never panics on any input.
 
 use std::fmt::Write;
@@ -17,6 +25,10 @@ pub struct DebugInfo {
     /// (file index, line, address, length), in the order written.
     pub lines: Vec<(u32, u32, u32, u32)>,
     pub symbols: Vec<(String, u32)>,
+    /// `base text METHOD`: the addresses are offsets from where the program's text was loaded.
+    pub base: Option<String>,
+    /// `anchor HEX`: the text's first bytes, `??` for the ones the loader changes.
+    pub anchor: Option<String>,
 }
 
 impl DebugInfo {
@@ -37,6 +49,12 @@ impl DebugInfo {
 
     pub fn to_text(&self) -> String {
         let mut out = String::from("rcdbg 1\n");
+        if let Some(b) = &self.base {
+            let _ = writeln!(out, "base {b}");
+        }
+        if let Some(a) = &self.anchor {
+            let _ = writeln!(out, "anchor {a}");
+        }
         for (i, f) in self.files.iter().enumerate() {
             let _ = writeln!(out, "file {i} {f}");
         }
@@ -95,6 +113,23 @@ impl DebugInfo {
                     };
                     let v = rc_num(v.trim()).ok_or_else(|| bad("a number is expected"))?;
                     info.symbols.push((name.to_string(), v));
+                }
+                Some("base") => {
+                    let rest = line["base".len()..].trim();
+                    if !rest.starts_with("text ") {
+                        return Err(bad("base needs `text` and a method"));
+                    }
+                    info.base = Some(rest.to_string());
+                }
+                Some("anchor") => {
+                    let hex = line["anchor".len()..].trim();
+                    if hex.is_empty()
+                        || hex.len() % 2 != 0
+                        || !hex.chars().all(|c| c.is_ascii_hexdigit() || c == '?')
+                    {
+                        return Err(bad("anchor is pairs of hex digits or ??"));
+                    }
+                    info.anchor = Some(hex.to_string());
                 }
                 _ => return Err(bad("unknown record")),
             }

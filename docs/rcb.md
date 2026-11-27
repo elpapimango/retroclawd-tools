@@ -35,8 +35,9 @@ security code (see rcld's Neo Geo section; without it the BIOS shows its crossha
 and tutorials; the SNES, Mega Drive, Atari ST, Amiga, X68000 and Neo Geo kits were checked against the Chibi Akumas platform pages (2026-11-26), and what those pages do not
 show is marked `[H?]` or named as coming from other documentation.
 
-`rcb build` also writes `build/NAME.rcdbg` (which source line made which bytes) for the 8-bit/16-bit machines and the 68000 machines with a flat image (Mega Drive, Neo Geo, Mega-CD: the addresses are where the code runs; the
-Atari ST, Amiga and X68000 load a program where the system puts it, so they get none), and `rcb debug` passes it on:
+`rcb build` also writes `build/NAME.rcdbg` (which source line made which bytes) for every machine. On the 8-bit/16-bit machines and the 68000 machines with a flat image (Mega Drive, Neo Geo, Mega-CD) the addresses are where the code runs; the
+Atari ST, Amiga and X68000 load a program where the system puts it, so their addresses are offsets from the start of the text, with `base text gemdos` (ST) or `base text scan` and an
+`anchor` (the text's first 32 bytes, `??` for the bytes the loader relocates) by which the debugger finds the program in memory (checked live on the ST 2026-11-27; `rcdd --source-base ADDR` names the address instead). `rcb debug` passes it on:
 `rcdd ... --symbols build/NAME.sym --source-info build/NAME.rcdbg`. The debugger then shows the source line at the PC (`source_line` in the state of debug-ui), sets breakpoints by line
 (debug-zrcp: `set-breakpoint 0 main.asm:12`; debug-ui: `POST /api/breakpoint/source {"file": "main.asm", "line": 12}`) and steps by line (`step-line` / `next-line` in debug-zrcp,
 `POST /api/step-line` / `/api/next-line` in debug-ui; `next-line` steps over calls).
