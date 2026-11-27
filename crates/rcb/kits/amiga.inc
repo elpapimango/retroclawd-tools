@@ -39,3 +39,10 @@ INTREQ          equ $09C
 BPLCON0         equ $100
 COLOR00         equ $180
 CIAA_PRA        equ $BFE001   ; bit 6 / 7: fire buttons of ports 1 / 2 (0 = pressed)
+; Checked against chibiakumas.com/68000/amiga.php (2026-11-26): exec vectors and custom register
+; offsets agree. The dos.library vectors are from the Amiga documentation (not on that page).
+LVO_OLDOPENLIBRARY equ -408
+COP1LCL         equ $082
+BPL1PTL         equ $0E2
+CIAA_DDRA       equ $BFE201
+; JOYxDAT: right = bit 1, left = bit 9, down = bit 1 xor bit 0, up = bit 9 xor bit 8

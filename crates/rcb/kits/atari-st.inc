@@ -33,3 +33,12 @@ KBD_DATA        equ $FFFC02
 V_BAS_AD        equ $044E     ; screen base address
 FRCLOCK         equ $0466     ; vertical blank counter (long)
 HZ_200          equ $04BA     ; 200 Hz counter (long)
+; Checked against chibiakumas.com/68000/atarist.php (2026-11-26): GEMDOS/BIOS/XBIOS numbers,
+; palette, resolution, YM, MFP and ACIA addresses agree. Palette word: -----RRR -GGG-BBB.
+; The system variables are from the Atari documentation (not on that page).
+XBIOS_KBDVBASE  equ 34        ; returns the IKBD vector table; the joystick vector is at offset 24
+IKBD_JOY_EVENTS equ $14       ; Bconout(4, $14): joystick event reporting (packet byte 1 = joy 0, 2 = joy 1: F---RLDU)
+IKBD_JOY_READ   equ $16
+MIDI_CTRL       equ $FFFC04
+MIDI_DATA       equ $FFFC06
+VBCLOCK         equ $0462     ; vertical blank counter (long)

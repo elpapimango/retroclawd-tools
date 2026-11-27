@@ -25,3 +25,30 @@ VRAM_FIX        equ $7000     ; the fix layer
 VRAM_SCB2       equ $8000     ; sprite shrink
 VRAM_SCB3       equ $8200     ; sprite Y and height
 VRAM_SCB4       equ $8400     ; sprite X
+; Checked against chibiakumas.com/68000/neogeo.php (2026-11-26): every register, palette and VRAM
+; address agrees. The REG_IRQACK bit meanings and BACKUP_RAM are not on that page ([H?]).
+PALETTE_REFERENCE equ $400000 ; must hold $8000
+PALETTE_BACKDROP equ $401FFE
+REG_BRAMLOCK    equ $3A000D   ; MVS backup RAM
+REG_BRAMUNLOCK  equ $3A001D
+; P1CNT/P2CNT: D C B A right left down up (bit 7..0, 0 = pressed)
+; BIOS variables
+BIOS_P1CURRENT  equ $10FD96
+BIOS_USER_REQUEST equ $10FDAE ; the command for USER ($122)
+BIOS_USER_MODE  equ $10FDAF   ; 0 init, 1 title/demo, 2 game
+BIOS_START_FLAG equ $10FDB4
+BIOS_BACKUP_MODE equ $10FEBF
+; BIOS calls (jsr)
+SYSTEM_RESET    equ $C00402
+SYSTEM_INT1     equ $C00438   ; the vertical blank handler's BIOS part
+SYSTEM_RETURN   equ $C00444   ; jmp here at the end of USER
+SYSTEM_IO       equ $C0044A   ; read the controls
+CREDIT_CHECK    equ $C00450
+CREDIT_DOWN     equ $C00456
+READ_CALENDAR   equ $C0045C
+FIX_CLEAR       equ $C004C2
+LSP_1ST         equ $C004C8   ; clear the sprites
+MESS_OUT        equ $C004CE
+BIOS_SYSTEM_MODE equ $10FD80  ; bit 7: 1 = the game runs (its vertical blank handler does the work)
+REG_PALBANK1    equ $3A000F   ; the window at $400000 shows palette bank 1 / 0 (write any value)
+REG_PALBANK0    equ $3A001F

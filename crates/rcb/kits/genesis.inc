@@ -26,3 +26,13 @@ PAD_LEFT        equ $04
 PAD_RIGHT       equ $08
 PAD_B           equ $10
 PAD_C           equ $20
+; Checked against chibiakumas.com/68000/genesis.php (2026-11-26): ports, Z80/pad registers,
+; VDP commands and the TH=1 pad bits agree. With TH written 0 the pad reads bit 4 A, bit 5 Start.
+PAD_A           equ $10       ; TH = 0
+PAD_START       equ $20       ; TH = 0
+YM2612_A0       equ $A04000
+YM2612_D0       equ $A04001
+YM2612_A1       equ $A04002
+YM2612_D1       equ $A04003
+MEMORY_MODE     equ $A11000
+VDP_CRAM_COLOUR1 equ $C0020000 ; CRAM write command for colour n: $C0000000 | (n * 2) << 16

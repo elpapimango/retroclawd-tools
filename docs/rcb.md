@@ -27,9 +27,12 @@ output = "build/hello.pce"  # default build/<name>.<the machine's usual extensio
 
 `[run] args = ["pcengine", "--rom", "{output}"]` replaces the emulator arguments `rcb run` guesses (`{output}` is the image); `RCB_EMULATOR=program` replaces `rcd`/`rcdd`.
 Machines the emulator does not have yet (NES, SNES, Amiga, X68000) build, but `rcb run` says so unless `[run]` is given. `rcb new` makes a skeleton for each machine that builds as it is
-(a loop or a return with the vectors the machine needs). Hardware kits: `rcb kits` lists them, `rcb kit MACHINE` prints one, and `rcb new` writes the machine's kit to `src/kit.inc` and includes it from the skeleton
+and shows that it runs in the smallest way the machine allows (a border or background colour, a line of text), with the vectors and header the machine needs. The 68000 ones follow the
+Chibi Akumas lessons (chibiakumas.com): the Mega Drive turns the screen red, the Atari ST prints a line and waits for a key, the Neo Geo turns its backdrop red once `[options] security` gives it SNK's
+security code (see rcld's Neo Geo section; without it the BIOS shows its crosshatch). Checked in the emulator 2026-11-26. Hardware kits: `rcb kits` lists them, `rcb kit MACHINE` prints one, and `rcb new` writes the machine's kit to `src/kit.inc` and includes it from the skeleton
 (`.include "src/kit.inc"`). A kit is constants only (registers, system call numbers, colours, joypad bits): it emits no bytes. The values are from public hardware documentation
-and tutorials; the 68000 machines' firmware numbers are marked `[H?]` where they come from memory.
+and tutorials; the SNES, Mega Drive, Atari ST, Amiga, X68000 and Neo Geo kits were checked against the Chibi Akumas platform pages (2026-11-26), and what those pages do not
+show is marked `[H?]` or named as coming from other documentation.
 
 `rcb build` also writes `build/NAME.rcdbg` (which source line made which bytes) for projects whose sources the 8-bit/16-bit assembler takes (every machine but the 68000 family), and `rcb debug` passes it on:
 `rcdd ... --symbols build/NAME.sym --source-info build/NAME.rcdbg`. The debugger then shows the source line at the PC (`source_line` in the state of debug-ui), sets breakpoints by line

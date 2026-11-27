@@ -42,3 +42,8 @@ JOY_A       = $0080
 JOY_X       = $0040
 JOY_L       = $0020
 JOY_R       = $0010
+; Checked against chibiakumas.com/6502/snes.php (2026-11-26): every address and the JOY masks
+; (JOY1H "BYSTUDLR", JOY1L "AXLR----") agree. CGDATA colour: -bbbbbgg gggrrrrr, low byte first.
+JOY1H       = $4219
+A1T0H       = $4303
+DAS0H       = $4306
