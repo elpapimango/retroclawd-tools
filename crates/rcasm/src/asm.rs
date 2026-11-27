@@ -129,6 +129,12 @@ struct Asm<'f> {
     macros: HashMap<String, Macro>,
     /// ca65 `.define`s: the name and what it stands for.
     defines: HashMap<String, Define>,
+    /// `.charmap`: what each byte of a string literal becomes in `.byte`, `.text`, `.asciiz` and the like.
+    charmap: [u8; 256],
+    /// `.ifconst` results in the order the first pass decided them; the second pass replays them, so a label defined
+    /// later stays "not constant" in both passes and the sizes agree.
+    ifconst: Vec<bool>,
+    ifconst_at: usize,
     /// How many macro expansions have renamed their `.local` names.
     local_counter: usize,
     /// Instruction number -> "the first pass found an unknown symbol in the operand".
@@ -219,6 +225,9 @@ fn run_passes<'f>(
         symbols: HashMap::new(),
         macros: HashMap::new(),
         defines: HashMap::new(),
+        charmap: std::array::from_fn(|i| i as u8),
+        ifconst: Vec::new(),
+        ifconst_at: 0,
         local_counter: 0,
         wide: HashMap::new(),
         pc: None,
@@ -391,6 +400,10 @@ const DIRECTIVES: &[&str] = &[
     "local",
     "ifblank",
     "ifnblank",
+    "union",
+    "endunion",
+    "ifconst",
+    "charmap",
 ];
 
 /// Names that are directives even without a leading dot (Z80 assemblers write them bare).
@@ -409,6 +422,8 @@ fn directive_name(word: &str) -> Option<String> {
 impl<'f> Asm<'f> {
     fn begin_pass(&mut self, pass: u8) {
         self.pass = pass;
+        self.charmap = std::array::from_fn(|i| i as u8);
+        self.ifconst_at = 0;
         self.pc = None;
         self.bank = 0;
         self.scopes.clear();
@@ -588,7 +603,7 @@ impl<'f> Asm<'f> {
             if let Some(Kind::Body(word, operand)) = &kind {
                 match directive_name(word).as_deref() {
                     Some("if") | Some("ifdef") | Some("ifndef") | Some("ifblank")
-                    | Some("ifnblank") => {
+                    | Some("ifnblank") | Some("ifconst") => {
                         let dir = directive_name(word).unwrap();
                         self.begin_if(&src, &dir, operand);
                         continue;
@@ -603,18 +618,18 @@ impl<'f> Asm<'f> {
                         }
                         continue;
                     }
-                    Some(dir @ ("struct" | "enum")) => {
-                        let close = if dir == "struct" {
-                            "endstruct"
-                        } else {
-                            "endenum"
+                    Some(dir @ ("struct" | "union" | "enum")) => {
+                        let close = match dir {
+                            "struct" => "endstruct",
+                            "union" => "endunion",
+                            _ => "endenum",
                         };
                         let (body, next) = self.collect_block(&lines, i, dir, close);
                         if self.active() {
-                            if dir == "struct" {
-                                self.do_struct(&src, operand, body);
-                            } else {
-                                self.do_enum(&src, operand, body);
+                            match dir {
+                                "struct" => self.do_struct(&src, operand, body, false),
+                                "union" => self.do_struct(&src, operand, body, true),
+                                _ => self.do_enum(&src, operand, body),
                             }
                         }
                         i = next;
@@ -1044,7 +1059,7 @@ impl<'f> Asm<'f> {
                 for part in split_top(operand) {
                     if let Some(lit) = as_string_literal(part) {
                         match lit {
-                            Ok(b) => out.extend(b),
+                            Ok(b) => out.extend(b.iter().map(|c| self.charmap[usize::from(*c)])),
                             Err(e) => {
                                 self.error(src, e);
                                 return;
@@ -1314,11 +1329,12 @@ impl<'f> Asm<'f> {
                 }
             }
             "local" => self.error(src, ".local is only valid inside a macro"),
-            "endstruct" | "endenum" => {
+            "charmap" => self.do_charmap(src, operand),
+            "endstruct" | "endunion" | "endenum" => {
                 self.error(src, format!(".{dir} without its opening directive"))
             }
             "macro" | "endm" | "endmacro" | "if" | "ifdef" | "ifndef" | "ifblank" | "ifnblank"
-            | "else" | "endif" | "include" | "struct" | "enum" => {
+            | "ifconst" | "else" | "endif" | "include" | "struct" | "union" | "enum" => {
                 unreachable!("handled by the walk")
             }
             other => self.error(src, format!("unknown directive .{other}")),
@@ -1438,6 +1454,19 @@ impl<'f> Asm<'f> {
                     defined == (dir == "ifdef")
                 }
                 "ifblank" | "ifnblank" => operand.trim().is_empty() == (dir == "ifblank"),
+                "ifconst" => {
+                    let at = self.ifconst_at;
+                    self.ifconst_at += 1;
+                    match self.ifconst.get(at) {
+                        Some(v) if self.pass == 2 => *v,
+                        _ => {
+                            let v = self.eval_now(operand).is_ok();
+                            self.ifconst.truncate(at);
+                            self.ifconst.push(v);
+                            v
+                        }
+                    }
+                }
                 _ => match self.eval_now(operand) {
                     Ok(v) => v != 0,
                     Err(e) => {
@@ -1833,14 +1862,17 @@ impl<'f> Asm<'f> {
         out
     }
 
-    /// `.struct Name` ... `.endstruct`: `Name::member` is the member's offset, `.sizeof(Name)` the size.
-    fn do_struct(&mut self, src: &LineSrc, operand: &str, body: Vec<LineSrc>) {
+    /// `.struct Name` ... `.endstruct`: `Name::member` is the member's offset, `.sizeof(Name)` the size. A `.union`
+    /// (`union`) puts every member at 0 and is as large as its largest member.
+    fn do_struct(&mut self, src: &LineSrc, operand: &str, body: Vec<LineSrc>, union: bool) {
+        let what = if union { ".union" } else { ".struct" };
         let name = operand.trim();
         if name.is_empty() || !name.chars().all(|c| expr::is_symbol_char(c) || c == ':') {
-            self.error(src, ".struct needs a name");
+            self.error(src, format!("{what} needs a name"));
             return;
         }
         let mut off: i64 = 0;
+        let mut largest: i64 = 0;
         for l in &body {
             let text = strip_comment(&l.text).trim().to_string();
             if text.is_empty() {
@@ -1864,7 +1896,7 @@ impl<'f> Asm<'f> {
                     .symbol(&format!("{}::__size", operand.trim()))
                     .ok_or_else(|| format!(".tag: \"{}\" is not a struct", operand.trim())),
                 other => Err(format!(
-                    "{other} is not allowed in a .struct (.byte .word .addr .dword .res .tag)"
+                    "{other} is not allowed in a {what} (.byte .word .addr .dword .res .tag)"
                 )),
             };
             let size = match size {
@@ -1881,9 +1913,37 @@ impl<'f> Asm<'f> {
             if let Some(m) = member {
                 self.define(l, &format!("{name}::{m}"), off, false);
             }
-            off += size;
+            if union {
+                largest = largest.max(size);
+            } else {
+                off += size;
+            }
         }
-        self.define(src, &format!("{name}::__size"), off, false);
+        let size = if union { largest } else { off };
+        self.define(src, &format!("{name}::__size"), size, false);
+    }
+
+    /// `.charmap INDEX, VALUE`: the byte `INDEX` of a string literal becomes `VALUE` from here on.
+    fn do_charmap(&mut self, src: &LineSrc, operand: &str) {
+        let parts = split_top(operand);
+        if parts.len() != 2 {
+            self.error(src, ".charmap needs an index and a value");
+            return;
+        }
+        let mut get = |p: &str| match self.eval_now(p) {
+            Ok(v) if (0..=255).contains(&v) => Some(v as u8),
+            Ok(v) => {
+                self.error(src, format!(".charmap: {v} is not a byte (0-255)"));
+                None
+            }
+            Err(e) => {
+                self.error(src, e);
+                None
+            }
+        };
+        if let (Some(index), Some(value)) = (get(parts[0]), get(parts[1])) {
+            self.charmap[usize::from(index)] = value;
+        }
     }
 
     /// `.enum [Name]` ... `.endenum`: names counting up from 0 (or from the last `= value`), as `Name::A` for a named

@@ -159,9 +159,12 @@ Enough of ca65's language to assemble typical cc65-era projects as they are:
 
 Also: `.define NAME text` and `.define NAME(a, b) text` (replaced outside strings, `.undef NAME` removes; `.ifdef` sees them),
 `.struct Name` ... `.endstruct` (members `.byte .word .addr .faraddr .dword .res N .tag Other`; `Name::member` is the offset, `.sizeof(Name)` the size),
-`.enum [Name]` ... `.endenum` (`A`, `B = 5`, counting up; `Name::A` when named), `.local a, b` in a macro (names private to each expansion) and `.ifblank` / `.ifnblank`.
+`.enum [Name]` ... `.endenum` (`A`, `B = 5`, counting up; `Name::A` when named), `.local a, b` in a macro (names private to each expansion) and `.ifblank` / `.ifnblank`,
+`.union Name` ... `.endunion` (the same members, all at offset 0; the size is the largest), `.ifconst EXPR` (true when the expression has a value at that point of the first pass:
+a label defined further down is not constant, in both passes, so the sizes agree) and `.charmap INDEX, VALUE` (from there on, the byte INDEX of a string literal in
+`.byte`/`.text`/`.asciiz` and their aliases becomes VALUE; character constants in expressions are not mapped).
 
-Not done: `.union`, `.charmap`, `.ifconst` / `.ifref`, `.mac` tricks with `.concat`; and the `vasm` syntaxes beyond what the 68000 assembler's Motorola style already takes.
+Not done: `.ifref`, nested anonymous `.struct`/`.union` members, `.mac` tricks with `.concat`; and the `vasm` syntaxes beyond what the 68000 assembler's Motorola style already takes.
 
 ## 68000 objects (`--cpu 68000 -f object`)
 
