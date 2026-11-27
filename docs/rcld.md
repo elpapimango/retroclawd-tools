@@ -21,6 +21,7 @@ entry = "start"                  # a symbol of the inputs, or an address
 output = "mygame.d64"            # the extension chooses the image; `rcld build -o` overrides
 fill = 0                         # byte for holes that gaps = "fill" fills
 gaps = "error"                   # or "fill": a hole inside a one-piece image
+syntax = "native"                # the 8-bit sources: native, or vasm's "oldstyle" / "std" (see rcasm)
 
 [[input]]
 asm = ["main.asm", "player.asm"]     # assembled together, in this order

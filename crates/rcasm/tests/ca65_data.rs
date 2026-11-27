@@ -1,4 +1,4 @@
-//! ca65's `.define`, `.struct`, `.union`, `.enum`, macro `.local` names, `.ifblank`, `.ifconst` and `.charmap`.
+//! ca65's `.define`, `.struct`, `.union`, `.enum`, macro `.local` names, `.ifblank`, `.ifconst`, `.ifref` and `.charmap`.
 
 use rcasm::{Cpu, DiskFiles, Options, assemble};
 
@@ -230,4 +230,51 @@ fn charmap_changes_the_bytes_of_strings_from_there_on() {
             .contains("index and a value")
     );
     assert!(asm(".charmap 300, 1\n").unwrap_err().contains("not a byte"));
+}
+
+#[test]
+fn ifref_is_true_for_a_symbol_used_before_and_ifnref_is_its_opposite() {
+    // the library idiom: a routine is assembled only when the program called it
+    let src = "\
+.org $1000
+        jsr used
+.ifref used
+used:   rts
+.endif
+.ifref unused
+unused: .byte $EE
+.endif
+.ifnref unused
+        .byte $AA
+.endif
+.ifref used
+        .byte $BB
+.endif
+";
+    assert_eq!(asm(src).unwrap(), [0x20, 0x03, 0x10, 0x60, 0xAA, 0xBB]);
+    // .ifdef or .ifref itself is not a use
+    let src = "\
+.org $1000
+x = 5
+.ifdef x
+.endif
+.ifref x
+        .byte 1
+.endif
+        .byte 2
+";
+    assert_eq!(asm(src).unwrap(), [2]);
+    // a use in an inactive block does not count
+    let src = "\
+.org $1000
+.if 0
+        .byte y
+.endif
+.ifref y
+        .byte 1
+.endif
+y = 3
+        .byte y
+";
+    assert_eq!(asm(src).unwrap(), [3]);
 }

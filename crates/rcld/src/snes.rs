@@ -190,6 +190,7 @@ pub fn build(
         }
         let opts = rcasm::Options {
             cpu: Some(Cpu::W65816),
+            syntax: crate::syntax_of(layout)?,
             defines,
             include_dirs: vec![base.to_path_buf()],
             ..rcasm::Options::default()

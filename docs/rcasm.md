@@ -9,6 +9,7 @@ rcasm [options] <source.asm>
   -s, --symbols <file>        symbol file;  --symbols-style rc|vice;  --all-symbols
   -l, --listing <file>
       --illegal               allow the undocumented 6502 opcodes
+      --syntax <native|oldstyle|std>   rcasm's own (default), or vasm's oldstyle / std modules
   -D NAME[=VALUE]             define a constant (VALUE defaults to 1)
   -I <dir>                    search for .include / .incbin
       --check                 assemble, report errors, write nothing
@@ -161,10 +162,36 @@ Also: `.define NAME text` and `.define NAME(a, b) text` (replaced outside string
 `.struct Name` ... `.endstruct` (members `.byte .word .addr .faraddr .dword .res N .tag Other`; `Name::member` is the offset, `.sizeof(Name)` the size),
 `.enum [Name]` ... `.endenum` (`A`, `B = 5`, counting up; `Name::A` when named), `.local a, b` in a macro (names private to each expansion) and `.ifblank` / `.ifnblank`,
 `.union Name` ... `.endunion` (the same members, all at offset 0; the size is the largest), `.ifconst EXPR` (true when the expression has a value at that point of the first pass:
-a label defined further down is not constant, in both passes, so the sizes agree) and `.charmap INDEX, VALUE` (from there on, the byte INDEX of a string literal in
+a label defined further down is not constant, in both passes, so the sizes agree), `.ifref NAME` / `.ifnref NAME` (true when an expression used NAME earlier in the
+pass, the library idiom of assembling a routine only when something called it; `.ifdef` is not a use; decided in the first pass and replayed) and `.charmap INDEX, VALUE` (from there on, the byte INDEX of a string literal in
 `.byte`/`.text`/`.asciiz` and their aliases becomes VALUE; character constants in expressions are not mapped).
 
-Not done: `.ifref`, nested anonymous `.struct`/`.union` members, `.mac` tricks with `.concat`; and the `vasm` syntaxes beyond what the 68000 assembler's Motorola style already takes.
+Since 0.6.2 also `.set NAME, VALUE` (a symbol that may be given a new value later; `=` and `equ` still refuse a second definition) and
+`.dsect` ... `.dend` (an offset section: labels inside get addresses from where the last one ended, 0 at first, `.org` moves them; nothing is written).
+
+Not done: nested anonymous `.struct`/`.union` members, `.mac` tricks with `.concat`.
+
+## vasm's oldstyle and std syntaxes (`--syntax oldstyle|std`, the 8-bit CPUs)
+
+Written from vasm's manual, not its code (vasm is not run here to compare with: `acp_dynawave.asm` of a public GameTank project,
+built with `vasm6502_oldstyle -dotdir -wdc02`, gives the same 4096 bytes as the image in that project; use `--cpu huc6280` for the 65C02 instructions).
+Each line is rewritten into rcasm's syntax before the passes (`crates/rcasm/src/vasm.rs`); a directive that is not translated becomes an error naming it at its line.
+In a layout: `syntax = "oldstyle"`.
+
+- **oldstyle**: labels at the first column, `:` optional (indented labels need it); `*` in the first column starts a comment unless it is `*=`;
+  local labels `.name` and `name$`; numbers `$FF`, `%101`, `@17` (octal; binary on the Z80), `4#123`, `12d`, `17o`/`17q`, `101b`, `0x`, `0b`, `'A` and,
+  in instructions, `"A"`; the Z80's `&FF`; `=` compares in conditions; blanks after commas in operands. Directives (with or without a dot):
+  `byt byte db dfb defb fcb data di8 ascii asc`, `word wor wrd dw dfw defw fdb di16 addr da defp`, `dl defl` (24 bits on the 6502, 32 on the Z80), `di24 di32`,
+  `asciiz string str fcc defm text fcs`, `blk bsz ds dsb defs zmb dc ds8 rmb blkw dsw ds16 blkl dsl ds24 ds32 fill reserve spc bss`, `align` (a bit count)
+  `even org include incbin binary mdat`, `equ eq = set defc`, `if cond ifne ifeq ifgt ifge iflt ifle ifd ifdef ifnd ifndef ifused ifblank ifnblank else el endif endc fi ei`,
+  `macro mac endm endmac endmacro` (`\1`..`\9`, `\name`, `name\@`, `\()`), `rept repeat endr endrep endrepeat`, `dsect dend`, `end assert fail`,
+  `global xdef xref xlib extern`, `list nolist`. Not translated (an error): `abyte rorg rend phase dephase roffs inline einline struct structure section incdir exitmacro local weak symdepend needs di64 ds64`.
+- **std**: labels end with `:`; local labels `.1`, `1$`, digit labels `1:` with `1b` / `1f`; numbers `0x`, `0b`, `017` (octal); `a!b` (or-not). Directives:
+  `.byte .ascii .short .half .word .2byte .int .long .4byte .asciz .asciiz .string .space .skip .zero .align .p2align` (power of two) `.balign .org .include .incbin
+  .equ .set .equiv .if .ifne .ifeq .ifgt .ifge .iflt .ifle .ifdef .ifndef .ifb .ifnb .elseif .else .endif .macro .endm .rept .endr .end .err .abort .global .globl .extern`,
+  and `.list .nolist .file .size .type .stabs .stabn .stabd .text` (no effect). Sections other than the one image, floats, 64-bit data, `.irp`, `.ifc` and the
+  ELF visibility directives are errors.
+
 
 ## 68000 objects (`--cpu 68000 -f object`)
 

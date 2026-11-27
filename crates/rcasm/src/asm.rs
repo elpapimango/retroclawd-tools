@@ -10,7 +10,8 @@ use crate::cpu::{self, Cpu, Site};
 use crate::expr::{self, EvalError, Scope};
 use crate::text::{as_string_literal, split_top, strip_comment};
 use rc_common::Diag;
-use std::collections::HashMap;
+use std::cell::RefCell;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
@@ -41,6 +42,8 @@ pub struct Options {
     pub defines: Vec<(String, i64)>,
     /// Write a relocatable object (use [`assemble_object`]).
     pub object: bool,
+    /// The source syntax: rcasm's own, or vasm's `oldstyle` / `std` (rewritten line by line, see [`crate::vasm`]).
+    pub syntax: crate::Syntax,
 }
 
 /// A run of bytes at an address.
@@ -135,6 +138,17 @@ struct Asm<'f> {
     /// later stays "not constant" in both passes and the sizes agree.
     ifconst: Vec<bool>,
     ifconst_at: usize,
+    /// The symbols expressions have used so far in this pass (keys), for `.ifref`; its results are replayed like
+    /// `.ifconst`'s.
+    refs: RefCell<HashSet<String>>,
+    ifref: Vec<bool>,
+    /// Symbols made with `.set`: they may be given a new value at any time.
+    vars: HashSet<String>,
+    /// Inside `.dsect`: the address to return to at `.dend`; addresses advance, nothing is written.
+    dsect: Option<Option<u32>>,
+    /// Where the next `.dsect` starts (where the last one ended).
+    dsect_pc: u32,
+    ifref_at: usize,
     /// How many macro expansions have renamed their `.local` names.
     local_counter: usize,
     /// Instruction number -> "the first pass found an unknown symbol in the operand".
@@ -170,11 +184,16 @@ struct View<'a> {
     /// The names of the `.proc`/`.scope` blocks around the statement, outermost first.
     scopes: &'a [String],
     pc: i64,
+    /// Where uses of symbols are recorded (`.ifref`).
+    refs: &'a RefCell<HashSet<String>>,
 }
 
 impl Scope for View<'_> {
     fn symbol(&self, name: &str) -> Option<i64> {
-        self.symbols.get(&self.key_of(name)).map(|s| s.value)
+        let key = self.key_of(name);
+        let v = self.symbols.get(&key).map(|s| s.value);
+        self.refs.borrow_mut().insert(key);
+        v
     }
     fn pc(&self) -> i64 {
         self.pc
@@ -228,6 +247,12 @@ fn run_passes<'f>(
         charmap: std::array::from_fn(|i| i as u8),
         ifconst: Vec::new(),
         ifconst_at: 0,
+        refs: RefCell::new(HashSet::new()),
+        ifref: Vec::new(),
+        vars: HashSet::new(),
+        dsect: None,
+        dsect_pc: 0,
+        ifref_at: 0,
         local_counter: 0,
         wide: HashMap::new(),
         pc: None,
@@ -260,13 +285,16 @@ fn run_passes<'f>(
         );
     }
     let root: Rc<str> = Rc::from(name);
-    let lines = split_lines(source, &root);
+    let lines = split_lines(source, &root, opts);
     for pass in 1..=2u8 {
         asm.begin_pass(pass);
         asm.run(lines.clone(), 0);
         if !asm.conds.is_empty() {
             let at = Diag::new(name, 0, "unterminated .if (missing .endif)");
             asm.errors.push(at);
+        }
+        if asm.dsect.is_some() {
+            asm.errors.push(Diag::new(name, 0, ".dsect without .dend"));
         }
         if !asm.errors.is_empty() {
             return Err(asm.errors);
@@ -278,14 +306,17 @@ fn run_passes<'f>(
     Ok(asm)
 }
 
-fn split_lines(source: &str, file: &Rc<str>) -> Vec<LineSrc> {
+fn split_lines(source: &str, file: &Rc<str>, opts: &Options) -> Vec<LineSrc> {
+    let mut rw = crate::vasm::Rewriter::new(opts.syntax, opts.cpu);
     source
         .lines()
         .enumerate()
-        .map(|(i, l)| LineSrc {
-            text: l.to_string(),
-            file: Rc::clone(file),
-            line: i + 1,
+        .flat_map(|(i, l)| {
+            rw.line(l).into_iter().map(move |text| LineSrc {
+                text,
+                file: Rc::clone(file),
+                line: i + 1,
+            })
         })
         .collect()
 }
@@ -403,6 +434,10 @@ const DIRECTIVES: &[&str] = &[
     "union",
     "endunion",
     "ifconst",
+    "ifref",
+    "ifnref",
+    "dsect",
+    "dend",
     "charmap",
 ];
 
@@ -424,6 +459,10 @@ impl<'f> Asm<'f> {
         self.pass = pass;
         self.charmap = std::array::from_fn(|i| i as u8);
         self.ifconst_at = 0;
+        self.ifref_at = 0;
+        self.refs.borrow_mut().clear();
+        self.dsect = None;
+        self.dsect_pc = 0;
         self.pc = None;
         self.bank = 0;
         self.scopes.clear();
@@ -477,6 +516,7 @@ impl<'f> Asm<'f> {
             scope_prefix: self.scope_prefix(),
             scopes: &self.scopes,
             pc: self.pc.unwrap_or(0) as i64,
+            refs: &self.refs,
         }
     }
 
@@ -523,6 +563,18 @@ impl<'f> Asm<'f> {
 
     fn define(&mut self, src: &LineSrc, name: &str, value: i64, label: bool) {
         let key = self.key(name);
+        if self.vars.contains(&key) {
+            self.symbols.insert(
+                key,
+                Sym {
+                    value,
+                    label,
+                    kind: SymKind::Const,
+                    zp: false,
+                },
+            );
+            return;
+        }
         match self.symbols.get(&key) {
             Some(old) if self.pass == 1 => {
                 let _ = old;
@@ -603,7 +655,7 @@ impl<'f> Asm<'f> {
             if let Some(Kind::Body(word, operand)) = &kind {
                 match directive_name(word).as_deref() {
                     Some("if") | Some("ifdef") | Some("ifndef") | Some("ifblank")
-                    | Some("ifnblank") | Some("ifconst") => {
+                    | Some("ifnblank") | Some("ifconst") | Some("ifref") | Some("ifnref") => {
                         let dir = directive_name(word).unwrap();
                         self.begin_if(&src, &dir, operand);
                         continue;
@@ -926,6 +978,14 @@ impl<'f> Asm<'f> {
         let Some(pc) = self.ensure_pc(src) else {
             return;
         };
+        if self.dsect.is_some() {
+            // an offset section: the labels get addresses, nothing is written
+            if pc as usize + bytes.len() > self.limit() as usize {
+                self.error(src, "the .dsect passes the end of the address space");
+            }
+            self.pc = Some(pc + bytes.len() as u32);
+            return;
+        }
         if self.ob.on {
             let cur = self.ob.cur;
             let limit = self.limit() as usize;
@@ -1047,7 +1107,28 @@ impl<'f> Asm<'f> {
 
     fn directive(&mut self, src: &LineSrc, dir: &str, operand: &str) {
         match dir {
+            "org" if self.dsect.is_some() => match self.eval_now(operand) {
+                Ok(v) if (0..self.limit() as i64).contains(&v) => self.pc = Some(v as u32),
+                Ok(v) => self.error(src, format!(".org {v} is outside the address space")),
+                Err(e) => self.error(src, e),
+            },
             "org" => self.do_org(src, operand),
+            "dsect" if self.ob.on => self.error(
+                src,
+                ".dsect is for images; in object mode use a bss segment",
+            ),
+            "dsect" if self.dsect.is_some() => self.error(src, ".dsect is already open"),
+            "dsect" => {
+                self.dsect = Some(self.pc);
+                self.pc = Some(self.dsect_pc);
+            }
+            "dend" => match self.dsect.take() {
+                Some(back) => {
+                    self.dsect_pc = self.pc.unwrap_or(0);
+                    self.pc = back;
+                }
+                None => self.error(src, ".dend without .dsect"),
+            },
             "bank" => self.do_bank(src, operand),
             "segment" => self.do_segment(src, operand),
             "import" | "importzp" | "export" | "exportzp" | "global" => {
@@ -1235,6 +1316,10 @@ impl<'f> Asm<'f> {
             "equ" | "set" => {
                 let parts = split_top(operand);
                 if let [name, value] = parts.as_slice() {
+                    if dir == "set" {
+                        let key = self.key(name);
+                        self.vars.insert(key);
+                    }
                     self.do_assign(src, name, value);
                 } else {
                     self.error(src, format!(".{dir} takes a name and a value"));
@@ -1334,7 +1419,8 @@ impl<'f> Asm<'f> {
                 self.error(src, format!(".{dir} without its opening directive"))
             }
             "macro" | "endm" | "endmacro" | "if" | "ifdef" | "ifndef" | "ifblank" | "ifnblank"
-            | "ifconst" | "else" | "endif" | "include" | "struct" | "union" | "enum" => {
+            | "ifconst" | "ifref" | "ifnref" | "else" | "endif" | "include" | "struct"
+            | "union" | "enum" => {
                 unreachable!("handled by the walk")
             }
             other => self.error(src, format!("unknown directive .{other}")),
@@ -1382,7 +1468,7 @@ impl<'f> Asm<'f> {
             Ok((path, bytes)) => {
                 let text = String::from_utf8_lossy(&bytes).into_owned();
                 let file: Rc<str> = Rc::from(path.to_string_lossy().as_ref());
-                let lines = split_lines(&text, &file);
+                let lines = split_lines(&text, &file, &self.opts);
                 self.run(lines, depth + 1);
             }
             Err(e) => self.error(src, e),
@@ -1449,11 +1535,29 @@ impl<'f> Asm<'f> {
         } else {
             match dir {
                 "ifdef" | "ifndef" => {
-                    let defined = self.view().symbol(operand.trim()).is_some()
+                    // a test, not a use: `.ifref` does not see it
+                    let defined = self
+                        .symbols
+                        .contains_key(&self.view().canonical(operand.trim()))
                         || self.defines.contains_key(operand.trim());
                     defined == (dir == "ifdef")
                 }
                 "ifblank" | "ifnblank" => operand.trim().is_empty() == (dir == "ifblank"),
+                "ifref" | "ifnref" => {
+                    let at = self.ifref_at;
+                    self.ifref_at += 1;
+                    let used = match self.ifref.get(at) {
+                        Some(v) if self.pass == 2 => *v,
+                        _ => {
+                            let key = self.view().canonical(operand.trim());
+                            let v = self.refs.borrow().contains(&key);
+                            self.ifref.truncate(at);
+                            self.ifref.push(v);
+                            v
+                        }
+                    };
+                    used == (dir == "ifref")
+                }
                 "ifconst" => {
                     let at = self.ifconst_at;
                     self.ifconst_at += 1;

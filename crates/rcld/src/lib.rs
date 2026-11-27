@@ -97,6 +97,15 @@ pub fn parse_symbols(text: &str) -> Result<Vec<(String, i64)>, String> {
     Ok(out)
 }
 
+/// The source syntax of the layout's 8-bit sources (`syntax = "oldstyle"` / `"std"`: vasm's; default rcasm's own).
+pub(crate) fn syntax_of(layout: &Layout) -> Result<rcasm::Syntax, String> {
+    match layout.syntax.as_deref() {
+        None => Ok(rcasm::Syntax::Native),
+        Some(s) => rcasm::Syntax::parse(s)
+            .ok_or_else(|| format!("syntax = \"{s}\": native, oldstyle or std")),
+    }
+}
+
 fn cpu_of(layout: &Layout) -> Result<rcasm::Cpu, String> {
     match (layout.machine, layout.cpu.as_deref()) {
         (Machine::C64 | Machine::Atari, _) => Ok(rcasm::Cpu::Mos6502),
@@ -192,6 +201,7 @@ pub(crate) fn link_inputs(
                 } else {
                     let opts = rcasm::Options {
                         cpu,
+                        syntax: syntax_of(layout)?,
                         defines: defines.to_vec(),
                         include_dirs: vec![base.to_path_buf()],
                         ..rcasm::Options::default()
@@ -388,10 +398,11 @@ pub fn load(
         };
         let source: String = sources
             .iter()
-            .map(|p| format!(".include \"{}\"\n", quote(p)))
+            .map(|p| format!("    .include \"{}\"\n", quote(p)))
             .collect();
         let opts = rcasm::Options {
             cpu: Some(cpu_of(layout)?),
+            syntax: syntax_of(layout)?,
             defines,
             include_dirs: vec![base.to_path_buf()],
             ..rcasm::Options::default()
@@ -460,10 +471,11 @@ pub fn debug_info(
     };
     let source: String = sources
         .iter()
-        .map(|p| format!(".include \"{}\"\n", quote(p)))
+        .map(|p| format!("    .include \"{}\"\n", quote(p)))
         .collect();
     let opts = rcasm::Options {
         cpu: Some(cpu),
+        syntax: syntax_of(layout)?,
         defines,
         include_dirs: vec![base.to_path_buf()],
         ..rcasm::Options::default()

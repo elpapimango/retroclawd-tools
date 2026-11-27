@@ -633,3 +633,29 @@ fn the_spectrum_loader_has_the_hidden_number_forms_the_interpreter_reads() {
     );
     assert_eq!(rcld::basic::c64_stub(999)[..2], [0x0A, 0x08]);
 }
+
+#[test]
+fn a_layout_can_take_vasm_oldstyle_sources() {
+    let p = Project::new("vasm");
+    p.file(
+        "main.asm",
+        "        org     $080D\nstart   lda     #@52\n        sta     $C0FF\n.loop   jmp     .loop\n",
+    );
+    let layout = C64_LAYOUT.replace(
+        "entry = \"start\"\n",
+        "entry = \"start\"\nsyntax = \"oldstyle\"\n",
+    );
+    let b = p.build(&layout, "hello.prg").unwrap();
+    assert!(
+        b.bytes
+            .windows(5)
+            .any(|w| w == [0xA9, 0x2A, 0x8D, 0xFF, 0xC0]),
+        "{:02X?}",
+        b.bytes
+    );
+    let e = p
+        .build(&layout.replace("oldstyle", "masm"), "hello.prg")
+        .err()
+        .unwrap();
+    assert!(e.contains("masm"), "{e}");
+}

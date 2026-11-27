@@ -58,6 +58,10 @@ struct Cli {
     #[arg(long)]
     illegal: bool,
 
+    /// Source syntax: native (rcasm's own, with the ca65 directives), oldstyle or std (vasm's modules).
+    #[arg(long, default_value = "native", value_parser = parse_syntax)]
+    syntax: rcasm::Syntax,
+
     /// Define a constant: NAME or NAME=VALUE (VALUE is 1 when left out).
     #[arg(short = 'D', value_name = "NAME[=VALUE]")]
     define: Vec<String>,
@@ -141,6 +145,7 @@ fn main() -> ExitCode {
         include_dirs: cli.include.clone(),
         defines,
         object: false,
+        syntax: cli.syntax,
     };
     let name = cli.source.to_string_lossy().into_owned();
     if matches!(cli.format, Format::Object) {
@@ -362,4 +367,8 @@ fn report(errors: &[Diag]) {
         eprintln!("{e}");
     }
     eprintln!("rcasm: {} error(s)", errors.len());
+}
+
+fn parse_syntax(s: &str) -> Result<rcasm::Syntax, String> {
+    rcasm::Syntax::parse(s).ok_or_else(|| format!("unknown syntax {s}: native, oldstyle or std"))
 }

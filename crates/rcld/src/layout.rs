@@ -258,6 +258,8 @@ pub struct Layout {
     pub machine: Machine,
     /// CPU for `generic`: `6502` or `z80`.
     pub cpu: Option<String>,
+    /// The syntax of the 8-bit sources: `native` (default), or vasm's `oldstyle` / `std`.
+    pub syntax: Option<String>,
     /// The file to write, relative to the layout file; the extension chooses the kind of image. `rcld -o` overrides.
     pub output: Option<String>,
     /// Name of the program (tape header, disk file, cartridge); default: the output's file name.

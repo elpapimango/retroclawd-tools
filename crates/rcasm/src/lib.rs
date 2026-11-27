@@ -11,12 +11,14 @@ mod huc6280;
 pub mod m68k;
 mod spc700;
 pub mod text;
+pub mod vasm;
 mod w65816;
 
 pub use asm::{
     Assembly, DiskFiles, Files, ListEntry, Options, Segment, Symbol, assemble, assemble_object,
 };
 pub use cpu::Cpu;
+pub use vasm::Syntax;
 
 use std::fmt::Write;
 
