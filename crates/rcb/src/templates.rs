@@ -102,8 +102,8 @@ pub const ALL: &[Template] = &[
     Template {
         machine: "segacd",
         source_name: "ip.s",
-        source: "        .org $FF0584       ; the main CPU starts here after the security code\nstart:  bra.s   start\n",
-        layout: "machine = \"segacd\"\nname = \"MYGAME\"\n\n[options]\nregion = \"U\"\n# security = \"security-us.bin\"   # Sega's region code, from a disc of your own: the BIOS checks it\n",
+        source: "        .org $FF0584       ; the main CPU starts here after the security code\nstart:  move.w  #$2700,sr\n        move.w  VDP_CTRL,d0     ; reading the status resets the control port\n        move.w  #$8144,VDP_CTRL ; register 1: display on, mode 5\n        move.w  #$8700,VDP_CTRL ; register 7: the backdrop is palette 0 colour 0\n        move.l  #VDP_CRAM_WRITE,VDP_CTRL\n        move.w  #$000E,VDP_DATA ; colour 0 = red: the backdrop behind the BIOS's licence screen turns red\nforever: bra.s  forever\n",
+        layout: "machine = \"segacd\"\nname = \"MYGAME\"\n\n[options]\nregion = \"U\"\n# security = \"../discs/My Game (USA).bin\"   # Sega's region code: a disc of your own of the same region (.iso or the\n#                                            # track 1 .bin), or the 1412 bytes cut from one. The BIOS checks it.\n",
         extra_sources: &[(
             "sp.s",
             "        .org $6000         ; the sub CPU's module: header, then the entry table\n        dc.b    \"MAIN-RCB\",0,0,0,0 ; 11 characters and a zero\n        dc.b    0,1,0,0\n        dc.l    0,0,$20,0\nentries: dc.w   init-entries, main-entries, level2-entries, user-entries, 0\ninit:   rts\nmain:   bra.s   main\nlevel2: rts\nuser:   rts\n",

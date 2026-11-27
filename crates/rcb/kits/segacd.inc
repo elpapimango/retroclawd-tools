@@ -12,6 +12,10 @@ MCD_STOPWATCH   equ $A1200C
 MCD_COMM_FLAGS  equ $A1200E   ; main writes the high byte, the sub CPU the low byte
 MCD_COMM_CMD    equ $A12010   ; 16 bytes the main CPU writes
 MCD_COMM_STATUS equ $A12020   ; 16 bytes the sub CPU writes
+; the Mega Drive's VDP as the initial program uses it (the rest: `rcb kit genesis`)
+VDP_DATA        equ $C00000
+VDP_CTRL        equ $C00004   ; word write: $8000 | register << 8 | value ; long write: a memory command
+VDP_CRAM_WRITE  equ $C0000000
 ; sub CPU
 SUB_PRG_RAM     equ $000000   ; 512 KB; the BIOS owns the first $6000 bytes, the sub program is loaded at $6000
 SUB_WORD_RAM_2M equ $080000

@@ -156,3 +156,36 @@ fn the_security_code_is_placed_when_given() {
     assert_eq!(&b.bytes[0x200..0x784], &code[..]);
     assert!(!b.notes.iter().any(|n| n.contains("security")));
 }
+
+#[test]
+fn the_security_code_can_come_from_a_disc_image() {
+    let p = Project::new("secdisc");
+    p.file("ip.s", IP.as_bytes()).file("sp.s", SP.as_bytes());
+    let code: Vec<u8> = (0..0x584usize).map(|i| (i % 249) as u8).collect();
+    p.file("sec.bin", &code);
+    let with = LAYOUT.replace("region = \"E\"", "region = \"E\"\nsecurity = \"sec.bin\"");
+    let iso = p.build(&with).unwrap().bytes;
+    // a 2048-byte sector image (.iso)
+    p.file("game.iso", &iso);
+    let b = p
+        .build(&LAYOUT.replace("region = \"E\"", "region = \"E\"\nsecurity = \"game.iso\""))
+        .unwrap();
+    assert_eq!(&b.bytes[0x200..0x784], &code[..]);
+    // a raw 2352-byte sector image (.bin): sync, header, the 2048 bytes, error correction
+    let mut raw = vec![0u8; 2352 * 2];
+    raw[0] = 0;
+    raw[1..11].fill(0xFF);
+    raw[15] = 1;
+    raw[16..16 + 2048].copy_from_slice(&iso[..2048]);
+    p.file("game.bin", &raw);
+    let b = p
+        .build(&LAYOUT.replace("region = \"E\"", "region = \"E\"\nsecurity = \"game.bin\""))
+        .unwrap();
+    assert_eq!(&b.bytes[0x200..0x784], &code[..]);
+    // a file that is neither a code nor a Mega-CD disc
+    p.file("other.bin", &vec![0u8; 4096]);
+    let e = p
+        .build(&LAYOUT.replace("region = \"E\"", "region = \"E\"\nsecurity = \"other.bin\""))
+        .unwrap_err();
+    assert!(e.contains("SEGADISCSYSTEM"), "{e}");
+}

@@ -1,7 +1,7 @@
 # rcb: the project driver
 
 ```
-rcb new NAME --machine c64|spectrum|cpc|atari|atari-st|pcengine|nes|snes|genesis|neogeo|amiga|x68000
+rcb new NAME --machine c64|spectrum|cpc|atari|atari-st|pcengine|nes|snes|genesis|neogeo|segacd|amiga|x68000
 rcb build        assemble, link, write build/NAME.<ext>, build/NAME.map and build/NAME.sym
 rcb check        the same, writing nothing
 rcb run          build, then `rcd <machine> ...` on the image
@@ -29,7 +29,8 @@ output = "build/hello.pce"  # default build/<name>.<the machine's usual extensio
 Machines the emulator does not have yet (NES, SNES, Amiga, X68000) build, but `rcb run` says so unless `[run]` is given. `rcb new` makes a skeleton for each machine that builds as it is
 and shows that it runs in the smallest way the machine allows (a border or background colour, a line of text), with the vectors and header the machine needs. The 68000 ones follow the
 Chibi Akumas lessons (chibiakumas.com): the Mega Drive turns the screen red, the Atari ST prints a line and waits for a key, the Neo Geo turns its backdrop red once `[options] security` gives it SNK's
-security code (see rcld's Neo Geo section; without it the BIOS shows its crosshatch). Checked in the emulator 2026-11-26. Hardware kits: `rcb kits` lists them, `rcb kit MACHINE` prints one, and `rcb new` writes the machine's kit to `src/kit.inc` and includes it from the skeleton
+security code (see rcld's Neo Geo section; without it the BIOS shows its crosshatch), and the Mega-CD's initial program turns the backdrop behind the BIOS's licence screen red once
+`[options] security` names a disc of your own of the same region (see rcld's Mega-CD section; without it the BIOS stays in its menu). Checked in the emulator 2026-11-26 (Mega-CD 2026-11-27). Hardware kits: `rcb kits` lists them, `rcb kit MACHINE` prints one, and `rcb new` writes the machine's kit to `src/kit.inc` and includes it from the skeleton
 (`.include "src/kit.inc"`). A kit is constants only (registers, system call numbers, colours, joypad bits): it emits no bytes. The values are from public hardware documentation
 and tutorials; the SNES, Mega Drive, Atari ST, Amiga, X68000 and Neo Geo kits were checked against the Chibi Akumas platform pages (2026-11-26), and what those pages do not
 show is marked `[H?]` or named as coming from other documentation.

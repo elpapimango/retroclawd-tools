@@ -7,9 +7,10 @@
 //! `[[file]]` entries, which the sub program reads through the BIOS.
 //!
 //! The BIOS runs a region **security code** in `$200-$783` of the first sector and jumps to `$FF0584` after it. That code is
-//! Sega's: this tool does not contain it. `options.security` names a file with it (extracted from a disc of your own; 1412
-//! bytes, or the 1536 bytes of the whole `$200-$7FF` block). Without it the area is zeros and the disc is for emulators
-//! that do not check it.
+//! Sega's: this tool does not contain it. `options.security` names a file with it: 1412 bytes, the 1536 bytes of the whole
+//! `$200-$7FF` block, or a disc image of your own of the same region (`.iso`, or the raw `.bin` of track 1), from which
+//! `$200-$783` of the first sector is taken. Without it the area is zeros and the BIOS does not boot the disc (checked with
+//! the US BIOS 2.00 in retroclawd 2026-11-27: with the code from a US disc the IP runs, without it the BIOS stays in its menu).
 //!
 //! `[options]`: `region` (`J`, `U` or `E`), `title`, `serial`, `copyright`, `console` (`megadrive` or `genesis`), `security`.
 //! The volume name is the layout's `name` (11 characters).
@@ -27,6 +28,25 @@ const IP_START: usize = 0x200;
 /// Where the user's code starts in the IP block: the security code is the first `$584` bytes.
 const SECURITY_LEN: usize = 0x584;
 const IP_BASE: u32 = 0xFF_0000;
+
+/// The security code in a file: the code itself (`$584` or `$600` bytes), or `$200-$783` of the first sector of a disc
+/// image, 2048-byte sectors (`.iso`) or raw 2352-byte ones (`.bin`: 12 sync bytes and a 4-byte header first).
+fn security_code(bytes: &[u8]) -> Option<&[u8]> {
+    if bytes.len() == SECURITY_LEN || bytes.len() == 0x600 {
+        return Some(&bytes[..SECURITY_LEN]);
+    }
+    const SYNC: [u8; 12] = [
+        0, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0,
+    ];
+    let sector = if bytes.starts_with(&SYNC) {
+        bytes.get(16..16 + SECTOR)?
+    } else {
+        bytes.get(..SECTOR)?
+    };
+    sector
+        .starts_with(b"SEGADISCSYSTEM")
+        .then(|| &sector[IP_START..IP_START + SECURITY_LEN])
+}
 const SP_BASE: u32 = 0x6000;
 const SYSTEM_SECTORS: usize = 16;
 
@@ -222,14 +242,14 @@ pub fn build(
         let path = resolve(base, sec);
         let bytes =
             std::fs::read(&path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
-        if bytes.len() != SECURITY_LEN && bytes.len() != 0x600 {
-            return Err(format!(
-                "{}: the security code is {SECURITY_LEN} ($584) or 1536 ($600) bytes, not {}",
+        ip[..SECURITY_LEN].copy_from_slice(security_code(&bytes).ok_or_else(|| {
+            format!(
+                "{}: the security code is {SECURITY_LEN} ($584) or 1536 ($600) bytes, or a Mega-CD disc image (.iso, or a raw .bin \
+                 track 1) whose first sector starts with SEGADISCSYSTEM; this is {} bytes and neither",
                 path.display(),
                 bytes.len()
-            ));
-        }
-        ip[..SECURITY_LEN].copy_from_slice(&bytes[..SECURITY_LEN]);
+            )
+        })?);
     } else {
         notes.push(
             "no options.security: the region security code at $200-$783 is zeros, so a BIOS that checks it will not boot the disc".to_string(),

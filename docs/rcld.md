@@ -293,6 +293,7 @@ a piece at `$FF0584` and up in the main CPU's work RAM is the **initial program*
 a Genesis-style header at `$100` from `[options] title serial copyright console region`), the IP and SP follow in the system area (sectors 0-15, 32 KB in all), and sector 16 starts an ISO 9660 volume with the `[[file]]` entries
 (`path`, `name`: 8.3 upper-case names) that the sub program reads through the BIOS.
 
-The security code at `$200-$783` is Sega's and is not part of this tool: `[options] security = "file"` names a file with it (1412 or 1536 bytes, from a disc you own). Without it the area is zeros and a note says so: the disc is
-for emulators and BIOS versions that do not check it. The entry offset and work RAM size fields of the header are written as 0 `[H?]`. The ISO 9660 volume reads back in 7-Zip. Not done: audio tracks, CD-ROM XA sectors, a `.cue` or CHD
+The security code at `$200-$783` is Sega's and is not part of this tool: `[options] security = "file"` names a file with it: 1412 or 1536 bytes, or a disc image you own of the same region (`.iso`, or the raw
+`.bin` of track 1), from which `$200-$783` of the first sector is taken. Without it the area is zeros and a note says so: the BIOS then does not boot the disc (checked 2026-11-27 with the US BIOS 2.00 in
+retroclawd: with the code from a US disc the initial program runs, without it the BIOS stays in its menu). The entry offset and work RAM size fields of the header are written as 0 `[H?]`. The ISO 9660 volume reads back in 7-Zip. Not done: audio tracks, CD-ROM XA sectors, a `.cue` or CHD
 (`rcchd createcd` makes a CHD from a cue sheet), subdirectories.
