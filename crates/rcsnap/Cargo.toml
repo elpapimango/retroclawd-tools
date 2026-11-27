@@ -14,7 +14,7 @@ name = "rcsnap"
 path = "src/main.rs"
 
 [dependencies]
-rc-common = { path = "../rc-common", version = "0.5.0" }
+rc-common = { path = "../rc-common", version = "0.6.0" }
 z80-snapshot.workspace = true
 sna-snapshot.workspace = true
 szx-snapshot.workspace = true
@@ -26,4 +26,4 @@ z80.workspace = true
 clap.workspace = true
 
 [dev-dependencies]
-rcasm = { path = "../rcasm", version = "0.5.0" }
+rcasm = { path = "../rcasm", version = "0.6.0" }
