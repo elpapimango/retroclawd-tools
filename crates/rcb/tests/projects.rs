@@ -194,6 +194,43 @@ fn a_program_can_use_the_kit_names() {
 }
 
 #[test]
+fn the_flat_68000_machines_get_debug_information_at_their_run_addresses() {
+    let d = temp("dbg68k");
+    for (machine, want) in [
+        ("genesis", vec!["0x200"]),
+        ("neogeo", vec!["0x0 "]),
+        ("segacd", vec!["0xFF0584", "0x6000"]),
+    ] {
+        let name = format!("p-{machine}");
+        assert!(
+            rcb(&["new", &name, "--machine", machine], &d)
+                .status
+                .success()
+        );
+        assert!(rcb(&["build", "-C", &name], &d).status.success());
+        let text = std::fs::read_to_string(d.join(format!("{name}/build/{name}.rcdbg"))).unwrap();
+        let info = rc_common::dbg::DebugInfo::parse(&text).unwrap();
+        assert!(!info.lines.is_empty(), "{machine}: {text}");
+        assert!(
+            info.files.iter().all(|f| !f.contains('\\')),
+            "{machine}: {text}"
+        );
+        for w in want {
+            assert!(text.contains(w), "{machine} wants {w}: {text}");
+        }
+    }
+    // the Atari ST loads a program where the system puts it: no addresses to give
+    assert!(
+        rcb(&["new", "p-st", "--machine", "atari-st"], &d)
+            .status
+            .success()
+    );
+    assert!(rcb(&["build", "-C", "p-st"], &d).status.success());
+    assert!(!d.join("p-st/build/p-st.rcdbg").exists());
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
 fn a_build_writes_debug_information_and_rcb_debug_hands_it_to_the_emulator() {
     let d = temp("dbg");
     assert!(rcb(&["new", "p", "--machine", "c64"], &d).status.success());

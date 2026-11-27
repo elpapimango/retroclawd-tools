@@ -58,7 +58,7 @@ holds the assembler, linker, archiver, image writers, converters and the `rcb` d
 | 4 | ca65: scopes, unnamed labels, `.repeat`, `.define`, `.struct`, `.enum`, macro `.local`, `.ifblank`, `.union`, `.charmap`, `.ifconst`, ld65 `.cfg`. Not done: `.ifref`; the `vasm` dialects beyond the Motorola style the 68000 back end takes |
 | 5 | done: `rcb new/build/run/debug/clean/check/targets/kits/kit`, templates and kits for 13 machines |
 | 6 | done: `rcasset` (PNG to NES, SNES, Mega Drive, PC Engine tiles and palettes, the Spectrum screen) |
-| 7 | done: `.rcdbg` from `rcasm --debug-info` and `rcb build`; rcdd reads it with `--source-info` (emulator PR #4): line at the PC, breakpoints by `file:line`, `step-line`, `next-line`. 68000 listings are not turned into `.rcdbg` yet |
+| 7 | done: `.rcdbg` from `rcasm --debug-info` and `rcb build`; rcdd reads it with `--source-info` (emulator PR #4): line at the PC, breakpoints by `file:line`, `step-line`, `next-line`. The flat 68000 machines (Mega Drive, Neo Geo, Mega-CD) get `.rcdbg` too (2026-11-26; checked live on the Mega Drive through debug-ui, which found `next-line` stepping into `bsr`: fixed in the emulator). The Atari ST, Amiga and X68000 do not (their load address is the system's) |
 
 ## Order of execution
 

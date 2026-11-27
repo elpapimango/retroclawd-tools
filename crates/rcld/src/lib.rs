@@ -432,6 +432,9 @@ pub fn debug_info(
     base: &Path,
     cli_defines: &[(String, i64)],
 ) -> Result<Option<String>, String> {
+    if is_68k(layout) {
+        return debug_info_68k(layout, base, cli_defines);
+    }
     let Ok(cpu) = cpu_of(layout) else {
         return Ok(None);
     };
@@ -472,7 +475,81 @@ pub fn debug_info(
             .collect::<Vec<_>>()
             .join("\n")
     })?;
-    Ok(Some(rcasm::debug_info(&asm).to_text()))
+    Ok(Some(slashes(rcasm::debug_info(&asm)).to_text()))
+}
+
+/// The file names with forward slashes, whatever the system wrote (a project path on Windows mixes both).
+fn slashes(mut info: rc_common::dbg::DebugInfo) -> rc_common::dbg::DebugInfo {
+    for f in &mut info.files {
+        *f = f.replace('\\', "/");
+    }
+    info
+}
+
+/// The 68000 machines' `.rcdbg`: the machines with a flat image (the Mega Drive, the Neo Geo, the Mega-CD's programs)
+/// run their code where it was assembled. The Atari ST, the Amiga and the X68000 load a program wherever the system
+/// puts it, so their listing holds offsets the debugger cannot place: they get none.
+fn debug_info_68k(
+    layout: &Layout,
+    base: &Path,
+    cli_defines: &[(String, i64)],
+) -> Result<Option<String>, String> {
+    if matches!(
+        layout.machine,
+        Machine::AtariSt | Machine::Amiga | Machine::X68000
+    ) {
+        return Ok(None);
+    }
+    let sources: Vec<PathBuf> = layout
+        .input
+        .iter()
+        .filter_map(|i| i.asm.as_ref())
+        .flat_map(|a| a.list())
+        .map(|p| resolve(base, &p))
+        .collect();
+    if sources.is_empty() {
+        return Ok(None);
+    }
+    let mut defines: Vec<(String, i64)> =
+        layout.define.iter().map(|(k, v)| (k.clone(), *v)).collect();
+    defines.extend(cli_defines.iter().cloned());
+    // the Mega-CD assembles each source on its own (the initial program and the sub program), the others together
+    let groups: Vec<Vec<PathBuf>> = if layout.machine == Machine::SegaCd {
+        sources.into_iter().map(|p| vec![p]).collect()
+    } else {
+        vec![sources]
+    };
+    let mut info = rc_common::dbg::DebugInfo::default();
+    for group in groups {
+        let text: String = group
+            .iter()
+            .map(|p| {
+                format!(
+                    "    .include \"{}\"\n",
+                    p.display()
+                        .to_string()
+                        .replace('\\', "\\\\")
+                        .replace('"', "\\\"")
+                )
+            })
+            .collect();
+        let opts = rcasm::m68k::M68kOptions {
+            include_dirs: vec![base.to_path_buf()],
+            defines: defines.clone(),
+            ..rcasm::m68k::M68kOptions::default()
+        };
+        let asm = rcasm::m68k::assemble_m68k("layout", &text, &opts, &rcasm::DiskFiles).map_err(
+            |diags| {
+                diags
+                    .iter()
+                    .map(|d| d.to_string())
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            },
+        )?;
+        rcasm::m68k::add_debug_info(&asm, &mut info);
+    }
+    Ok(Some(slashes(info).to_text()))
 }
 
 /// The entry address: a number, or a symbol of the sources or symbol files. `None` when the layout names none.

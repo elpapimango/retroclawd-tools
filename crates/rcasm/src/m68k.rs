@@ -2319,6 +2319,18 @@ fn build_object(
 }
 
 /// `NAME = $VALUE` (the symbol file `retroclawd --symbols` and `rcdis --symbols` read); constants only with `all`.
+/// Adds the listing's lines (each line that made bytes, at the address it was assembled for) and the labels to
+/// `info`. The addresses are where the code runs for a flat image; for a relocatable program or an object they are
+/// offsets from its start.
+pub fn add_debug_info(asm: &M68kAssembly, info: &mut rc_common::dbg::DebugInfo) {
+    for e in asm.listing.iter().filter(|e| !e.bytes.is_empty()) {
+        info.add_line(&e.file, e.line as u32, e.addr, e.bytes.len() as u32);
+    }
+    for s in asm.symbols.iter().filter(|s| s.label && s.value >= 0) {
+        info.symbols.push((s.name.clone(), s.value as u32));
+    }
+}
+
 pub fn symbols_text(asm: &M68kAssembly, all: bool) -> String {
     use std::fmt::Write;
     let mut out = String::new();
