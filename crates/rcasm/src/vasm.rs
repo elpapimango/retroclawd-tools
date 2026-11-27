@@ -11,7 +11,11 @@
 //!   (octal), the Z80's `&FF`; `'A` without the closing quote;
 //! * operators: `oldstyle`'s `=` as equality in conditions, `std`'s `a!b` (or-not);
 //! * data, space, alignment, origin, include, conditional, macro (`\1`..`\9`, `\name`, `\@`, `\()`) and repeat
-//!   directives under all the names the manual lists, `set` (a symbol that may be redefined), `.elseif`.
+//!   directives under all the names the manual lists, `set` (a symbol that may be redefined), `.elseif`;
+//! * `rorg`/`phase` ... `rend`/`dephase` (rcasm's `.phase`), oldstyle `struct` (field offsets `name.field`, the size `name`,
+//!   instances `label name values...` with the defaults), sections (rcasm's `.segment` in object mode; in an image `.text`,
+//!   `.data`, `.rodata` and `.bss` go on in one piece and a named section is an error), std's `.irp` / `.irpc` (the block is
+//!   repeated with `\name` replaced) and `.ifc` / `.ifnc` (rcasm's: the two texts after macro arguments are put in).
 
 use crate::Cpu;
 use crate::text::{split_top, strip_comment};
@@ -99,6 +103,17 @@ enum Dir {
     Global,
     Dsect,
     Dend,
+    Phase,
+    Dephase,
+    Struct,
+    EndStruct,
+    /// `section NAME`
+    Section,
+    /// `.text`, `.data`, `.rodata`, `.bss`: rcasm's segment of that kind.
+    Seg(&'static str),
+    Ifc(bool),
+    /// `.irp` (false) or `.irpc` (true).
+    Irp(bool),
     /// Accepted, no effect (listing control, debug records).
     Ignore,
     Unsupported,
@@ -166,10 +181,13 @@ fn directive(word: &str, syntax: Syntax, cpu: Option<Cpu>) -> Option<Dir> {
                 "list" | "nolist" => Dir::Ignore,
                 "dsect" => Dir::Dsect,
                 "dend" => Dir::Dend,
-                "abyte" | "rorg" | "rend" | "phase" | "dephase" | "roffs" | "inline"
-                | "einline" | "struct" | "structure" | "endstruct" | "endstructure" | "section"
-                | "incdir" | "exitmacro" | "local" | "weak" | "symdepend" | "needs" | "di64"
-                | "ds64" => Dir::Unsupported,
+                "rorg" | "phase" => Dir::Phase,
+                "rend" | "dephase" => Dir::Dephase,
+                "struct" | "structure" => Dir::Struct,
+                "endstruct" | "endstructure" => Dir::EndStruct,
+                "section" => Dir::Section,
+                "abyte" | "roffs" | "inline" | "einline" | "incdir" | "exitmacro" | "local"
+                | "weak" | "symdepend" | "needs" | "di64" | "ds64" => Dir::Unsupported,
                 _ => return None,
             })
         }
@@ -208,12 +226,21 @@ fn directive(word: &str, syntax: Syntax, cpu: Option<Cpu>) -> Option<Dir> {
                 "end" => Dir::End,
                 "err" | "abort" => Dir::Error,
                 "global" | "globl" | "extern" => Dir::Global,
-                "list" | "nolist" | "file" | "size" | "type" | "stabs" | "stabn" | "stabd"
-                | "text" => Dir::Ignore,
+                "list" | "nolist" | "file" | "size" | "type" | "stabs" | "stabn" | "stabd" => {
+                    Dir::Ignore
+                }
+                "text" => Dir::Seg("CODE"),
+                "data" => Dir::Seg("DATA"),
+                "rodata" => Dir::Seg("RODATA"),
+                "bss" => Dir::Seg("BSS"),
+                "section" => Dir::Section,
+                "irp" => Dir::Irp(false),
+                "irpc" => Dir::Irp(true),
+                "ifc" => Dir::Ifc(true),
+                "ifnc" => Dir::Ifc(false),
                 "8byte" | "quad" | "uaquad" | "double" | "float" | "single" | "comm" | "lcomm"
-                | "fail" | "hidden" | "internal" | "protected" | "local" | "weak" | "irp"
-                | "irpc" | "ifc" | "ifnc" | "incdir" | "section" | "pushsection" | "popsection"
-                | "data" | "bss" | "rodata" | "sdata" | "sbss" | "sdata2" | "dpage" | "tocd"
+                | "fail" | "hidden" | "internal" | "protected" | "local" | "weak" | "incdir"
+                | "pushsection" | "popsection" | "sdata" | "sbss" | "sdata2" | "dpage" | "tocd"
                 | "stab" | "stabstr" | "swbeg" | "balignw" | "balignl" | "p2alignw"
                 | "p2alignl" => Dir::Unsupported,
                 _ => return None,
@@ -222,10 +249,43 @@ fn directive(word: &str, syntax: Syntax, cpu: Option<Cpu>) -> Option<Dir> {
     }
 }
 
+/// One field of an oldstyle `struct`: the size of a unit, and its default data or a reserved count.
+#[derive(Clone, Debug)]
+pub struct Field {
+    unit: u8,
+    kind: FieldKind,
+}
+
+#[derive(Clone, Debug)]
+enum FieldKind {
+    /// Data with default values (operands already in rcasm's terms).
+    Data(Vec<String>),
+    /// `count` units of `fill`.
+    Space(String, String),
+}
+
+/// The oldstyle structures defined so far, shared by all the files of a program.
+pub type Structs = std::collections::HashMap<String, Vec<Field>>;
+
+/// A `.irp` / `.irpc` block being collected.
+struct Irp {
+    name: String,
+    values: Vec<String>,
+    chars: bool,
+    body: Vec<String>,
+    depth: usize,
+}
+
 /// Rewrites the lines of one source file.
-pub struct Rewriter {
+pub struct Rewriter<'s> {
     syntax: Syntax,
     cpu: Option<Cpu>,
+    /// Building an object (sections become segments) rather than an image.
+    object: bool,
+    structs: &'s mut Structs,
+    /// Inside a `struct`: its name, its fields so far and the offset expression of the next field.
+    struct_def: Option<(String, Vec<Field>, String)>,
+    irp: Option<Irp>,
     /// Inside a macro definition: its parameter names (`_p1`.. for positional ones).
     macro_params: Option<Vec<String>>,
     /// For each open conditional, how many extra `.endif`s its `.elseif`s need.
@@ -234,11 +294,15 @@ pub struct Rewriter {
     digits: [u32; 10],
 }
 
-impl Rewriter {
-    pub fn new(syntax: Syntax, cpu: Option<Cpu>) -> Self {
+impl<'s> Rewriter<'s> {
+    pub fn new(syntax: Syntax, cpu: Option<Cpu>, object: bool, structs: &'s mut Structs) -> Self {
         Rewriter {
             syntax,
             cpu,
+            object,
+            structs,
+            struct_def: None,
+            irp: None,
             macro_params: None,
             ifs: Vec::new(),
             digits: [0; 10],
@@ -249,6 +313,9 @@ impl Rewriter {
     pub fn line(&mut self, text: &str) -> Vec<String> {
         if self.syntax == Syntax::Native {
             return vec![text.to_string()];
+        }
+        if self.irp.is_some() {
+            return self.irp_line(text);
         }
         let text = if self.macro_params.is_some() {
             self.macro_text(text)
@@ -282,7 +349,16 @@ impl Rewriter {
             };
             return self.assign(&labels, &value, false);
         }
-        let Some(dir) = directive(word, self.syntax, self.cpu) else {
+        let dir = directive(word, self.syntax, self.cpu);
+        if self.struct_def.is_some() {
+            return self.struct_line(&labels, dir, word, operand);
+        }
+        if dir.is_none()
+            && let Some(fields) = self.structs.get(word).cloned()
+        {
+            return self.struct_instance(&labels, &fields, operand);
+        }
+        let Some(dir) = dir else {
             // an instruction or a macro call
             let mut line = self.label_text(&labels);
             if !rest.is_empty() {
@@ -511,10 +587,231 @@ impl Rewriter {
             }
             Dir::Error => out.push(format!("{}        .error {}", lead(self), quoted(operand))),
             Dir::Global => out.push(format!("{}        .global {}", lead(self), self.list(&ops))),
+            Dir::Phase => out.push(format!(
+                "{}        .phase {}",
+                lead(self),
+                self.expr(operand)
+            )),
+            Dir::Dephase => out.push(format!("{}        .dephase", lead(self))),
+            Dir::Struct => {
+                // `name struct` or `struct name`
+                let name = match (&label, operand.trim()) {
+                    (_, op) if !op.is_empty() => op.to_string(),
+                    (Some(l), _) => l.clone(),
+                    _ => {
+                        out.push(self.unsupported(word, "needs a name"));
+                        return out;
+                    }
+                };
+                self.struct_def = Some((name, Vec::new(), "0".to_string()));
+            }
+            Dir::EndStruct => out.push(self.unsupported(word, "without struct")),
+            Dir::Section if self.object => {
+                let name = ops
+                    .first()
+                    .map(|s| s.trim().trim_matches('"'))
+                    .unwrap_or("");
+                out.push(format!("{}        .segment \"{name}\"", lead(self)));
+            }
+            Dir::Section => out.push(self.unsupported(
+                word,
+                "needs -f object (an image is one piece); it is not supported",
+            )),
+            Dir::Seg(name) if self.object => {
+                out.push(format!("{}        .segment \"{name}\"", lead(self)))
+            }
+            Dir::Seg(_) => out.push(lead(self)),
+            Dir::Ifc(yes) => {
+                self.ifs.push(0);
+                let d = if yes { ".ifc" } else { ".ifnc" };
+                out.push(format!("        {d} {operand}"));
+            }
+            Dir::Irp(chars) => match ops.split_first() {
+                Some((name, values)) if !name.is_empty() => {
+                    self.irp = Some(Irp {
+                        name: name.trim().to_string(),
+                        values: values.iter().map(|v| v.trim().to_string()).collect(),
+                        chars,
+                        body: Vec::new(),
+                        depth: 0,
+                    });
+                    out.push(lead(self));
+                }
+                _ => out.push(self.unsupported(word, "needs a name")),
+            },
             Dir::Dsect => out.push(format!("{}        .dsect", lead(self))),
             Dir::Dend => out.push(format!("{}        .dend", lead(self))),
             Dir::Ignore => out.push(lead(self)),
             Dir::Unsupported => out.push(self.unsupported(word, "is not supported")),
+        }
+        out
+    }
+
+    /// The first word of a line after its labels, lower case (to find the end of a `.irp` block).
+    fn word_of(&self, text: &str) -> String {
+        let code = strip_comment(text);
+        let mut rest = code.trim_end();
+        if self.syntax == Syntax::Oldstyle && !rest.starts_with(char::is_whitespace) {
+            rest = rest.split_once(char::is_whitespace).map_or("", |(_, r)| r);
+        }
+        let mut t = rest.trim_start();
+        while let Some(i) = t.find(':') {
+            if i > 0 && t[..i].chars().all(is_ident) {
+                t = t[i + 1..].trim_start();
+            } else {
+                break;
+            }
+        }
+        t.split_whitespace()
+            .next()
+            .unwrap_or("")
+            .to_ascii_lowercase()
+    }
+
+    /// A line inside a `.irp` / `.irpc` block: kept until its `.endr`, then the block is put out once for each value.
+    fn irp_line(&mut self, text: &str) -> Vec<String> {
+        let word = self.word_of(text);
+        let w = word.strip_prefix('.').unwrap_or(&word);
+        let irp = self.irp.as_mut().expect("in a .irp block");
+        match w {
+            "irp" | "irpc" | "rept" => irp.depth += 1,
+            "endr" if irp.depth > 0 => irp.depth -= 1,
+            "endr" => {
+                let irp = self.irp.take().expect("in a .irp block");
+                let values: Vec<String> = if irp.chars {
+                    irp.values
+                        .iter()
+                        .flat_map(|v| v.chars().map(String::from).collect::<Vec<_>>())
+                        .collect()
+                } else if irp.values.is_empty() {
+                    vec![String::new()]
+                } else {
+                    irp.values.clone()
+                };
+                let mut out = Vec::new();
+                for v in &values {
+                    for line in &irp.body {
+                        let line = line
+                            .replace(&format!("\\{}\\()", irp.name), v)
+                            .replace(&format!("\\{}", irp.name), v);
+                        out.extend(self.line(&line));
+                    }
+                }
+                return out;
+            }
+            _ => {}
+        }
+        irp.body.push(text.to_string());
+        vec![String::new()]
+    }
+
+    /// A line inside an oldstyle `struct`: data and space directives are fields (their labels become `struct__label` offsets),
+    /// instructions are left out; `endstruct` defines the size.
+    fn struct_line(
+        &mut self,
+        labels: &[String],
+        dir: Option<Dir>,
+        word: &str,
+        operand: &str,
+    ) -> Vec<String> {
+        let (name, mut fields, offset) = self.struct_def.take().expect("in a struct");
+        let ops = split_top(operand);
+        let field = match dir {
+            Some(Dir::EndStruct) => {
+                let size = format!("{name} = {offset}");
+                self.structs.insert(name, fields);
+                return vec![size];
+            }
+            Some(Dir::Bytes) => Some((
+                1,
+                FieldKind::Data(ops.iter().map(|e| self.expr(e)).collect()),
+            )),
+            Some(Dir::Data(n)) => Some((
+                n,
+                FieldKind::Data(ops.iter().map(|e| self.expr(e)).collect()),
+            )),
+            Some(Dir::Space(n)) => {
+                let count = ops
+                    .first()
+                    .map(|e| self.expr(e))
+                    .unwrap_or_else(|| "0".to_string());
+                let fill = ops
+                    .get(1)
+                    .map(|e| self.expr(e))
+                    .unwrap_or_else(|| "0".to_string());
+                Some((n, FieldKind::Space(count, fill)))
+            }
+            Some(Dir::Zeros) => Some((1, FieldKind::Space(self.expr(operand), "0".to_string()))),
+            _ => None,
+        };
+        let mut out = Vec::new();
+        let mut next = offset.clone();
+        if let Some((unit, kind)) = field {
+            let label = labels.last().filter(|l| *l != ":").cloned();
+            if let Some(l) = &label {
+                out.push(format!("{name}__{l} = {offset}"));
+            }
+            let size = match &kind {
+                FieldKind::Data(vals) if vals.is_empty() => format!("{unit}"),
+                FieldKind::Data(vals) => {
+                    let n: usize = vals.iter().map(|v| string_len(v).unwrap_or(1)).sum();
+                    format!("{}", n * usize::from(unit))
+                }
+                FieldKind::Space(count, _) => format!("({count}) * {unit}"),
+            };
+            next = format!("({offset}) + {size}");
+            fields.push(Field { unit, kind });
+        } else if !word.is_empty() && dir.is_none() {
+            // an instruction in a structure is ignored, as vasm does
+        }
+        self.struct_def = Some((name, fields, next));
+        out
+    }
+
+    /// `label name values...`: the structure's fields with the given values (an empty one keeps the default).
+    fn struct_instance(
+        &mut self,
+        labels: &[String],
+        fields: &[Field],
+        operand: &str,
+    ) -> Vec<String> {
+        let given = split_top(operand);
+        let mut out = vec![self.label_text(labels)];
+        for (i, f) in fields.iter().enumerate() {
+            let value = given
+                .get(i)
+                .map(|v| v.trim())
+                .filter(|v| !v.is_empty())
+                .map(|v| self.expr(v));
+            match &f.kind {
+                FieldKind::Data(defaults) => {
+                    let vals: Vec<String> = match &value {
+                        Some(v) => vec![v.clone()],
+                        None if defaults.is_empty() => vec!["0".to_string()],
+                        None => defaults.clone(),
+                    };
+                    out.push(match f.unit {
+                        1 => format!("        .byte {}", vals.join(", ")),
+                        2 => format!("        .word {}", vals.join(", ")),
+                        n => format!(
+                            "        .byte {}",
+                            vals.iter()
+                                .map(|v| bytes_of(v, n))
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        ),
+                    });
+                }
+                FieldKind::Space(count, fill) => {
+                    if f.unit == 1 {
+                        out.push(format!("        .fill {count}, {fill}"));
+                    } else {
+                        out.push(format!("        .repeat {count}"));
+                        out.push(format!("        .byte {}", bytes_of(fill, f.unit)));
+                        out.push("        .endrep".to_string());
+                    }
+                }
+            }
         }
         out
     }
@@ -810,6 +1107,19 @@ impl Rewriter {
                     j += 1;
                 }
                 let tok: String = chars[start..j].iter().collect();
+                // `name.field` of an oldstyle structure
+                if chars.get(j) == Some(&'.') && self.structs.contains_key(&tok) {
+                    let mut k = j + 1;
+                    while k < chars.len() && (chars[k].is_ascii_alphanumeric() || chars[k] == '_') {
+                        k += 1;
+                    }
+                    if k > j + 1 {
+                        let field: String = chars[j + 1..k].iter().collect();
+                        out.push_str(&format!("{tok}__{field}"));
+                        i = k;
+                        continue;
+                    }
+                }
                 out.push_str(&if tok == "." {
                     tok.clone()
                 } else {
@@ -945,6 +1255,13 @@ fn bytes_of(e: &str, n: u8) -> String {
         })
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+/// The byte count of a `"..."` operand, `None` for an expression.
+fn string_len(v: &str) -> Option<usize> {
+    let v = v.trim();
+    let body = v.strip_prefix('"')?.strip_suffix('"')?;
+    crate::text::unescape(body).ok().map(|b| b.len())
 }
 
 /// `fcc`'s string: any printable delimiter.

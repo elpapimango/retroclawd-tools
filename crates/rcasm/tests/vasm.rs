@@ -153,10 +153,13 @@ loop\\@ dex
 
 #[test]
 fn oldstyle_unsupported_directives_are_named() {
-    let e = old("        org $1000\n        rorg $2000\n").unwrap_err();
-    assert!(e.contains("rorg") && e.contains("t.asm:2"), "{e}");
-    let e = old("        org $1000\n        struct point\n").unwrap_err();
-    assert!(e.contains("struct"), "{e}");
+    let e = old("        org $1000\n        abyte 1,2\n").unwrap_err();
+    assert!(e.contains("abyte") && e.contains("t.asm:2"), "{e}");
+    let e = old("        org $1000\n        inline\n").unwrap_err();
+    assert!(e.contains("inline"), "{e}");
+    // an unclosed structure or a stray endstruct is named too
+    let e = old("        org $1000\n        endstruct\n").unwrap_err();
+    assert!(e.contains("endstruct"), "{e}");
 }
 
 #[test]
@@ -256,4 +259,82 @@ count:  .byt
     );
     let e = old("        .dsect\n        .byt\n").unwrap_err();
     assert!(e.contains(".dsect without .dend"), "{e}");
+}
+
+#[test]
+fn oldstyle_rorg_places_labels_elsewhere_than_the_bytes() {
+    let src = "        org     $1000
+        rorg    $8000
+start   jmp     start
+        rend
+here    jmp     here
+";
+    assert_eq!(old(src).unwrap(), [0x4C, 0x00, 0x80, 0x4C, 0x03, 0x10]);
+}
+
+#[test]
+fn oldstyle_structures_define_offsets_sizes_and_instances() {
+    let src = "        org     $1000
+        struct  point
+x       db      4
+y       db      5,6
+z       ds      2
+        endstruct
+p1      point
+p2      point   1,,9
+        lda     #point.y
+        lda     #point
+";
+    // offsets x 0, y 1, z 3, size 5; an empty value keeps the default, a reserved field takes no value
+    assert_eq!(
+        old(src).unwrap(),
+        [4, 5, 6, 0, 0, 1, 5, 6, 0, 0, 0xA9, 1, 0xA9, 5]
+    );
+}
+
+#[test]
+fn std_irp_irpc_and_ifc() {
+    let src = r"        .org    0x1000
+        .irp    v, 1, 2, 3
+        .byte   \v
+        .endr
+        .irpc   c, ab
+        .byte   '\c'
+        .endr
+        .macro  same a
+        .ifc    \a, yes
+        .byte   0xAA
+        .else
+        .byte   0xBB
+        .endif
+        .endm
+        same    yes
+        same    no
+        .text
+        .byte   9
+";
+    assert_eq!(std(src).unwrap(), [1, 2, 3, b'a', b'b', 0xAA, 0xBB, 9]);
+}
+
+#[test]
+fn sections_are_segments_in_an_object_and_an_error_in_an_image() {
+    let e = std("        .org 0x1000\n        .section foo\n").unwrap_err();
+    assert!(e.contains("object"), "{e}");
+    let opts = Options {
+        cpu: Some(Cpu::Mos6502),
+        syntax: Syntax::Std,
+        ..Options::default()
+    };
+    let obj = rcasm::assemble_object(
+        "t.asm",
+        "        .text\n        nop\n        .data\n        .byte 1\n",
+        &opts,
+        &DiskFiles,
+    )
+    .unwrap();
+    let names: Vec<&str> = obj.sections.iter().map(|s| s.name.as_str()).collect();
+    assert!(
+        names.contains(&"CODE") && names.contains(&"DATA"),
+        "{names:?}"
+    );
 }

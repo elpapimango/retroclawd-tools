@@ -168,6 +168,9 @@ pass, the library idiom of assembling a routine only when something called it; `
 
 Since 0.6.2 also `.set NAME, VALUE` (a symbol that may be given a new value later; `=` and `equ` still refuse a second definition) and
 `.dsect` ... `.dend` (an offset section: labels inside get addresses from where the last one ended, 0 at first, `.org` moves them; nothing is written).
+Since 0.6.3: `.phase ADDR` ... `.dephase` (the labels and `*` count from ADDR while the bytes go on where the code is: code that is
+copied elsewhere before it runs) and `.ifc A, B` / `.ifnc A, B` (the two texts after macro arguments were put in, quotes around
+either left out).
 
 Not done: nested anonymous `.struct`/`.union` members, `.mac` tricks with `.concat`.
 
@@ -185,12 +188,17 @@ In a layout: `syntax = "oldstyle"`.
   `asciiz string str fcc defm text fcs`, `blk bsz ds dsb defs zmb dc ds8 rmb blkw dsw ds16 blkl dsl ds24 ds32 fill reserve spc bss`, `align` (a bit count)
   `even org include incbin binary mdat`, `equ eq = set defc`, `if cond ifne ifeq ifgt ifge iflt ifle ifd ifdef ifnd ifndef ifused ifblank ifnblank else el endif endc fi ei`,
   `macro mac endm endmac endmacro` (`\1`..`\9`, `\name`, `name\@`, `\()`), `rept repeat endr endrep endrepeat`, `dsect dend`, `end assert fail`,
-  `global xdef xref xlib extern`, `list nolist`. Not translated (an error): `abyte rorg rend phase dephase roffs inline einline struct structure section incdir exitmacro local weak symdepend needs di64 ds64`.
+  `global xdef xref xlib extern`, `list nolist`, `rorg phase` ... `rend dephase` (rcasm's `.phase`), `struct structure` ... `endstruct endstructure`
+  (data and space fields; `name.field` is a field's offset and `name` the size; `label name v1,,v3` lays out an instance, an empty value keeping the
+  field's default, a reserved field taking none; instructions in a structure are left out; structures are known in the files included after them),
+  `section NAME` (rcasm's `.segment` with `-f object`; an error in an image). Not translated (an error): `abyte roffs inline einline incdir exitmacro
+  local weak symdepend needs di64 ds64`.
 - **std**: labels end with `:`; local labels `.1`, `1$`, digit labels `1:` with `1b` / `1f`; numbers `0x`, `0b`, `017` (octal); `a!b` (or-not). Directives:
   `.byte .ascii .short .half .word .2byte .int .long .4byte .asciz .asciiz .string .space .skip .zero .align .p2align` (power of two) `.balign .org .include .incbin
-  .equ .set .equiv .if .ifne .ifeq .ifgt .ifge .iflt .ifle .ifdef .ifndef .ifb .ifnb .elseif .else .endif .macro .endm .rept .endr .end .err .abort .global .globl .extern`,
-  and `.list .nolist .file .size .type .stabs .stabn .stabd .text` (no effect). Sections other than the one image, floats, 64-bit data, `.irp`, `.ifc` and the
-  ELF visibility directives are errors.
+  .equ .set .equiv .if .ifne .ifeq .ifgt .ifge .iflt .ifle .ifdef .ifndef .ifb .ifnb .ifc .ifnc .elseif .else .endif .macro .endm .rept .irp .irpc .endr .end .err
+  .abort .global .globl .extern`, and `.list .nolist .file .size .type .stabs .stabn .stabd` (no effect). `.irp NAME, a, b` / `.irpc NAME, abc` repeat their
+  block with `\NAME` replaced by each value / character. `.text .data .rodata .bss` and `.section NAME` are rcasm segments (`CODE DATA RODATA BSS`, `NAME`)
+  with `-f object`; in an image the four go on in one piece and `.section` is an error. Floats, 64-bit data, `.comm` and the ELF visibility directives are errors.
 
 
 ## 68000 objects (`--cpu 68000 -f object`)

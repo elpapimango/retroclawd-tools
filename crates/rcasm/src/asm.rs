@@ -148,6 +148,10 @@ struct Asm<'f> {
     dsect: Option<Option<u32>>,
     /// Where the next `.dsect` starts (where the last one ended).
     dsect_pc: u32,
+    /// Inside `.phase ADDR`: where the bytes really go minus where the labels say they are.
+    phase: Option<i64>,
+    /// vasm oldstyle structures, shared by the files of the program (see `crate::vasm`).
+    vasm_structs: crate::vasm::Structs,
     ifref_at: usize,
     /// How many macro expansions have renamed their `.local` names.
     local_counter: usize,
@@ -236,7 +240,10 @@ fn run_passes<'f>(
     object: bool,
 ) -> Result<Asm<'f>, Vec<Diag>> {
     let mut asm = Asm {
-        opts: opts.clone(),
+        opts: Options {
+            object: object || opts.object,
+            ..opts.clone()
+        },
         files,
         cpu: opts.cpu,
         illegal: opts.illegal,
@@ -252,6 +259,8 @@ fn run_passes<'f>(
         vars: HashSet::new(),
         dsect: None,
         dsect_pc: 0,
+        phase: None,
+        vasm_structs: crate::vasm::Structs::new(),
         ifref_at: 0,
         local_counter: 0,
         wide: HashMap::new(),
@@ -285,7 +294,7 @@ fn run_passes<'f>(
         );
     }
     let root: Rc<str> = Rc::from(name);
-    let lines = split_lines(source, &root, opts);
+    let lines = split_lines(source, &root, &asm.opts, &mut asm.vasm_structs);
     for pass in 1..=2u8 {
         asm.begin_pass(pass);
         asm.run(lines.clone(), 0);
@@ -306,8 +315,13 @@ fn run_passes<'f>(
     Ok(asm)
 }
 
-fn split_lines(source: &str, file: &Rc<str>, opts: &Options) -> Vec<LineSrc> {
-    let mut rw = crate::vasm::Rewriter::new(opts.syntax, opts.cpu);
+fn split_lines(
+    source: &str,
+    file: &Rc<str>,
+    opts: &Options,
+    structs: &mut crate::vasm::Structs,
+) -> Vec<LineSrc> {
+    let mut rw = crate::vasm::Rewriter::new(opts.syntax, opts.cpu, opts.object, structs);
     source
         .lines()
         .enumerate()
@@ -438,6 +452,10 @@ const DIRECTIVES: &[&str] = &[
     "ifnref",
     "dsect",
     "dend",
+    "phase",
+    "dephase",
+    "ifc",
+    "ifnc",
     "charmap",
 ];
 
@@ -463,6 +481,7 @@ impl<'f> Asm<'f> {
         self.refs.borrow_mut().clear();
         self.dsect = None;
         self.dsect_pc = 0;
+        self.phase = None;
         self.pc = None;
         self.bank = 0;
         self.scopes.clear();
@@ -655,7 +674,8 @@ impl<'f> Asm<'f> {
             if let Some(Kind::Body(word, operand)) = &kind {
                 match directive_name(word).as_deref() {
                     Some("if") | Some("ifdef") | Some("ifndef") | Some("ifblank")
-                    | Some("ifnblank") | Some("ifconst") | Some("ifref") | Some("ifnref") => {
+                    | Some("ifnblank") | Some("ifconst") | Some("ifref") | Some("ifnref")
+                    | Some("ifc") | Some("ifnc") => {
                         let dir = directive_name(word).unwrap();
                         self.begin_if(&src, &dir, operand);
                         continue;
@@ -1008,13 +1028,20 @@ impl<'f> Asm<'f> {
             self.pc = Some(sec.end());
             return;
         }
-        if pc as usize + bytes.len() > self.limit() as usize {
+        // under `.phase` the labels see `pc`; the bytes go where the code really is
+        let phys = match self.phase {
+            Some(delta) => (i64::from(pc) + delta) as u32,
+            None => pc,
+        };
+        if pc as usize + bytes.len() > self.limit() as usize
+            || phys as usize + bytes.len() > self.limit() as usize
+        {
             self.error(src, "the program counter would pass $FFFF");
             return;
         }
         if self.segments.is_empty() {
             self.segments.push(Segment {
-                start: pc,
+                start: phys,
                 bytes: Vec::new(),
                 bank: self.bank,
             });
@@ -1113,6 +1140,25 @@ impl<'f> Asm<'f> {
                 Err(e) => self.error(src, e),
             },
             "org" => self.do_org(src, operand),
+            "phase" if self.ob.on => self.error(src, ".phase is for images, not object mode"),
+            "phase" if self.phase.is_some() => {
+                self.error(src, ".phase is already on (.dephase first)")
+            }
+            "phase" => match (self.ensure_pc(src), self.eval_now(operand)) {
+                (Some(pc), Ok(v)) if (0..self.limit() as i64).contains(&v) => {
+                    self.phase = Some(i64::from(pc) - v);
+                    self.pc = Some(v as u32);
+                }
+                (Some(_), Ok(v)) => {
+                    self.error(src, format!(".phase {v} is outside the address space"))
+                }
+                (_, Err(e)) => self.error(src, e),
+                (None, _) => {}
+            },
+            "dephase" => match self.phase.take() {
+                Some(delta) => self.pc = self.pc.map(|pc| (i64::from(pc) + delta) as u32),
+                None => self.error(src, ".dephase without .phase"),
+            },
             "dsect" if self.ob.on => self.error(
                 src,
                 ".dsect is for images; in object mode use a bss segment",
@@ -1419,8 +1465,8 @@ impl<'f> Asm<'f> {
                 self.error(src, format!(".{dir} without its opening directive"))
             }
             "macro" | "endm" | "endmacro" | "if" | "ifdef" | "ifndef" | "ifblank" | "ifnblank"
-            | "ifconst" | "ifref" | "ifnref" | "else" | "endif" | "include" | "struct"
-            | "union" | "enum" => {
+            | "ifconst" | "ifref" | "ifnref" | "ifc" | "ifnc" | "else" | "endif" | "include"
+            | "struct" | "union" | "enum" => {
                 unreachable!("handled by the walk")
             }
             other => self.error(src, format!("unknown directive .{other}")),
@@ -1468,7 +1514,7 @@ impl<'f> Asm<'f> {
             Ok((path, bytes)) => {
                 let text = String::from_utf8_lossy(&bytes).into_owned();
                 let file: Rc<str> = Rc::from(path.to_string_lossy().as_ref());
-                let lines = split_lines(&text, &file, &self.opts);
+                let lines = split_lines(&text, &file, &self.opts, &mut self.vasm_structs);
                 self.run(lines, depth + 1);
             }
             Err(e) => self.error(src, e),
@@ -1543,6 +1589,17 @@ impl<'f> Asm<'f> {
                     defined == (dir == "ifdef")
                 }
                 "ifblank" | "ifnblank" => operand.trim().is_empty() == (dir == "ifblank"),
+                // the two texts are the same (after macro arguments were put in; quotes around either are left out)
+                "ifc" | "ifnc" => match split_top(operand).as_slice() {
+                    [a, b] => {
+                        let text = |s: &str| s.trim().trim_matches('"').to_string();
+                        (text(a) == text(b)) == (dir == "ifc")
+                    }
+                    _ => {
+                        self.error(src, format!(".{dir} takes two texts separated by a comma"));
+                        false
+                    }
+                },
                 "ifref" | "ifnref" => {
                     let at = self.ifref_at;
                     self.ifref_at += 1;
