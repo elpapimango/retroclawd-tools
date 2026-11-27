@@ -8,6 +8,11 @@
 //! The program's own header (`NEO-GEO` at `$100`, the jump table, the security code pointer) is the program's: the sources
 //! write it, as the SDKs' startup files do [H?: the header is not checked here]. The output is a `.zip`; the files are
 //! stored, not compressed.
+//!
+//! The **security code** (the 61 words at the address in `$182`, which the BIOS compares with its own copy before it
+//! starts a cartridge) is SNK's: this tool does not contain it. `options.security` names a file with it, either the
+//! 122 bytes themselves or the program file (`.p1`, byte-swapped as dumped) of a cartridge of your own, from which it is
+//! copied; the bytes go where `$182` points (the sources reserve them). Without it the BIOS shows its crosshatch.
 
 use crate::Build;
 use crate::layout::{self, Layout};
@@ -211,6 +216,15 @@ pub fn build(
             "options.ngh {ngh}: the game number has at most four digits"
         ));
     }
+    let has_header = prom.get(0x100..0x107) == Some(b"NEO-GEO".as_slice());
+    let mut notes = Vec::new();
+    if has_header {
+        security_code(&mut prom, base, o.security.as_deref(), &mut notes)?;
+    }
+    // the program files hold every 16-bit word byte-swapped, as the cartridges' dumps do ("NEO-GEO" reads "EN-OEG")
+    for pair in prom.as_chunks_mut::<2>().0 {
+        pair.swap(0, 1);
+    }
     let mut files: Vec<(String, Vec<u8>)> = Vec::new();
     if prom.len() > 0x10_0000 {
         let rest = prom.split_off(0x10_0000);
@@ -251,8 +265,7 @@ pub fn build(
     if let Some(v) = read("v2", &o.v2)? {
         files.push((format!("{ngh:03}-v2.v21"), v));
     }
-    let mut notes = Vec::new();
-    if files[0].1.get(0x100..0x107) != Some(b"NEO-GEO".as_slice()) {
+    if !has_header {
         notes.push(
             "the program has no NEO-GEO header at $100: the BIOS will not start it".to_string(),
         );
@@ -267,4 +280,73 @@ pub fn build(
         map,
         symbols_text: symbols_txt,
     })
+}
+
+/// The length of the security code: 61 words.
+const SECURITY_LEN: usize = 122;
+
+/// Fills the security code from `options.security` into the place the header's `$182` points to (`prom` is the
+/// program before its words are swapped).
+fn security_code(
+    prom: &mut [u8],
+    base: &Path,
+    file: Option<&str>,
+    notes: &mut Vec<String>,
+) -> Result<(), String> {
+    let at = prom
+        .get(0x182..0x186)
+        .map(|b| u32::from_be_bytes([b[0], b[1], b[2], b[3]]) as usize);
+    let Some(file) = file else {
+        notes.push(
+            "no options.security: the BIOS compares SNK's security code (at the address in $182) before it starts a cartridge, and shows its crosshatch without it"
+                .to_string(),
+        );
+        return Ok(());
+    };
+    let at = match at {
+        Some(a) if a % 2 == 0 && a + SECURITY_LEN <= prom.len() => a,
+        Some(a) => {
+            return Err(format!(
+                "options.security: the header's $182 points to ${a:06X}, which is odd or leaves no {SECURITY_LEN} bytes in the program"
+            ));
+        }
+        None => return Err("options.security: the program ends before $186".to_string()),
+    };
+    let path = resolve(base, file);
+    let bytes = std::fs::read(&path)
+        .map_err(|e| format!("options.security: cannot read {}: {e}", path.display()))?;
+    let code = if bytes.len() == SECURITY_LEN {
+        bytes
+    } else {
+        // a cartridge's program file: words byte-swapped; follow its own $182
+        let word = |i: usize| bytes.get(i..i + 2).map(|w| [w[1], w[0]]);
+        let from = match (word(0x182), word(0x184)) {
+            (Some(h), Some(l)) => u32::from_be_bytes([h[0], h[1], l[0], l[1]]) as usize,
+            _ => {
+                return Err(format!(
+                    "options.security: {} is neither the {SECURITY_LEN}-byte code nor a cartridge program file",
+                    path.display()
+                ));
+            }
+        };
+        if bytes.get(0x100..0x106) != Some(b"EN-OEG".as_slice()) || from % 2 != 0 {
+            return Err(format!(
+                "options.security: {} is neither the {SECURITY_LEN}-byte code nor a cartridge program file (no EN-OEG header)",
+                path.display()
+            ));
+        }
+        (from..from + SECURITY_LEN)
+            .step_by(2)
+            .map(word)
+            .collect::<Option<Vec<_>>>()
+            .ok_or_else(|| {
+                format!(
+                    "options.security: {} ends inside its security code",
+                    path.display()
+                )
+            })?
+            .concat()
+    };
+    prom[at..at + SECURITY_LEN].copy_from_slice(&code);
+    Ok(())
 }

@@ -258,7 +258,9 @@ written (`fix_checksum = false` stops that) and the image is padded to a power o
 
 68000 sources at absolute addresses (the image starts at `$000000`; pad with `ds.b`) and `bin` inputs at `at`, output `.zip`: a cartridge set with the names the emulator reads: `NNN-p1.p1` (a program above 1 MB continues in
 `-p2.p2`), and from `[options]` files: `s` (fix layer, `-s1.s1`), `c` (the byte-interleaved sprite region, split into `-c1.c1` even bytes and `-c2.c2` odd bytes), `m` (Z80, `-m1.m1`), `v1`/`v2` (`-v1.v11`, `-v2.v21`);
-`ngh` is `NNN` (default 999). The header at `$100` (`NEO-GEO`, the jump table, the security pointer) is the program's own to write; rcld notes when it is missing [H?]. Files are stored, not compressed.
+`ngh` is `NNN` (default 999). The program files hold every 16-bit word byte-swapped, as cartridge dumps do (`NEO-GEO` reads `EN-OEG`). The header at `$100` (`NEO-GEO`, the jump table, the security pointer at `$182`) is the program's own to write; rcld notes when it is missing [H?]. Files are stored, not compressed.
+
+The BIOS compares SNK's **security code** (61 words at the address in `$182`) with its own copy before it starts a cartridge, and shows its crosshatch without it. The code is SNK's and is not part of this tool: `[options] security = "file"` names either the 122 bytes or the program file (`.p1`) of a cartridge of your own, from which the code is copied (through that file's own `$182`). The bytes go where the program's `$182` points (it must be even and the program must reserve 122 bytes there, as `rcb new`'s skeleton does). Without the option a note says so. Checked 2026-11-26: the skeleton boots on the real BIOS in the emulator with the code taken from a cartridge.
 
 ## ld65 configuration files
 

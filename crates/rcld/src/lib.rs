@@ -445,10 +445,16 @@ pub fn debug_info(
     if sources.is_empty() {
         return Ok(None);
     }
-    let mut defines: Vec<(String, i64)> = layout.define.iter().map(|(k, v)| (k.clone(), *v)).collect();
+    let mut defines: Vec<(String, i64)> =
+        layout.define.iter().map(|(k, v)| (k.clone(), *v)).collect();
     defines.extend(cli_defines.iter().cloned());
     // a Windows path has backslashes, which are escapes in an assembler string
-    let quote = |p: &Path| p.display().to_string().replace('\\', "\\\\").replace('"', "\\\"");
+    let quote = |p: &Path| {
+        p.display()
+            .to_string()
+            .replace('\\', "\\\\")
+            .replace('"', "\\\"")
+    };
     let source: String = sources
         .iter()
         .map(|p| format!(".include \"{}\"\n", quote(p)))
@@ -459,8 +465,13 @@ pub fn debug_info(
         include_dirs: vec![base.to_path_buf()],
         ..rcasm::Options::default()
     };
-    let asm = rcasm::assemble("layout", &source, &opts, &rcasm::DiskFiles)
-        .map_err(|diags| diags.iter().map(|d| d.to_string()).collect::<Vec<_>>().join("\n"))?;
+    let asm = rcasm::assemble("layout", &source, &opts, &rcasm::DiskFiles).map_err(|diags| {
+        diags
+            .iter()
+            .map(|d| d.to_string())
+            .collect::<Vec<_>>()
+            .join("\n")
+    })?;
     Ok(Some(rcasm::debug_info(&asm).to_text()))
 }
 

@@ -99,10 +99,70 @@ fn a_set_has_the_regions_the_emulator_reads() {
             "042-v2.v21"
         ]
     );
-    assert_eq!(&files[0].1[0x100..0x107], b"NEO-GEO");
+    assert_eq!(
+        &files[0].1[0x100..0x106],
+        b"EN-OEG",
+        "program words are byte-swapped, as in the dumps"
+    );
     assert_eq!(files[2].1, [10, 11, 12]);
     assert_eq!(files[3].1, [20, 21, 22]);
-    assert!(b.notes.is_empty(), "{:?}", b.notes);
+    assert_eq!(b.notes.len(), 1, "{:?}", b.notes);
+    assert!(b.notes[0].contains("security"), "{:?}", b.notes);
+}
+
+/// A program whose header points `$182` at `$200`, where it reserves 122 bytes.
+const WITH_POINTER: &str = "        .org 0
+        dc.l $10F300, start
+        ds.b $F8
+        dc.b \"NEO-GEO\",0
+        ds.b $7A
+        dc.l code
+        ds.b $200-$186
+code:   ds.b 122
+start:  bra.s start
+";
+
+#[test]
+fn the_security_code_comes_from_a_file_or_a_cartridge_program() {
+    let code: Vec<u8> = (0..122u8).map(|i| i.wrapping_mul(3)).collect();
+    // a cartridge program file of its own, words swapped, its code at $400
+    let mut cart = vec![0u8; 0x500];
+    cart[0x100..0x107].copy_from_slice(b"NEO-GEO");
+    cart[0x182..0x186].copy_from_slice(&0x400u32.to_be_bytes());
+    cart[0x400..0x400 + 122].copy_from_slice(&code);
+    for pair in cart.as_chunks_mut::<2>().0 {
+        pair.swap(0, 1);
+    }
+    let p = Project::new("sec");
+    p.file("main.s", WITH_POINTER.as_bytes())
+        .file("code.bin", &code)
+        .file("cart.p1", &cart)
+        .file("short.bin", &[1, 2, 3]);
+    let layout = |file: &str| {
+        format!(
+            "machine = \"neogeo\"
+[[input]]
+asm = \"main.s\"
+[options]
+security = \"{file}\"
+"
+        )
+    };
+    for file in ["code.bin", "cart.p1"] {
+        let b = p.build(&layout(file)).unwrap();
+        assert!(b.notes.is_empty(), "{file}: {:?}", b.notes);
+        let mut prom = read_zip(&b.bytes).remove(0).1;
+        for pair in prom.as_chunks_mut::<2>().0 {
+            pair.swap(0, 1);
+        }
+        assert_eq!(&prom[0x200..0x200 + 122], code.as_slice(), "{file}");
+    }
+    let e = p.build(&layout("short.bin")).unwrap_err();
+    assert!(e.contains("neither"), "{e}");
+    let odd = WITH_POINTER.replace("dc.l code", "dc.l code+1");
+    p.file("main.s", odd.as_bytes());
+    let e = p.build(&layout("code.bin")).unwrap_err();
+    assert!(e.contains("odd"), "{e}");
 }
 
 #[test]

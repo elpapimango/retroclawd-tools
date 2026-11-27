@@ -206,7 +206,11 @@ mod tests {
             out.extend_from_slice(&disk[at..at + SECTOR]);
             let i = cluster * 3 / 2;
             let v = u16::from_le_bytes([fat[i], fat[i + 1]]);
-            cluster = if cluster.is_multiple_of(2) { v & 0xFFF } else { v >> 4 } as usize;
+            cluster = if cluster.is_multiple_of(2) {
+                v & 0xFFF
+            } else {
+                v >> 4
+            } as usize;
         }
         out.truncate(size);
         Some(out)
