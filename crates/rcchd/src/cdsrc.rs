@@ -13,8 +13,10 @@ pub struct SrcTrack {
     pub file: PathBuf,
     /// The byte of `file` where the track's first stored frame is.
     pub offset: u64,
-    /// Frames of the pregap that are in the file, before the track's data (cue `INDEX 00`).
+    /// Frames of the pregap that are stored in the CHD, before the track's data (cue `INDEX 00`, plus `lead_zeros`).
     pub stored_pregap: u32,
+    /// Frames of zeros the stored pregap starts with, which are not in the file (a cue `PREGAP` in front of an `INDEX 00`).
+    pub lead_zeros: u32,
     pub data_frames: u32,
     /// A pregap that is not in the file (cue `PREGAP`).
     pub virtual_pregap: u32,
@@ -33,7 +35,7 @@ impl SrcTrack {
 
     /// Frames read from the track's file (the padding is not in it).
     pub fn file_frames(&self) -> u32 {
-        self.stored_pregap + self.data_frames
+        self.stored_pregap - self.lead_zeros + self.data_frames
     }
 
     pub fn meta(&self) -> TrackMeta {
@@ -115,6 +117,7 @@ pub fn from_iso(path: &Path) -> Result<CdSource> {
             file: path.to_path_buf(),
             offset: 0,
             stored_pregap: 0,
+            lead_zeros: 0,
             data_frames: (len / 2048) as u32,
             virtual_pregap: 0,
             postgap: 0,
@@ -147,12 +150,11 @@ pub fn from_cue(sheet: &CueSheet, dir: &Path) -> Result<CdSource> {
         }
         let index1 = u64::from(t.index1.expect("checked by the parser"));
         let start = u64::from(t.index0.unwrap_or(t.index1.expect("checked by the parser")));
-        if t.index0.is_some() && t.pregap > 0 {
-            return fail(format!(
-                "track {} has both INDEX 00 and a PREGAP command; chdman does not take that either",
-                t.number
-            ));
-        }
+        // INDEX 00 together with PREGAP (PC Engine CD cues): the track starts after both, so the pregap is the PREGAP's
+        // frames (zeros, stored ahead of the file's) and the INDEX 00 frames. chdman 0.289 instead keeps the INDEX 00
+        // frames as the track's data and its CHD puts the track 75 frames early: Beetle PCE Fast then shows LOAD ERROR,
+        // and boots the original cue
+        let lead_zeros = if t.index0.is_some() { t.pregap } else { 0 };
         // the data ends where the next track of the same file starts (its pregap, if stored), else with the file
         let next = sheet.tracks[i + 1..].iter().find(|n| n.file == t.file);
         let end_bytes = match next {
@@ -196,9 +198,10 @@ pub fn from_cue(sheet: &CueSheet, dir: &Path) -> Result<CdSource> {
             kind,
             file: path.clone(),
             offset: start_bytes,
-            stored_pregap,
+            stored_pregap: stored_pregap + lead_zeros,
+            lead_zeros,
             data_frames: frames - stored_pregap,
-            virtual_pregap: t.pregap,
+            virtual_pregap: t.pregap - lead_zeros,
             postgap: t.postgap,
             swap_audio: kind.is_audio() && format == "BINARY",
             pad: None,
@@ -246,6 +249,56 @@ mod tests {
         assert!(src.tracks[1].swap_audio && !src.tracks[0].swap_audio);
         // 30 -> 32, 190 -> 192, 10 -> 12
         assert_eq!(src.total_frames(), 32 + 192 + 12);
+    }
+
+    /// PC Engine CD cues give the data track both a PREGAP and an INDEX 00: the pregap is both together, the PREGAP's
+    /// frames stored as zeros ahead of the INDEX 00 frames, so the track starts where the cue says. (chdman 0.289 keeps
+    /// the INDEX 00 frames as data and loses the PREGAP's length: its CHD of Space Fantasy Zone shows LOAD ERROR in Beetle
+    /// PCE Fast, this layout boots like the cue, 2026-11-28.)
+    #[test]
+    fn index_00_with_a_pregap_command_stores_both_as_the_pregap() {
+        std::fs::write(scratch("pce.bin"), vec![0u8; 2352 * 400]).unwrap();
+        let sheet = cue::parse(
+            "FILE pce.bin BINARY
+TRACK 01 AUDIO
+INDEX 01 00:00:00
+             TRACK 02 MODE1/2352
+PREGAP 00:02:00
+INDEX 00 00:01:00
+INDEX 01 00:02:00
+             TRACK 03 AUDIO
+PREGAP 00:02:00
+INDEX 01 00:04:00
+",
+        )
+        .unwrap();
+        let src = from_cue(&sheet, scratch("x").parent().unwrap()).unwrap();
+        let t: Vec<_> = src
+            .tracks
+            .iter()
+            .map(|t| {
+                (
+                    t.number,
+                    t.frames(),
+                    t.stored_pregap,
+                    t.lead_zeros,
+                    t.virtual_pregap,
+                )
+            })
+            .collect();
+        assert_eq!(
+            t,
+            [(1, 75, 0, 0, 0), (2, 375, 225, 150, 0), (3, 100, 0, 0, 150)]
+        );
+        // the file gives 75 + 150 frames of track 2, starting at its INDEX 00
+        assert_eq!(
+            (src.tracks[1].file_frames(), src.tracks[1].offset),
+            (225, 75 * 2352)
+        );
+        assert_eq!(
+            src.tracks[1].meta().text(),
+            "TRACK:2 TYPE:MODE1_RAW SUBTYPE:NONE FRAMES:375 PREGAP:225 PGTYPE:VMODE1_RAW PGSUB:NONE POSTGAP:0"
+        );
     }
 
     #[test]
