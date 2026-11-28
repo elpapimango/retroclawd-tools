@@ -138,6 +138,7 @@ pub fn open(path: &Path) -> Result<CdSource> {
             file,
             offset: l.offset,
             stored_pregap: 0,
+            lead_zeros: 0,
             data_frames,
             virtual_pregap: 0,
             postgap: 0,

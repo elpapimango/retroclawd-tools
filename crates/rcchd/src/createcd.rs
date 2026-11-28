@@ -65,6 +65,8 @@ fn push_track(
     file.seek(SeekFrom::Start(track.offset))?;
     let mut sector = vec![0u8; size];
     let mut batch = Vec::with_capacity(FRAME_SIZE * 64);
+    // the stored pregap's frames that are not in the file
+    batch.resize(track.lead_zeros as usize * FRAME_SIZE, 0);
     for _ in 0..track.file_frames() {
         file.read_exact(&mut sector)
             .map_err(|e| Error(format!("{}: {e}", track.file.display())))?;
@@ -78,7 +80,7 @@ fn push_track(
             progress(*done, total);
         }
     }
-    let pad = track.frames().div_ceil(4) * 4 - track.file_frames();
+    let pad = track.frames().div_ceil(4) * 4 - track.file_frames() - track.lead_zeros;
     batch.resize(batch.len() + pad as usize * FRAME_SIZE, 0);
     *done += (batch.len() / FRAME_SIZE) as u64;
     w.push(&batch)?;
