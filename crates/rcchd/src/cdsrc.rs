@@ -147,12 +147,9 @@ pub fn from_cue(sheet: &CueSheet, dir: &Path) -> Result<CdSource> {
         }
         let index1 = u64::from(t.index1.expect("checked by the parser"));
         let start = u64::from(t.index0.unwrap_or(t.index1.expect("checked by the parser")));
-        if t.index0.is_some() && t.pregap > 0 {
-            return fail(format!(
-                "track {} has both INDEX 00 and a PREGAP command; chdman does not take that either",
-                t.number
-            ));
-        }
+        // INDEX 00 together with PREGAP (seen in PC Engine CD cues): chdman 0.289 keeps the frames from INDEX 00 on as the
+        // track's data and reports only the PREGAP length, as a pregap that is not stored
+        let both = t.index0.is_some() && t.pregap > 0;
         // the data ends where the next track of the same file starts (its pregap, if stored), else with the file
         let next = sheet.tracks[i + 1..].iter().find(|n| n.file == t.file);
         let end_bytes = match next {
@@ -184,7 +181,7 @@ pub fn from_cue(sheet: &CueSheet, dir: &Path) -> Result<CdSource> {
             ));
         }
         let frames = ((end_bytes - start_bytes) / size) as u32;
-        let stored_pregap = (index1 - start) as u32;
+        let stored_pregap = if both { 0 } else { (index1 - start) as u32 };
         if stored_pregap > frames {
             return fail(format!(
                 "track {}'s pregap is longer than the track",
@@ -246,6 +243,31 @@ mod tests {
         assert!(src.tracks[1].swap_audio && !src.tracks[0].swap_audio);
         // 30 -> 32, 190 -> 192, 10 -> 12
         assert_eq!(src.total_frames(), 32 + 192 + 12);
+    }
+
+    /// PC Engine CD cues give the data track both a PREGAP and an INDEX 00: chdman 0.289 keeps the INDEX 00 frames as
+    /// the track's data and reports the PREGAP as a pregap that is not stored (same SHA-1 on Space Fantasy Zone and
+    /// SideArms Special, 2026-11-28).
+    #[test]
+    fn index_00_with_a_pregap_command_keeps_the_index_00_frames_as_data() {
+        std::fs::write(scratch("pce.bin"), vec![0u8; 2352 * 400]).unwrap();
+        let sheet = cue::parse(
+            "FILE pce.bin BINARY\nTRACK 01 AUDIO\nINDEX 01 00:00:00\n\
+             TRACK 02 MODE1/2352\nPREGAP 00:02:00\nINDEX 00 00:01:00\nINDEX 01 00:02:00\n\
+             TRACK 03 AUDIO\nPREGAP 00:02:00\nINDEX 01 00:04:00\n",
+        )
+        .unwrap();
+        let src = from_cue(&sheet, scratch("x").parent().unwrap()).unwrap();
+        let t: Vec<_> = src
+            .tracks
+            .iter()
+            .map(|t| (t.number, t.frames(), t.stored_pregap, t.virtual_pregap))
+            .collect();
+        assert_eq!(t, [(1, 75, 0, 0), (2, 225, 0, 150), (3, 100, 0, 150)]);
+        assert_eq!(
+            src.tracks[1].meta().text(),
+            "TRACK:2 TYPE:MODE1_RAW SUBTYPE:NONE FRAMES:225 PREGAP:150 PGTYPE:MODE1 PGSUB:NONE POSTGAP:0"
+        );
     }
 
     #[test]
